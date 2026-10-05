@@ -329,6 +329,28 @@ async function runDeviceTests() {
     const dev4AfterRemoval = await db.getDeviceById(dev4Id);
     assert(dev4AfterRemoval?.status === 'revoked', 'Removed device status transitioned to revoked');
 
+    // R-08: When firm is expired, DELETE /api/v1/devices/:id returns HTTP 403 SUBSCRIPTION_READ_ONLY
+    await db.updateFirm(firmAId, {
+      status: 'expired',
+      licenseExpiresAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
+    const expiredRemoveRes = await fetch(`${baseUrl}/api/v1/devices/${dev4Id}`, {
+      method: 'DELETE',
+      headers: { Cookie: `access_token=${dev2Token}; device_key=${dev2KeyExplicit}` },
+    });
+    assert(expiredRemoveRes.status === 403, 'DELETE /api/v1/devices/:id returns 403 when firm is expired (R-08)');
+    const expiredRemoveBody = await expiredRemoveRes.json();
+    assert(
+      expiredRemoveBody.code === 'SUBSCRIPTION_READ_ONLY',
+      'DELETE /api/v1/devices/:id returns code SUBSCRIPTION_READ_ONLY'
+    );
+
+    // Restore Firm A license
+    await db.updateFirm(firmAId, {
+      status: 'active',
+      licenseExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    });
+
     console.log('\n--- 6. Clearing Cookies Creates a New Pending Device (Documented) ---');
     // Current state of Firm A:
     // Device 1: revoked

@@ -677,6 +677,118 @@ async function runTests() {
       assert(archContent.includes('payments(id, firm_id') && archContent.includes('backups_log(id, firm_id'), 'ARCHITECTURE.md specifies payments and backups_log tables');
       assert(archContent.includes('Off-site nightly dump') || archContent.includes('Off-site nightly backup rule'), 'ARCHITECTURE.md includes off-site nightly backup rule');
       assert(archContent.includes('/server/src/routes/') && archContent.includes('httpOnly secure cookie') && archContent.includes('admin-only via CLI'), 'ARCHITECTURE.md specifies backend folder layout and auth/license rules');
+
+      // ----------------------------------------------------
+      // 9. Trust Proxy Configuration (R-05)
+      // ----------------------------------------------------
+      console.log('\n--- 9. TRUST_PROXY_HOPS & req.ip Invariants ---');
+      const savedTrustProxy = process.env.TRUST_PROXY_HOPS;
+
+      // 9a. Default / 0 hops: X-Forwarded-For is ignored
+      process.env.TRUST_PROXY_HOPS = '0';
+      const appHops0 = createApp();
+      assert(appHops0.get('trust proxy') === 0, 'createApp sets trust proxy to 0 when TRUST_PROXY_HOPS=0');
+
+      const server0 = http.createServer(appHops0);
+      await new Promise<void>((resolve) => server0.listen(0, '127.0.0.1', () => resolve()));
+      const port0 = (server0.address() as any).port;
+
+      const res0 = await fetch(`http://127.0.0.1:${port0}/api/v1/health`, {
+        headers: { 'x-forwarded-for': '203.0.113.195, 70.41.3.18' },
+      });
+      const data0 = await res0.json();
+      server0.close();
+      assert(
+        data0.clientIp && !data0.clientIp.includes('203.0.113.195') && !data0.clientIp.includes('70.41.3.18'),
+        'req.ip ignores X-Forwarded-For when TRUST_PROXY_HOPS is 0'
+      );
+
+      // 9b. TRUST_PROXY_HOPS=2: X-Forwarded-For is trusted 2 hops deep
+      process.env.TRUST_PROXY_HOPS = '2';
+      const appHops2 = createApp();
+      assert(appHops2.get('trust proxy') === 2, 'createApp sets trust proxy to 2 when TRUST_PROXY_HOPS=2');
+
+      const server2 = http.createServer(appHops2);
+      await new Promise<void>((resolve) => server2.listen(0, '127.0.0.1', () => resolve()));
+      const port2 = (server2.address() as any).port;
+
+      const res2 = await fetch(`http://127.0.0.1:${port2}/api/v1/health`, {
+        headers: { 'x-forwarded-for': '203.0.113.195, 70.41.3.18' },
+      });
+      const data2 = await res2.json();
+      server2.close();
+      assert(
+        data2.clientIp === '203.0.113.195',
+        'req.ip uses X-Forwarded-For client IP when TRUST_PROXY_HOPS is 2'
+      );
+
+      if (savedTrustProxy !== undefined) {
+        process.env.TRUST_PROXY_HOPS = savedTrustProxy;
+      } else {
+        delete process.env.TRUST_PROXY_HOPS;
+      }
+
+      // ----------------------------------------------------
+      // 10. Automated Audit: enforceSubscriptionReadOnly on ALL /api/v1 write routes (R-08)
+      // ----------------------------------------------------
+      console.log('\n--- 10. Automated Audit: Subscription Read-Only Gate on All /api/v1 Write Routes ---');
+      function extractAppRoutes(stack: any[], prefix = ''): { path: string; methods: string[]; middleware: string[] }[] {
+        let routes: { path: string; methods: string[]; middleware: string[] }[] = [];
+        for (const layer of stack) {
+          if (layer.route) {
+            const methods = Object.keys(layer.route.methods).map((m) => m.toUpperCase());
+            const middleware = layer.route.stack.map((s: any) => s.name || 'anonymous');
+            routes.push({
+              path: prefix + (layer.route.path === '/' ? '' : layer.route.path),
+              methods,
+              middleware,
+            });
+          } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+            let routerPrefix = '';
+            if (layer.regexp && !layer.regexp.fast_slash) {
+              let src = layer.regexp.source;
+              src = src.replace('^\\', '').replace('^', '');
+              src = src.replace('\\/?(?=\\/|$)', '').replace('?(?=\\/|$)', '');
+              src = src.replace(/\\\//g, '/');
+              routerPrefix = src;
+            }
+            routes = routes.concat(extractAppRoutes(layer.handle.stack, prefix + (routerPrefix ? (routerPrefix.startsWith('/') ? routerPrefix : '/' + routerPrefix) : '')));
+          }
+        }
+        return routes;
+      }
+
+      const app = createApp();
+      const allRegisteredRoutes = extractAppRoutes((app as any)._router.stack);
+      const writeMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+      const v1WriteRoutes = allRegisteredRoutes.filter((r) => {
+        const isV1 = r.path.startsWith('/api/v1');
+        const hasWrite = r.methods.some((m) => writeMethods.includes(m));
+        return isV1 && hasWrite;
+      });
+
+      const EXEMPT_PATHS = ['/api/v1/auth/login', '/api/v1/auth/logout'];
+      let ungatedWriteRoutes: string[] = [];
+
+      for (const r of v1WriteRoutes) {
+        if (r.path.startsWith('/api/v1/admin') || EXEMPT_PATHS.includes(r.path)) {
+          continue;
+        }
+        const hasGate = r.middleware.includes('enforceSubscriptionReadOnly');
+        if (!hasGate) {
+          ungatedWriteRoutes.push(`${r.methods.join(',')} ${r.path}`);
+        }
+      }
+
+      assert(
+        v1WriteRoutes.length > 0,
+        `Found ${v1WriteRoutes.length} registered write routes under /api/v1`
+      );
+      assert(
+        ungatedWriteRoutes.length === 0,
+        'All registered /api/v1 write routes have enforceSubscriptionReadOnly gate',
+        ungatedWriteRoutes.length > 0 ? `Ungated routes: ${ungatedWriteRoutes.join('; ')}` : undefined
+      );
     }
 
     console.log(`\n========================================`);

@@ -3,7 +3,33 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Super Admin Step D (Device Authorization - Web-App Level) completed. Honest architectural definition implemented and documented: a "device" is an individual browser profile/installation identified by a cryptographically random 256-bit key in an httpOnly cookie (`device_key`), not physical hardware. Created table `devices` with versioned Drizzle migration `0003_wild_mikhail_rasputin.sql`. Quota management: when approved count < `max_devices` and policy is `auto-approve`, new browser installs are approved automatically; once quota is reached (e.g. 3 devices allowed, 4th attempt), subsequent devices transition to `pending` and return HTTP 403 `DEVICE_PENDING`. Revoking a device or suspending a firm invalidates active sessions immediately on the very next request via server-side verification in `firmAuthMiddleware`. Admin app displays live pending counter on `FirmListScreen` and a dedicated `Devices` tab with Approve / Reject / Revoke actions on `FirmDetailScreen`. Firm app features a clear, responsive "Waiting for Device Approval" screen in English and Bangla with 100% en/bn parity. Automated test suite `server/tests/devices.test.ts` passes 35/35 assertions. Total test assertions across all suites: 331 server backend tests passed (0 failed), 74 health checks passed, 14 restFetch tests passed, Playwright 360px responsive check passed.
+Reviewer Hardening - Batch 1 (Config and Safety: R-01, R-05, R-06, R-08, R-11, R-14) completed. All 6 config and safety issues remediated, tested with pre/post verification, and validated across root, server, and admin-app suites. Full write-route audit confirms 100% of `/api/v1` mutating endpoints are protected by `enforceSubscriptionReadOnly`. TypeScript strict lint passes cleanly across all projects. Total server test assertions: 340 passed (0 failed). Health diagnostics: 74/74 passed. Admin app build: passed cleanly.
+
+## Reviewer Hardening
+- **Batch 1 (Config and Safety: R-01, R-05, R-06, R-08, R-11, R-14)**:
+  - **R-14: Remove Unused Dependencies**:
+    - Removed unused `"motion": "^12.23.24"` from root `package.json`. Verified zero imports in `src/`. Ran `npm install --legacy-peer-deps`. `npm run build` and `npm audit` remain 0 vulnerabilities.
+  - **R-11: TypeScript Lint Fixes**:
+    - Root `tsconfig.json`: Added `"exclude": ["node_modules", "dist", "server", "admin-app"]` to prevent root `tsc` from colliding with `admin-app`'s Vite setup.
+    - `server/tests/adminFirms.test.ts:339`: Added required fields (`nameBn`, `email`, `notes`, `deletedAt`, `createdBy`, `updatedBy`) to `db.insertClient` call matching `schema.Client`.
+    - Verified `npm run lint` (`tsc --noEmit`) passes with 0 errors.
+  - **R-01: Drizzle ORM & Drizzle Kit Upgrade**:
+    - Upgraded `drizzle-orm` to `^0.45.3` (fixes high-severity SQL injection GHSA-gpj5-g38j-94v9) and `drizzle-kit` to `^0.31.11` in `server/package.json`.
+    - Verified installed versions: `drizzle-orm@0.45.3`, `drizzle-kit@0.31.11`.
+    - Audit summaries: Root: 0 vulnerabilities. Server: 4 moderate (in dev-only `drizzle-kit` CLI generator's dependency `esbuild`; forced fix would downgrade drizzle-kit to 0.18 which is broken). Admin-app: 0 vulnerabilities.
+  - **R-06: FORBIDDEN_ADMIN_JWT_SECRETS Validation**:
+    - `server/src/config.ts`: Added `if (FORBIDDEN_ADMIN_JWT_SECRETS.includes(secret.trim()))` check inside `getAdminJwtSecret()`.
+    - `server/tests/adminAuth.test.ts`: Added test case 1d asserting `validateStartupConfig()` throws when `ADMIN_JWT_SECRET` equals `.env.example` placeholder value (`'your_super_secret_admin_jwt_key_at_least_32_chars'`). All 49 assertions pass.
+  - **R-05: Dynamic Trust Proxy Hops**:
+    - `server/src/app.ts`: Implemented `const trustProxyHops = parseInt(process.env.TRUST_PROXY_HOPS || '0', 10); app.set('trust proxy', isNaN(trustProxyHops) ? 0 : trustProxyHops)`. Avoids hardcoded proxy trust.
+    - `.env.example`: Documented `TRUST_PROXY_HOPS=0` default and that production behind Cloudflare + Caddy uses `2`.
+    - `server/src/routes/health.ts`: Added `clientIp: req.ip` for operational diagnostics.
+    - `server/tests/foundation.test.ts`: Added Test 9 verifying `req.ip` ignores `X-Forwarded-For` when `TRUST_PROXY_HOPS=0`, and properly resolves the client IP two hops deep when `TRUST_PROXY_HOPS=2`.
+  - **R-08: Subscription Read-Only Gate on All /api/v1 Write Routes**:
+    - `server/src/routes/devices.ts`: Added `enforceSubscriptionReadOnly` to `DELETE /api/v1/devices/:id`.
+    - `server/src/routes/auth.ts`: Added `enforceSubscriptionReadOnly` to `POST /api/v1/auth/change-password` (and `/auth/change-password`).
+    - `server/tests/devices.test.ts`: Added test asserting `DELETE /api/v1/devices/:id` returns HTTP 403 `SUBSCRIPTION_READ_ONLY` when firm license is expired.
+    - `server/tests/foundation.test.ts`: Added Test 10 which dynamically extracts all registered Express routes from `app._router.stack`, identifies all 12 write endpoints under `/api/v1`, and asserts that every single one has `enforceSubscriptionReadOnly` (excluding login unauthenticated handshake and logout by design).
 
 ## Super Admin Implementation
 - **Super Admin Step D - Device Authorization (Web-App Level)**:

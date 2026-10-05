@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { loginUser } from '../services/authService.js';
 import { authMiddleware, AuthenticatedRequest, revokeToken, generateAccessToken } from '../middleware/auth.js';
-import { evaluateServerSubscription } from '../middleware/subscription.js';
+import { evaluateServerSubscription, enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { recordAudit } from '../services/auditService.js';
 
 export const authRouter = Router();
@@ -114,7 +114,11 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
 });
 
 // POST /change-password
-authRouter.post('/change-password', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+authRouter.post(
+  '/change-password',
+  authMiddleware,
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) {
     return res.status(400).json({

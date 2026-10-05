@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { firmAuthMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
+import { enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
 import { recordAudit } from '../services/auditService.js';
 
@@ -56,13 +57,16 @@ devicesRouter.get('/my', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // 2. DELETE /api/v1/devices/:id - Firm Owner may remove staff devices only if admin enables that policy
-devicesRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
-  if (req.user?.role !== 'Owner') {
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Only chamber owners can remove staff devices.',
-    });
-  }
+devicesRouter.delete(
+  '/:id',
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (req.user?.role !== 'Owner') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only chamber owners can remove staff devices.',
+      });
+    }
 
   const firm = req.firm!;
   if (!firm.allowOwnerDeviceRemoval) {
