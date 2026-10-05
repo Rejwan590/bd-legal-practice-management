@@ -340,11 +340,17 @@ async function runAdminFirmsTests() {
       id: `client-${crypto.randomUUID()}`,
       firmId: createdFirmId,
       name: 'Test Client CTG',
+      nameBn: null,
+      email: null,
       phone: '+880 1711-123123',
       address: 'Chittagong Port',
+      notes: null,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-      archived: false,
+      deletedAt: null,
+      createdBy: null,
+      updatedBy: null,
     });
 
     const currentExpiry = new Date(licenseUpdateRes.body.firm.licenseExpiresAt).getTime();
