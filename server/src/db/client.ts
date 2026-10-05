@@ -109,8 +109,17 @@ export interface IDatabase {
   // Payments (Step B)
   insertPayment(payment: schema.NewPayment): Promise<schema.Payment>;
   listPayments(firmId: string): Promise<schema.Payment[]>;
-  // Metrics (Step B)
-  getFirmMetrics(firmId: string): Promise<{ userCount: number; deviceCount: number; lastActivity: Date | null }>;
+  // Devices (Step D: Browser install authorization identified by cryptographically random key, not physical hardware)
+  getDeviceById(id: string): Promise<schema.Device | null>;
+  getDeviceByHash(deviceKeyHash: string): Promise<schema.Device | null>;
+  listDevices(firmId: string): Promise<schema.Device[]>;
+  countApprovedDevices(firmId: string): Promise<number>;
+  countPendingDevices(firmId: string): Promise<number>;
+  insertDevice(device: schema.NewDevice): Promise<schema.Device>;
+  updateDevice(id: string, updates: Partial<schema.Device>): Promise<schema.Device>;
+  deleteDevice(id: string): Promise<void>;
+  // Metrics (Step B & D)
+  getFirmMetrics(firmId: string): Promise<{ userCount: number; deviceCount: number; pendingDeviceCount: number; lastActivity: Date | null }>;
 }
 
 // In-Memory Database Adapter (for headless testing and local development without active Docker container)
@@ -125,6 +134,7 @@ class MemoryDatabase implements IDatabase {
   public adminAudits: schema.AdminAuditEntry[] = [];
   public licenseEvents: schema.LicenseEvent[] = [];
   public payments: schema.Payment[] = [];
+  public devices: schema.Device[] = [];
   private initialized = false;
 
   public async init() {
@@ -171,6 +181,8 @@ class MemoryDatabase implements IDatabase {
       courtAffiliations: firm.courtAffiliations ?? null,
       contact: firm.contact ?? null,
       maxDevices: firm.maxDevices ?? 5,
+      devicePolicy: firm.devicePolicy ?? 'auto-approve',
+      allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
       planId: firm.planId ?? null,
       licenseStartsAt: firm.licenseStartsAt ?? new Date(),
       licenseExpiresAt: firm.licenseExpiresAt,
@@ -671,20 +683,91 @@ class MemoryDatabase implements IDatabase {
       .map((p) => ({ ...p }));
   }
 
+  public async getDeviceById(id: string): Promise<schema.Device | null> {
+    await this.init();
+    return this.devices.find((d) => d.id === id) || null;
+  }
+
+  public async getDeviceByHash(deviceKeyHash: string): Promise<schema.Device | null> {
+    await this.init();
+    return this.devices.find((d) => d.deviceKeyHash === deviceKeyHash) || null;
+  }
+
+  public async listDevices(firmId: string): Promise<schema.Device[]> {
+    await this.init();
+    return this.devices
+      .filter((d) => d.firmId === firmId)
+      .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime());
+  }
+
+  public async countApprovedDevices(firmId: string): Promise<number> {
+    await this.init();
+    return this.devices.filter((d) => d.firmId === firmId && d.status === 'approved').length;
+  }
+
+  public async countPendingDevices(firmId: string): Promise<number> {
+    await this.init();
+    return this.devices.filter((d) => d.firmId === firmId && d.status === 'pending').length;
+  }
+
+  public async insertDevice(device: schema.NewDevice): Promise<schema.Device> {
+    await this.init();
+    const created: schema.Device = {
+      id: device.id || crypto.randomUUID(),
+      firmId: device.firmId,
+      userId: device.userId,
+      deviceKeyHash: device.deviceKeyHash,
+      name: device.name,
+      userAgent: device.userAgent,
+      status: device.status || 'pending',
+      firstSeenAt: device.firstSeenAt ? new Date(device.firstSeenAt) : new Date(),
+      lastSeenAt: device.lastSeenAt ? new Date(device.lastSeenAt) : new Date(),
+      approvedByAdminId: device.approvedByAdminId || null,
+    };
+    this.devices.push(created);
+    return created;
+  }
+
+  public async updateDevice(id: string, updates: Partial<schema.Device>): Promise<schema.Device> {
+    await this.init();
+    const index = this.devices.findIndex((d) => d.id === id);
+    if (index === -1) {
+      throw new Error(`Device not found: ${id}`);
+    }
+    const updated: schema.Device = {
+      ...this.devices[index],
+      ...updates,
+    };
+    this.devices[index] = updated;
+    return updated;
+  }
+
+  public async deleteDevice(id: string): Promise<void> {
+    await this.init();
+    this.devices = this.devices.filter((d) => d.id !== id);
+  }
+
   public async getFirmMetrics(
     firmId: string
-  ): Promise<{ userCount: number; deviceCount: number; lastActivity: Date | null }> {
+  ): Promise<{ userCount: number; deviceCount: number; pendingDeviceCount: number; lastActivity: Date | null }> {
     await this.init();
     const userCount = this.users.filter((u) => u.firmId === firmId && !u.deletedAt).length;
-    const sessionAudits = this.auditLogs.filter(
-      (a) => a.firmId === firmId && a.entity === 'Session' && a.action === 'LOGIN_SUCCESS'
-    );
-    const ipSet = new Set<string>();
-    sessionAudits.forEach((a) => {
-      const ip = (a.newValue as any)?.ipAddress;
-      if (ip) ipSet.add(ip);
-    });
-    const deviceCount = ipSet.size > 0 ? ipSet.size : Math.max(1, userCount);
+    const approvedDevices = this.devices.filter((d) => d.firmId === firmId && d.status === 'approved').length;
+    const pendingDeviceCount = this.devices.filter((d) => d.firmId === firmId && d.status === 'pending').length;
+    
+    // In memory: use approved device count if devices exist, fallback to IP approximation
+    let deviceCount = approvedDevices;
+    if (deviceCount === 0 && pendingDeviceCount === 0) {
+      const sessionAudits = this.auditLogs.filter(
+        (a) => a.firmId === firmId && a.entity === 'Session' && a.action === 'LOGIN_SUCCESS'
+      );
+      const ipSet = new Set<string>();
+      sessionAudits.forEach((a) => {
+        const ip = (a.newValue as any)?.ipAddress;
+        if (ip) ipSet.add(ip);
+      });
+      deviceCount = ipSet.size > 0 ? ipSet.size : Math.max(1, userCount);
+    }
 
     const firmAudits = this.auditLogs.filter((a) => a.firmId === firmId);
     let lastActivity: Date | null = null;
@@ -695,7 +778,7 @@ class MemoryDatabase implements IDatabase {
       const firm = this.firms.find((f) => f.id === firmId);
       lastActivity = firm?.updatedAt || firm?.createdAt || null;
     }
-    return { userCount, deviceCount, lastActivity };
+    return { userCount, deviceCount, pendingDeviceCount, lastActivity };
   }
 }
 
@@ -1237,23 +1320,89 @@ class PostgresDatabase implements IDatabase {
       .orderBy(desc(schema.payments.paidAt));
   }
 
+  public async getDeviceById(id: string): Promise<schema.Device | null> {
+    const res = await this.db.select().from(schema.devices).where(eq(schema.devices.id, id));
+    return res[0] || null;
+  }
+
+  public async getDeviceByHash(deviceKeyHash: string): Promise<schema.Device | null> {
+    const res = await this.db.select().from(schema.devices).where(eq(schema.devices.deviceKeyHash, deviceKeyHash));
+    return res[0] || null;
+  }
+
+  public async listDevices(firmId: string): Promise<schema.Device[]> {
+    return this.db
+      .select()
+      .from(schema.devices)
+      .where(eq(schema.devices.firmId, firmId))
+      .orderBy(desc(schema.devices.lastSeenAt));
+  }
+
+  public async countApprovedDevices(firmId: string): Promise<number> {
+    const res = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.firmId, firmId), eq(schema.devices.status, 'approved')));
+    return Number(res[0]?.count || 0);
+  }
+
+  public async countPendingDevices(firmId: string): Promise<number> {
+    const res = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.firmId, firmId), eq(schema.devices.status, 'pending')));
+    return Number(res[0]?.count || 0);
+  }
+
+  public async insertDevice(device: schema.NewDevice): Promise<schema.Device> {
+    const res = await this.db.insert(schema.devices).values(device).returning();
+    return res[0];
+  }
+
+  public async updateDevice(id: string, updates: Partial<schema.Device>): Promise<schema.Device> {
+    const res = await this.db
+      .update(schema.devices)
+      .set(updates)
+      .where(eq(schema.devices.id, id))
+      .returning();
+    return res[0];
+  }
+
+  public async deleteDevice(id: string): Promise<void> {
+    await this.db.delete(schema.devices).where(eq(schema.devices.id, id));
+  }
+
   public async getFirmMetrics(
     firmId: string
-  ): Promise<{ userCount: number; deviceCount: number; lastActivity: Date | null }> {
+  ): Promise<{ userCount: number; deviceCount: number; pendingDeviceCount: number; lastActivity: Date | null }> {
     const usersCountRes = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.users)
       .where(and(eq(schema.users.firmId, firmId), isNull(schema.users.deletedAt)));
     const userCount = Number(usersCountRes[0]?.count || 0);
 
-    const distinctIpRes = await this.pool.query(
-      `SELECT COUNT(DISTINCT (new_value->>'ipAddress')) as count
-       FROM audit_log
-       WHERE firm_id = $1 AND entity = 'Session' AND action = 'LOGIN_SUCCESS' AND (new_value->>'ipAddress') IS NOT NULL`,
-      [firmId]
-    );
-    const ipCount = Number(distinctIpRes.rows[0]?.count || 0);
-    const deviceCount = ipCount > 0 ? ipCount : Math.max(1, userCount);
+    const approvedDevicesRes = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.firmId, firmId), eq(schema.devices.status, 'approved')));
+    let deviceCount = Number(approvedDevicesRes[0]?.count || 0);
+
+    const pendingDevicesRes = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.firmId, firmId), eq(schema.devices.status, 'pending')));
+    const pendingDeviceCount = Number(pendingDevicesRes[0]?.count || 0);
+
+    if (deviceCount === 0 && pendingDeviceCount === 0) {
+      const distinctIpRes = await this.pool.query(
+        `SELECT COUNT(DISTINCT (new_value->>'ipAddress')) as count
+         FROM audit_log
+         WHERE firm_id = $1 AND entity = 'Session' AND action = 'LOGIN_SUCCESS' AND (new_value->>'ipAddress') IS NOT NULL`,
+        [firmId]
+      );
+      const ipCount = Number(distinctIpRes.rows[0]?.count || 0);
+      deviceCount = ipCount > 0 ? ipCount : Math.max(1, userCount);
+    }
 
     const latestAuditRes = await this.pool.query(
       `SELECT timestamp FROM audit_log WHERE firm_id = $1 ORDER BY timestamp DESC LIMIT 1`,
@@ -1267,7 +1416,7 @@ class PostgresDatabase implements IDatabase {
       lastActivity = firm?.updatedAt || firm?.createdAt || null;
     }
 
-    return { userCount, deviceCount, lastActivity };
+    return { userCount, deviceCount, pendingDeviceCount, lastActivity };
   }
 }
 

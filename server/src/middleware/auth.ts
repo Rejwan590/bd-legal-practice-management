@@ -4,9 +4,12 @@ import { getDatabase } from '../db/client.js';
 import * as schema from '../db/schema.js';
 import { getJwtSecret } from '../config.js';
 
+import { hashDeviceKey } from '../services/deviceService.js';
+
 export interface AuthenticatedRequest extends Request {
   user?: schema.User;
   firm?: schema.Firm;
+  device?: schema.Device;
 }
 
 export const ACCESS_TOKEN_EXPIRY = '15m';
@@ -16,15 +19,19 @@ export interface TokenPayload {
   firmId: string;
   role: string;
   email: string;
+  deviceId?: string;
+  deviceKeyHash?: string;
 }
 
-export function generateAccessToken(user: schema.User): string {
+export function generateAccessToken(user: schema.User, device?: schema.Device): string {
   const secret = getJwtSecret();
   const payload: TokenPayload = {
     userId: user.id,
     firmId: user.firmId,
     role: user.role,
     email: user.email,
+    deviceId: device?.id,
+    deviceKeyHash: device?.deviceKeyHash,
   };
   return jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
@@ -92,6 +99,7 @@ export async function authMiddleware(
     }
 
     if (firm.deletedAt) {
+      revokeToken(token);
       return res.status(403).json({
         error: 'Forbidden',
         code: 'FIRM_DELETED',
@@ -100,6 +108,7 @@ export async function authMiddleware(
     }
 
     if (firm.status === 'suspended') {
+      revokeToken(token);
       return res.status(403).json({
         error: 'Forbidden',
         code: 'FIRM_SUSPENDED',
@@ -108,11 +117,64 @@ export async function authMiddleware(
     }
 
     if (firm.status === 'disabled') {
+      revokeToken(token);
       return res.status(403).json({
         error: 'Forbidden',
         code: 'FIRM_DISABLED',
         message: 'Your chamber firm account has been disabled. Please contact support.',
       });
+    }
+
+    // Device authorization check (Web-app level browser install check)
+    // Honest: A "device" is a browser install identified by random key cookie, not hardware.
+    const rawDeviceKey = req.cookies?.device_key;
+    const deviceKeyHash = rawDeviceKey ? hashDeviceKey(rawDeviceKey) : payload.deviceKeyHash;
+
+    if (deviceKeyHash) {
+      const device = await db.getDeviceByHash(deviceKeyHash);
+      if (!device) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          code: 'DEVICE_NOT_FOUND',
+          message: 'Device authorization record not found. Please log in again.',
+        });
+      }
+
+      if (device.firmId !== user.firmId) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          code: 'DEVICE_FIRM_MISMATCH',
+          message: 'Device does not belong to your chamber firm.',
+        });
+      }
+
+      if (device.status === 'revoked') {
+        revokeToken(token);
+        return res.status(403).json({
+          error: 'Forbidden',
+          code: 'DEVICE_REVOKED',
+          message: 'This device authorization has been revoked. Session terminated immediately.',
+        });
+      }
+
+      if (device.status === 'rejected') {
+        revokeToken(token);
+        return res.status(403).json({
+          error: 'Forbidden',
+          code: 'DEVICE_REJECTED',
+          message: 'This device registration has been rejected.',
+        });
+      }
+
+      if (device.status === 'pending') {
+        return res.status(403).json({
+          error: 'Forbidden',
+          code: 'DEVICE_PENDING',
+          message: 'Device is waiting for admin approval before you can access chamber resources.',
+        });
+      }
+
+      req.device = device;
     }
 
     req.user = user;

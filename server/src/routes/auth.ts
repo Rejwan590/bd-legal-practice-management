@@ -8,7 +8,7 @@ export const authRouter = Router();
 
 // POST /login
 authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
-  const { email, password } = req.body || {};
+  const { email, password, deviceName } = req.body || {};
 
   if (!email || !password) {
     return res.status(400).json({
@@ -17,13 +17,31 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 
-  const result = await loginUser(email, password, req.ip);
+  const rawDeviceKey = req.cookies?.device_key;
+  const userAgent = req.headers['user-agent'] as string | undefined;
+
+  const result = await loginUser(email, password, req.ip, {
+    rawDeviceKey,
+    userAgent,
+    deviceName,
+  });
+
+  // Always set or refresh the device_key httpOnly cookie if returned
+  if ((result as any).deviceKey) {
+    res.cookie('device_key', (result as any).deviceKey, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+    });
+  }
 
   if (result.status !== 200) {
     return res.status(result.status).json({
       error: result.error,
       code: (result as any).code,
       message: result.message,
+      device: (result as any).device,
     });
   }
 
@@ -39,6 +57,7 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     user: result.user,
     firm: result.firm,
     subscription: result.firm ? evaluateServerSubscription(result.firm) : null,
+    device: (result as any).device,
   });
 });
 
@@ -50,7 +69,7 @@ authRouter.post('/logout', async (req: AuthenticatedRequest, res: Response) => {
     revokeToken(token);
   }
 
-  // Clear cookie
+  // Clear access_token cookie (keep device_key so browser identity is preserved across logouts)
   res.clearCookie('access_token', {
     httpOnly: true,
     sameSite: 'lax',
@@ -67,7 +86,7 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
   }
 
   // Slide session: re-issue fresh access_token cookie to prevent sudden 15-minute logouts
-  const freshToken = generateAccessToken(req.user);
+  const freshToken = generateAccessToken(req.user, req.device);
   res.cookie('access_token', freshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

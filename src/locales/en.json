@@ -650,5 +650,19 @@
     "stage8": "Stage 8: Dashboard & Global Search",
     "stage9": "Stage 9: Backup & Restore",
     "stage10": "Stage 10: Subscription & Read-Only"
+  },
+  "devices": {
+    "waitingApprovalTitle": "Waiting for Device Approval",
+    "waitingApprovalSubtitle": "This browser install requires authorization by your chamber administrator before accessing chamber files.",
+    "deviceIdLabel": "Device Reference ID",
+    "statusPending": "Approval Pending",
+    "explanation": "To protect client privilege and sensitive legal records, every browser accessing this chamber must be authorized. Please inform your chamber administrator to approve this device from the administration dashboard.",
+    "checkStatus": "Check Approval Status",
+    "backToLogin": "Back to Login",
+    "deviceApprovedNotice": "Device approved! Logging in...",
+    "deviceRejected": "This device has been rejected by the administrator.",
+    "deviceRevoked": "This device's authorization was revoked.",
+    "browserSummary": "Detected Browser",
+    "honestNotice": "Note: A 'device' is a specific browser installation identified by a secure random key, not physical hardware. Clearing browser cookies or cache will register as a new device requiring re-authorization."
   }
 }

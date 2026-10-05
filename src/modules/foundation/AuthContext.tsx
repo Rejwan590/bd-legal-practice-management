@@ -25,7 +25,7 @@ interface AuthContextType {
   isReadOnly: boolean;
   isAuthenticated: boolean;
   can: (permission: PermissionKey) => boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; code?: string; device?: any }>;
   logout: () => Promise<void>;
   switchUser: (userId: string) => Promise<void>;
   refreshState: () => Promise<void>;
@@ -102,7 +102,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshState();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string; code?: string; device?: any }> => {
     if (isRestMode) {
       try {
         const authUrl = getApiBase().replace('/api/v1', '') + '/auth/login';
@@ -115,7 +118,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const data = await res.json();
         if (!res.ok) {
-          return { success: false, error: data.message || data.error || 'Login failed' };
+          return {
+            success: false,
+            error: data.message || data.error || 'Login failed',
+            code: data.code,
+            device: data.device,
+          };
         }
 
         setCurrentUser(data.user);

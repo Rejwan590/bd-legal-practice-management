@@ -35,6 +35,8 @@ export const firms = pgTable('firms', {
   courtAffiliations: text('court_affiliations'),
   contact: text('contact'),
   maxDevices: integer('max_devices').default(5).notNull(),
+  devicePolicy: text('device_policy').$type<'auto-approve' | 'manual'>().default('auto-approve').notNull(),
+  allowOwnerDeviceRemoval: boolean('allow_owner_device_removal').default(false).notNull(),
   planId: text('plan_id').references(() => plans.id),
   licenseStartsAt: timestamp('license_starts_at', { withTimezone: true }),
   licenseExpiresAt: timestamp('license_expires_at', { withTimezone: true }).notNull(),
@@ -226,6 +228,26 @@ export const licenseEvents = pgTable('license_events', {
   index('idx_license_events_at').on(table.at),
 ]);
 
+// Devices Table (Step D: Browser install authorization identified by cryptographically random key, not physical hardware)
+// Honest comment: A "device" is a browser install identified by a random id, not physical hardware.
+export const devices = pgTable('devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  deviceKeyHash: text('device_key_hash').unique().notNull(),
+  name: text('name').notNull(),
+  userAgent: text('user_agent').notNull(),
+  status: text('status').$type<'pending' | 'approved' | 'rejected' | 'revoked'>().default('pending').notNull(),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  approvedByAdminId: uuid('approved_by_admin_id').references(() => platformAdmins.id),
+}, (table) => [
+  index('idx_devices_firm_id').on(table.firmId),
+  index('idx_devices_user_id').on(table.userId),
+  uniqueIndex('idx_devices_key_hash').on(table.deviceKeyHash),
+  index('idx_devices_status').on(table.status),
+]);
+
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
 export type NewFirm = typeof firms.$inferInsert;
@@ -243,4 +265,6 @@ export type AdminAuditEntry = typeof adminAudit.$inferSelect;
 export type NewAdminAuditEntry = typeof adminAudit.$inferInsert;
 export type LicenseEvent = typeof licenseEvents.$inferSelect;
 export type NewLicenseEvent = typeof licenseEvents.$inferInsert;
+export type Device = typeof devices.$inferSelect;
+export type NewDevice = typeof devices.$inferInsert;
 

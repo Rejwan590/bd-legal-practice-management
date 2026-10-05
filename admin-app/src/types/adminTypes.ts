@@ -18,6 +18,10 @@ export interface Firm {
   courtAffiliations: string | null;
   planId: string | null;
   maxDevices: number;
+  devicePolicy?: 'auto-approve' | 'manual';
+  allowOwnerDeviceRemoval?: boolean;
+  pendingDeviceCount?: number;
+  approvedDeviceCount?: number;
   licenseStartsAt: string | null;
   licenseExpiresAt: string;
   status: FirmStatus;
@@ -44,12 +48,35 @@ export interface LicenseInfo {
   isExpired: boolean;
 }
 
+export interface Device {
+  id: string;
+  firmId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  name: string;
+  userAgent: string;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  firstSeenAt: string;
+  lastSeenAt: string;
+  approvedByAdminId: string | null;
+}
+
+export interface FirmDevicesResponse {
+  devices: Device[];
+  maxDevices: number;
+  devicePolicy: 'auto-approve' | 'manual';
+  allowOwnerDeviceRemoval: boolean;
+}
+
 export interface FirmDetailResponse {
   firm: Firm;
   plan: Plan | null;
   license: LicenseInfo;
   userCount: number;
   deviceCount: number;
+  pendingDeviceCount?: number;
   lastActivity: string | null;
 }
 

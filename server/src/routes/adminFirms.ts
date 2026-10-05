@@ -211,8 +211,20 @@ adminFirmsRouter.get('/', async (req: AuthenticatedAdminRequest, res: Response) 
 
   const result = await db.listFirms({ page, limit, search, status });
 
+  const enrichedFirms = await Promise.all(
+    result.firms.map(async (f) => {
+      const pendingDeviceCount = await db.countPendingDevices(f.id);
+      const approvedDeviceCount = await db.countApprovedDevices(f.id);
+      return {
+        ...f,
+        pendingDeviceCount,
+        approvedDeviceCount,
+      };
+    })
+  );
+
   return res.status(200).json({
-    firms: result.firms,
+    firms: enrichedFirms,
     total: result.total,
     page: result.page,
     limit: result.limit,
@@ -250,6 +262,7 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
     license,
     userCount: metrics.userCount,
     deviceCount: metrics.deviceCount,
+    pendingDeviceCount: metrics.pendingDeviceCount,
     lastActivity: metrics.lastActivity,
   });
 });

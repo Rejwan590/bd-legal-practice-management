@@ -63,7 +63,16 @@ export function validatePasswordStrength(password: string): { isValid: boolean; 
   return { isValid: true };
 }
 
-export async function loginUser(email: string, password: string, ipAddress?: string) {
+export async function loginUser(
+  email: string,
+  password: string,
+  ipAddress?: string,
+  deviceOptions?: {
+    rawDeviceKey?: string;
+    userAgent?: string;
+    deviceName?: string;
+  }
+) {
   const db = getDatabase();
   const trimmedEmail = email.trim().toLowerCase();
   const now = Date.now();
@@ -215,7 +224,28 @@ export async function loginUser(email: string, password: string, ipAddress?: str
     };
   }
 
-  const token = generateAccessToken(user);
+  // 7. Device authorization (Step D: web-app level browser install check)
+  const { processDeviceLogin } = await import('./deviceService.js');
+  const deviceResult = await processDeviceLogin({
+    firmId: user.firmId,
+    userId: user.id,
+    rawDeviceKey: deviceOptions?.rawDeviceKey,
+    userAgent: deviceOptions?.userAgent,
+    customDeviceName: deviceOptions?.deviceName,
+  });
+
+  if (deviceResult.status !== 200) {
+    return {
+      status: deviceResult.status,
+      error: deviceResult.error || 'Forbidden',
+      code: deviceResult.code,
+      message: deviceResult.message,
+      deviceKey: deviceResult.deviceKey,
+      device: deviceResult.device,
+    };
+  }
+
+  const token = generateAccessToken(user, deviceResult.device);
 
   await recordAudit({
     firmId: user.firmId,
@@ -225,7 +255,7 @@ export async function loginUser(email: string, password: string, ipAddress?: str
     entityId: user.id,
     action: 'LOGIN_SUCCESS',
     oldValue: null,
-    newValue: { email: user.email, role: user.role, ipAddress },
+    newValue: { email: user.email, role: user.role, ipAddress, deviceId: deviceResult.device.id },
   });
 
   return {
@@ -243,5 +273,7 @@ export async function loginUser(email: string, password: string, ipAddress?: str
     },
     firm,
     token,
+    deviceKey: deviceResult.deviceKey,
+    device: deviceResult.device,
   };
 }

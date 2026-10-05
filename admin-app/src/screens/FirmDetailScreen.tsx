@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FirmDetailResponse, LicenseEvent, Payment } from '../types/adminTypes';
+import { FirmDetailResponse, LicenseEvent, Payment, Device } from '../types/adminTypes';
 import { adminApi } from '../api/adminApi';
 import { RenewModal } from './RenewModal';
 import { LicenseModal } from './LicenseModal';
@@ -19,6 +19,10 @@ import {
   Trash2,
   RefreshCw,
   Sliders,
+  CheckCircle,
+  XCircle,
+  ShieldAlert,
+  Info,
 } from 'lucide-react';
 
 interface FirmDetailScreenProps {
@@ -30,7 +34,8 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
   const [data, setData] = useState<FirmDetailResponse | null>(null);
   const [licenseEvents, setLicenseEvents] = useState<LicenseEvent[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [activeTab, setActiveTab] = useState<'license' | 'payments'>('license');
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [activeTab, setActiveTab] = useState<'license' | 'payments' | 'devices'>('license');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,24 +48,59 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
   const [confirmAction, setConfirmAction] = useState<
     'suspend' | 'disable' | 'reactivate' | 'delete' | null
   >(null);
+  const [deviceToRevoke, setDeviceToRevoke] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchFirmDetails = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [detailRes, eventsRes, paymentsRes] = await Promise.all([
+      const [detailRes, eventsRes, paymentsRes, devicesRes] = await Promise.all([
         adminApi.getFirm(firmId),
         adminApi.listLicenseEvents(firmId),
         adminApi.listPayments(firmId),
+        adminApi.getFirmDevices(firmId),
       ]);
       setData(detailRes);
       setLicenseEvents(eventsRes);
       setPayments(paymentsRes);
+      setDevices(devicesRes.devices);
     } catch (err: any) {
       setError(err?.message || 'Failed to load firm details.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveDevice = async (deviceId: string) => {
+    try {
+      await adminApi.approveDevice(deviceId);
+      await fetchFirmDetails();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to approve device');
+    }
+  };
+
+  const handleRejectDevice = async (deviceId: string) => {
+    try {
+      await adminApi.rejectDevice(deviceId);
+      await fetchFirmDetails();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reject device');
+    }
+  };
+
+  const handleRevokeDevice = async () => {
+    if (!deviceToRevoke) return;
+    setActionLoading(true);
+    try {
+      await adminApi.revokeDevice(deviceToRevoke.id);
+      setDeviceToRevoke(null);
+      await fetchFirmDetails();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to revoke device authorization');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -274,12 +314,28 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
         </div>
       </div>
 
-      {/* Tabs: License History & Payments */}
+      {/* Tabs: License History, Payments, & Devices */}
       <div className="space-y-4">
-        <div className="flex border-b border-slate-800 gap-4">
+        <div className="flex border-b border-slate-800 gap-4 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('devices')}
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 whitespace-nowrap min-h-[44px] ${
+              activeTab === 'devices'
+                ? 'border-indigo-500 text-indigo-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Laptop className="w-4 h-4" />
+            Devices ({devices.length})
+            {devices.filter((d) => d.status === 'pending').length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                {devices.filter((d) => d.status === 'pending').length} pending
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setActiveTab('license')}
-            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 min-h-[44px] ${
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 whitespace-nowrap min-h-[44px] ${
               activeTab === 'license'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -290,7 +346,7 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
           </button>
           <button
             onClick={() => setActiveTab('payments')}
-            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 min-h-[44px] ${
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 whitespace-nowrap min-h-[44px] ${
               activeTab === 'payments'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -300,6 +356,121 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
             Payments ({payments.length})
           </button>
         </div>
+
+        {/* Tab: Devices (Step D: Web-app level browser install authorization) */}
+        {activeTab === 'devices' && (
+          <div className="space-y-4">
+            {/* Honest Architecture Disclaimer Banner */}
+            <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-400 flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-slate-200">Device Model:</span> A "device" is a browser install
+                identified by a random ID stored in an httpOnly cookie, not physical hardware. If users clear browser
+                cookies or use a new profile, a new pending registration will appear here.
+              </div>
+            </div>
+
+            {/* Quota Summary Header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-900 border border-slate-800 rounded-xl">
+              <div>
+                <div className="text-xs text-slate-400">Device Quota Usage</div>
+                <div className="text-base font-bold text-white font-mono">
+                  {devices.filter((d) => d.status === 'approved').length} / {firm.maxDevices} Approved
+                </div>
+              </div>
+              <div className="text-xs text-slate-400">
+                Policy: <span className="text-indigo-400 font-semibold">{firm.devicePolicy ?? 'auto-approve'}</span> • Staff
+                removal by owner: <span className="font-semibold">{firm.allowOwnerDeviceRemoval ? 'Enabled' : 'Disabled'}</span>
+              </div>
+            </div>
+
+            {/* Device List */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+              {devices.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 text-xs">No devices registered for this chamber yet.</div>
+              ) : (
+                <div className="divide-y divide-slate-800/80">
+                  {devices.map((dev) => (
+                    <div
+                      key={dev.id}
+                      className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-slate-800/30 transition-colors"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-white text-sm">{dev.name}</span>
+                          {dev.status === 'approved' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              Approved
+                            </span>
+                          )}
+                          {dev.status === 'pending' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Pending Approval
+                            </span>
+                          )}
+                          {dev.status === 'revoked' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                              Revoked
+                            </span>
+                          )}
+                          {dev.status === 'rejected' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          Operated by: <span className="text-slate-200 font-medium">{dev.userName}</span> ({dev.userEmail}) •{' '}
+                          <span className="text-indigo-400">{dev.userRole}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          First seen: {new Date(dev.firstSeenAt).toLocaleString()} • Last seen:{' '}
+                          {new Date(dev.lastSeenAt).toLocaleString()}
+                        </div>
+                      </div>
+
+                      {/* Device Action Buttons */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {dev.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleApproveDevice(dev.id)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg min-h-[44px] transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectDevice(dev.id)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 min-h-[44px] transition-colors"
+                            >
+                              <XCircle className="w-4 h-4" /> Reject
+                            </button>
+                          </>
+                        )}
+                        {dev.status === 'approved' && (
+                          <button
+                            onClick={() => setDeviceToRevoke(dev)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 text-xs font-medium rounded-lg border border-rose-500/20 min-h-[44px] transition-colors"
+                          >
+                            <Ban className="w-4 h-4" /> Revoke Access
+                          </button>
+                        )}
+                        {(dev.status === 'revoked' || dev.status === 'rejected') && (
+                          <button
+                            onClick={() => handleApproveDevice(dev.id)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg min-h-[44px] transition-colors"
+                          >
+                            <CheckCircle className="w-4 h-4" /> Re-Approve
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tab 1: License Events */}
         {activeTab === 'license' && (
@@ -426,6 +597,20 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
           confirmLabel="Delete Firm"
           variant="danger"
           requiredConfirmationText={firm.name}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* Device Revoke Confirm Modal */}
+      {deviceToRevoke && (
+        <ConfirmModal
+          isOpen={true}
+          onClose={() => setDeviceToRevoke(null)}
+          onConfirm={handleRevokeDevice}
+          title="Revoke Device Authorization"
+          message={`Are you sure you want to revoke authorization for device "${deviceToRevoke.name}" used by ${deviceToRevoke.userName} (${deviceToRevoke.userEmail})? This browser install's active session will be invalidated immediately.`}
+          confirmLabel="Revoke Device"
+          variant="danger"
           loading={actionLoading}
         />
       )}

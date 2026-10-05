@@ -7,6 +7,8 @@ import {
   LicenseEvent,
   Payment,
   AdminAuditEntry,
+  Device,
+  FirmDevicesResponse,
 } from '../types/adminTypes';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -164,4 +166,28 @@ export const adminApi = {
       `/api/admin/audit?limit=${limit}&offset=${offset}`
     );
   },
+
+  // Device Management (Step D: Web-app level browser install authorization)
+  async getFirmDevices(firmId: string): Promise<FirmDevicesResponse> {
+    return adminFetch<FirmDevicesResponse>(`/api/admin/firms/${firmId}/devices`);
+  },
+
+  async approveDevice(deviceId: string): Promise<{ message: string; device: Device }> {
+    return adminFetch<{ message: string; device: Device }>(`/api/admin/devices/${deviceId}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  async rejectDevice(deviceId: string): Promise<{ message: string; device: Device }> {
+    return adminFetch<{ message: string; device: Device }>(`/api/admin/devices/${deviceId}/reject`, {
+      method: 'POST',
+    });
+  },
+
+  async revokeDevice(deviceId: string): Promise<{ message: string; device: Device }> {
+    return adminFetch<{ message: string; device: Device }>(`/api/admin/devices/${deviceId}/revoke`, {
+      method: 'POST',
+    });
+  },
 };
+

@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Clock,
   Laptop,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface FirmListScreenProps {
@@ -209,8 +210,18 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-1.5 text-xs text-slate-300 font-mono">
                             <Laptop className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{firm.maxDevices} max devices</span>
+                            <span>
+                              {firm.approvedDeviceCount ?? 0} / {firm.maxDevices} devices
+                            </span>
                           </div>
+                          {Boolean(firm.pendingDeviceCount && firm.pendingDeviceCount > 0) && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                <ShieldAlert className="w-3 h-3" />
+                                {firm.pendingDeviceCount} pending approval
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-xs text-slate-400">{firm.contact || '—'}</td>
                         <td className="px-4 py-4 text-right">
@@ -260,11 +271,21 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                       </div>
                     </div>
                     <div>
-                      <div className="text-slate-500 text-[11px]">Device Limit</div>
+                      <div className="text-slate-500 text-[11px]">Devices</div>
                       <div className="flex items-center gap-1 text-slate-200 font-mono">
                         <Laptop className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{firm.maxDevices} devices</span>
+                        <span>
+                          {firm.approvedDeviceCount ?? 0} / {firm.maxDevices}
+                        </span>
                       </div>
+                      {Boolean(firm.pendingDeviceCount && firm.pendingDeviceCount > 0) && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            <ShieldAlert className="w-2.5 h-2.5" />
+                            {firm.pendingDeviceCount} pending
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 

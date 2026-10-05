@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
+import { DevicePendingScreen } from './DevicePendingScreen';
 import {
   Building,
   Lock,
@@ -23,6 +24,7 @@ export const LoginScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingDevice, setPendingDevice] = useState<{ email: string; deviceName?: string } | null>(null);
 
   const toggleLanguage = () => {
     const nextLang = i18n.language === 'en' ? 'bn' : 'en';
@@ -43,6 +45,10 @@ export const LoginScreen: React.FC = () => {
     setLoading(false);
 
     if (!result.success) {
+      if (result.code === 'DEVICE_PENDING') {
+        setPendingDevice({ email: email.trim(), deviceName: result.device?.name });
+        return;
+      }
       setErrorMessage(result.error || t('auth.loginFailed', { defaultValue: 'Invalid email or password.' }));
     }
   };
@@ -57,9 +63,24 @@ export const LoginScreen: React.FC = () => {
     setLoading(false);
 
     if (!result.success) {
+      if (result.code === 'DEVICE_PENDING') {
+        setPendingDevice({ email: demoEmail, deviceName: result.device?.name });
+        return;
+      }
       setErrorMessage(result.error || t('auth.loginFailed', { defaultValue: 'Invalid email or password.' }));
     }
   };
+
+  if (pendingDevice) {
+    return (
+      <DevicePendingScreen
+        email={pendingDevice.email}
+        deviceName={pendingDevice.deviceName}
+        onRetry={() => login(email, password)}
+        onBackToLogin={() => setPendingDevice(null)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] bg-slate-900 text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-8 pt-safe pb-safe selection:bg-indigo-500 selection:text-white">

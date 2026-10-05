@@ -3,10 +3,51 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Super Admin Step C (Standalone Admin Frontend in `/admin-app`) completed. Separate small frontend created with own `package.json`, Vite build, and `vercel.json` targeting `admin.<domain>`. Zero code imports between firm app and admin app; firm app contains no admin API paths or links. Implemented screens: Login, Firm List (status, plan, expiry countdown with days left, devices used/allowed, search & filters), Firm Detail (license history, payments, user count, actions: renew, set dates, suspend, disable, reactivate, soft-delete with confirmation name typing), Create Firm Modal (shows temporary password once with copy button), Payment Entry Modal, and Platform Audit Log Screen. Security: pure admin httpOnly cookie (`admin_access_token`), zero localStorage tokens, CSP meta tags. Tests: build clean with zero server code, `npm audit` 0 vulnerabilities, screenshot-free 360px responsive check passes 100% with zero horizontal overflow.
+Super Admin Step D (Device Authorization - Web-App Level) completed. Honest architectural definition implemented and documented: a "device" is an individual browser profile/installation identified by a cryptographically random 256-bit key in an httpOnly cookie (`device_key`), not physical hardware. Created table `devices` with versioned Drizzle migration `0003_wild_mikhail_rasputin.sql`. Quota management: when approved count < `max_devices` and policy is `auto-approve`, new browser installs are approved automatically; once quota is reached (e.g. 3 devices allowed, 4th attempt), subsequent devices transition to `pending` and return HTTP 403 `DEVICE_PENDING`. Revoking a device or suspending a firm invalidates active sessions immediately on the very next request via server-side verification in `firmAuthMiddleware`. Admin app displays live pending counter on `FirmListScreen` and a dedicated `Devices` tab with Approve / Reject / Revoke actions on `FirmDetailScreen`. Firm app features a clear, responsive "Waiting for Device Approval" screen in English and Bangla with 100% en/bn parity. Automated test suite `server/tests/devices.test.ts` passes 35/35 assertions. Total test assertions across all suites: 331 server backend tests passed (0 failed), 74 health checks passed, 14 restFetch tests passed, Playwright 360px responsive check passed.
 
 ## Super Admin Implementation
-- **Super Admin Step C - Standalone Admin Frontend (/admin-app)**:
+- **Super Admin Step D - Device Authorization (Web-App Level)**:
+  - **Honest Architectural Model**:
+    - A "device" is a browser install identified by a random 256-bit cryptographic ID stored in an `httpOnly` cookie (`device_key`), not physical hardware.
+    - Server stores only the SHA-256 hash in table `devices` (`device_key_hash`). The raw key is never exposed via API responses.
+    - Clearing browser cookies or cache assigns a new random key and registers as a new pending device when quotas are full (fully verified and documented).
+  - **Database Schema & Versioned Migration**:
+    - Created table `devices` (`id uuid`, `firm_id text`, `user_id text`, `device_key_hash text unique`, `name text`, `user_agent text`, `status text [pending|approved|rejected|revoked]`, `first_seen_at timestamp`, `last_seen_at timestamp`, `approved_by_admin_id uuid nullable`).
+    - Added columns to `firms`: `device_policy text default 'auto-approve'`, `allow_owner_device_removal boolean default false`.
+    - Generated Drizzle migration `server/drizzle/0003_wild_mikhail_rasputin.sql` and updated `server/drizzle/meta/_journal.json`.
+    - Extended `IDatabase`, `MemoryDatabase`, and `PostgresDatabase` with device CRUD, counting, and firm metrics enriched with device usage and pending counts.
+  - **Authentication & Immediate Session Invalidation**:
+    - Created `server/src/services/deviceService.ts` (`processDeviceLogin`, `hashDeviceKey`, `generateDeviceKey`, `summarizeUserAgent`).
+    - Integrated with `server/src/services/authService.ts` (`loginUser`) and `server/src/routes/auth.ts`: sets `device_key` cookie (1 year expiry, httpOnly, sameSite lax). If quota reached, returns HTTP 403 `DEVICE_PENDING` while still attaching `device_key` cookie so subsequent approvals recognize the install.
+    - In `server/src/middleware/auth.ts` (`firmAuthMiddleware`): queries device record from database on every request. If device status is `revoked`, `rejected`, or `pending`, immediately returns HTTP 403 and invalidates token server-side.
+  - **Admin & Firm API Endpoints**:
+    - Admin endpoints (`server/src/routes/adminDevices.ts` behind `adminAuthMiddleware`):
+      - `GET /api/admin/firms/:id/devices`: lists all devices for a firm with user details.
+      - `POST /api/admin/devices/:id/approve`: transitions device to `approved`, sets `approvedByAdminId`, and logs to `admin_audit`.
+      - `POST /api/admin/devices/:id/reject`: transitions device to `rejected` and logs to `admin_audit`.
+      - `POST /api/admin/devices/:id/revoke`: transitions device to `revoked`, instantly terminating all active sessions, and logs to `admin_audit`.
+    - Firm endpoints (`server/src/routes/devices.ts` behind `firmAuthMiddleware`):
+      - `GET /api/v1/devices/my`: Firm Owner gets read-only list of authorized chamber devices (key hashes strictly omitted).
+      - `DELETE /api/v1/devices/:id`: Firm Owner may remove staff devices only if admin enables `allowOwnerDeviceRemoval`; enforced with strict firm isolation (returns 404 for devices belonging to other firms).
+  - **Admin App UI Enhancements (`/admin-app`)**:
+    - On `FirmListScreen`: live pending device counter badge on both desktop table and mobile card views (`X pending approval`).
+    - On `FirmDetailScreen`: dedicated `Devices` tab showing quota usage (`X / Y Approved`), honest architecture notice, device status badges, user details, and action buttons (`Approve`, `Reject`, `Revoke` with confirmation modal).
+  - **Firm App UI Enhancements (`src/`)**:
+    - Created `src/modules/foundation/DevicePendingScreen.tsx`: clear, responsive screen displayed upon HTTP 403 `DEVICE_PENDING`.
+    - Supports live language toggle with 100% en/bn parity (`src/locales/en.json` and `src/locales/bn.json` under `"devices"`).
+    - Features "Check Approval Status" retry button and "Back to Login".
+  - **Automated Verification**:
+    - Created `server/tests/devices.test.ts` (35 assertions):
+      - 3 devices allowed, 4th becomes pending with HTTP 403 `DEVICE_PENDING`.
+      - Admin approval allows the 4th device to sign in.
+      - Revoking a device blocks its very next request with HTTP 403 `DEVICE_REVOKED`.
+      - Firm isolation: Firm A cannot see or remove Firm B's devices; firm users cannot call admin device endpoints.
+      - Staff device removal by owner is blocked until admin policy enables it.
+      - Clearing cookies assigns a new random key and creates a new pending device when quota is full.
+    - All 331 server backend tests pass with 0 failures (`npm test --prefix server`).
+    - All 74 health diagnostics pass (`npm run test:health`).
+    - All 14 restFetch tests pass (`npm run test:restFetch`).
+    - Automated 360px responsive check passes on admin-app.
   - **Standalone Package & Deployment Architecture**:
     - Created isolated application in `/admin-app` with its own `package.json`, `tsconfig.json`, `vite.config.ts`, and `vercel.json` (SPA routing & strict CSP headers).
     - Target domain: `admin.<domain>`. Completely decoupled: firm app contains zero admin code, zero admin links, and zero `/api/admin` references.

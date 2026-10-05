@@ -10,6 +10,8 @@ import { clientsRouter } from './routes/clients.js';
 import { casesRouter } from './routes/cases.js';
 import { adminAuthRouter } from './routes/adminAuth.js';
 import { adminFirmsRouter } from './routes/adminFirms.js';
+import { adminDevicesRouter } from './routes/adminDevices.js';
+import { devicesRouter } from './routes/devices.js';
 import { validateStartupConfig } from './config.js';
 
 export function createApp() {
@@ -38,6 +40,7 @@ export function createApp() {
   // Mount platform super admin routes
   app.use('/api/admin/auth', adminAuthRouter);
   app.use('/api/admin/firms', adminFirmsRouter);
+  app.use('/api/admin', adminDevicesRouter);
   app.get('/api/admin/audit', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const { adminAuthMiddleware } = await import('./middleware/adminAuth.js');
     return adminAuthMiddleware(req as any, res, async () => {
@@ -55,6 +58,7 @@ export function createApp() {
   app.use('/api/v1/firms', firmsRouter);
   app.use('/api/v1/clients', clientsRouter);
   app.use('/api/v1/cases', casesRouter);
+  app.use('/api/v1/devices', devicesRouter);
   app.use('/api/v1/audit-log', auditRouter);
 
   // 404 handler
