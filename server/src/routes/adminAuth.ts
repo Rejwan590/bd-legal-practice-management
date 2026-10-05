@@ -107,3 +107,20 @@ adminAuthRouter.get('/me', adminAuthMiddleware, async (req: AuthenticatedAdminRe
     },
   });
 });
+
+// GET /api/admin/auth/audit - Audit view
+adminAuthRouter.get('/audit', adminAuthMiddleware, async (req: AuthenticatedAdminRequest, res: Response) => {
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+  const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
+
+  const { getDatabase } = await import('../db/client.js');
+  const db = getDatabase();
+  const logs = await db.listAdminAudit(limit, offset);
+
+  res.json({
+    logs,
+    limit,
+    offset,
+  });
+});
+

@@ -3,9 +3,28 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Super Admin Step B (Firm & License Management API under `/api/admin`) completed. All endpoints protected by `adminAuthMiddleware`, validated with Zod, and audited to `admin_audit` and `license_events`. Database table `license_events` added via versioned Drizzle migration `0002_glamorous_lord_hawal.sql`. Suspended and disabled firm accounts fail login with HTTP 403 and their existing sessions are immediately terminated on next request. License renewal extends from the later of now or current expiry and preserves all data. Firm creation provisions first Owner user with temporary password and forced password change. Firm Owners cannot access any admin endpoint (HTTP 401). All 296 server tests pass (80 Foundation + 23 Clients + 38 Cases + 22 PostgreSQL + 48 Admin Step A + 85 Admin Step B), 14 restFetch tests pass, 74 frontend health invariants pass, and builds/lint clean. Waiting for "next".
+Super Admin Step C (Standalone Admin Frontend in `/admin-app`) completed. Separate small frontend created with own `package.json`, Vite build, and `vercel.json` targeting `admin.<domain>`. Zero code imports between firm app and admin app; firm app contains no admin API paths or links. Implemented screens: Login, Firm List (status, plan, expiry countdown with days left, devices used/allowed, search & filters), Firm Detail (license history, payments, user count, actions: renew, set dates, suspend, disable, reactivate, soft-delete with confirmation name typing), Create Firm Modal (shows temporary password once with copy button), Payment Entry Modal, and Platform Audit Log Screen. Security: pure admin httpOnly cookie (`admin_access_token`), zero localStorage tokens, CSP meta tags. Tests: build clean with zero server code, `npm audit` 0 vulnerabilities, screenshot-free 360px responsive check passes 100% with zero horizontal overflow.
 
 ## Super Admin Implementation
+- **Super Admin Step C - Standalone Admin Frontend (/admin-app)**:
+  - **Standalone Package & Deployment Architecture**:
+    - Created isolated application in `/admin-app` with its own `package.json`, `tsconfig.json`, `vite.config.ts`, and `vercel.json` (SPA routing & strict CSP headers).
+    - Target domain: `admin.<domain>`. Completely decoupled: firm app contains zero admin code, zero admin links, and zero `/api/admin` references.
+    - Minimal dependencies: `react`, `react-dom`, `lucide-react`, `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`.
+  - **Screens & UX Patterns**:
+    - `LoginScreen`: Authenticates with platform super admin credentials; pure httpOnly `admin_access_token` cookie; zero token storage in `localStorage`.
+    - `FirmListScreen`: Displays chamber firms with live status badges, license expiry countdown with days left, device limits, search by firm name/contact/court, and status filters. Responsive design: cards on mobile (`< md`), clean table on desktop (`>= md`).
+    - `FirmDetailScreen`: Full chamber dossier with metrics (devices authorised, active users, expiry status, last chamber activity), actions toolbar, and tabbed history views (`license_events` and `payments`).
+    - `CreateFirmModal`: Creates firm and provisions initial Owner user with a temporary password (>= 14 characters) displayed once with one-click copy.
+    - `RenewModal`: Extends license from later of now or current expiry (server clock only), preserving all firm data.
+    - `LicenseModal`: Adjusts device limits and license dates with server clock validation.
+    - `PaymentModal`: Records subscription payments (bKash, Nagad, bank transfer) with transaction reference and notes.
+    - `ConfirmModal`: Confirmation modals for suspend, disable, reactivate, and soft-delete (requires typing exact firm name).
+    - `AuditScreen`: Dedicated view of platform super admin audit logs with old/new JSON diffs.
+  - **Security & Responsive Verification**:
+    - `npm run build --prefix admin-app`: PASS (production bundle generated with zero server code imports).
+    - `npm audit --prefix admin-app`: PASS (0 vulnerabilities).
+    - `npm run test:responsive --prefix admin-app`: PASS (screenshot-free automated Playwright check verifying that all screens and modals render at 360px viewport with `scrollWidth <= innerWidth` and zero horizontal overflow).
 - **Super Admin Step A - Software Owner Foundation & Auth Separation**:
   - **License API & UI Deletion**:
     - Removed `POST /api/v1/firms/license/renew` and `POST /api/v1/firms/license/set-state` from `server/src/routes/firms.ts`. Kept `PATCH /api/v1/firms/current` with strict allow-list (`name`, `officeAddress`, `courtAffiliations`, `barCouncilReg`).

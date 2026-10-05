@@ -38,6 +38,17 @@ export function createApp() {
   // Mount platform super admin routes
   app.use('/api/admin/auth', adminAuthRouter);
   app.use('/api/admin/firms', adminFirmsRouter);
+  app.get('/api/admin/audit', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const { adminAuthMiddleware } = await import('./middleware/adminAuth.js');
+    return adminAuthMiddleware(req as any, res, async () => {
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
+      const { getDatabase } = await import('./db/client.js');
+      const db = getDatabase();
+      const logs = await db.listAdminAudit(limit, offset);
+      res.json({ logs, limit, offset });
+    });
+  });
 
   // Domain resources under /api/v1
   app.use('/api/v1/users', usersRouter);
