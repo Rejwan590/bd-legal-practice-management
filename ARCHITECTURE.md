@@ -50,6 +50,7 @@ The original idea file described local-only, offline-first storage. After discus
 - backups_log(id, firm_id, kind, at, checksum)
 - platform_admins(id, email, password_hash, totp_secret, active, failed_attempts, locked_until, created_at, updated_at) [Super Admin - NO firm_id]
 - admin_audit(id, admin_id, action, target_firm_id, old, new, ip, at) [Super Admin actions audit trail]
+- license_events(id, firm_id, type, old, new, by_admin, at) [Full license and firm lifecycle history]
 
 ## Permission keys
 cases.view, cases.create, cases.edit, cases.delete, hearings.update, clients.view, clients.edit, tasks.view, tasks.assign, tasks.complete, files.view, files.manage, billing.view, settings.manage, users.manage, restricted.view, data.export.

@@ -44,6 +44,7 @@ async function runPostgresTests() {
     assert(schema.backupsLog !== undefined, 'schema.ts defines backupsLog table');
     assert(schema.platformAdmins !== undefined, 'schema.ts defines platformAdmins table');
     assert(schema.adminAudit !== undefined, 'schema.ts defines adminAudit table');
+    assert(schema.licenseEvents !== undefined, 'schema.ts defines licenseEvents table');
 
     // 1b. drizzle.config.ts exists and points to src/db/schema.ts
     const drizzleConfigPath = path.join(serverDir, 'drizzle.config.ts');

@@ -9,6 +9,7 @@ import { auditRouter } from './routes/audit.js';
 import { clientsRouter } from './routes/clients.js';
 import { casesRouter } from './routes/cases.js';
 import { adminAuthRouter } from './routes/adminAuth.js';
+import { adminFirmsRouter } from './routes/adminFirms.js';
 import { validateStartupConfig } from './config.js';
 
 export function createApp() {
@@ -34,8 +35,9 @@ export function createApp() {
   app.use('/auth', authRouter);
   app.use('/api/v1/auth', authRouter);
 
-  // Mount platform super admin auth routes
+  // Mount platform super admin routes
   app.use('/api/admin/auth', adminAuthRouter);
+  app.use('/api/admin/firms', adminFirmsRouter);
 
   // Domain resources under /api/v1
   app.use('/api/v1/users', usersRouter);

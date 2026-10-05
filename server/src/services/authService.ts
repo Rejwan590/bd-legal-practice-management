@@ -187,7 +187,34 @@ export async function loginUser(email: string, password: string, ipAddress?: str
     ipThrottles.delete(ipAddress);
   }
 
-  const firm = await db.getFirm(user.firmId);
+  const firm = await db.getFirm(user.firmId, true);
+  if (!firm || firm.deletedAt) {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      code: 'FIRM_NOT_FOUND',
+      message: 'Chamber firm not found or has been deactivated.',
+    };
+  }
+
+  if (firm.status === 'suspended') {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      code: 'FIRM_SUSPENDED',
+      message: 'Your chamber firm account has been suspended. Please contact support.',
+    };
+  }
+
+  if (firm.status === 'disabled') {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      code: 'FIRM_DISABLED',
+      message: 'Your chamber firm account has been disabled. Please contact support.',
+    };
+  }
+
   const token = generateAccessToken(user);
 
   await recordAudit({
@@ -212,6 +239,7 @@ export async function loginUser(email: string, password: string, ipAddress?: str
       permissions: user.permissions,
       language: user.language,
       active: user.active,
+      mustChangePassword: user.mustChangePassword,
     },
     firm,
     token,

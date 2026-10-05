@@ -87,8 +87,51 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
       permissions: req.user.permissions,
       language: req.user.language,
       active: req.user.active,
+      mustChangePassword: req.user.mustChangePassword,
     },
     firm: req.firm,
     subscription,
+  });
+});
+
+// POST /change-password
+authRouter.post('/change-password', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Current password and new password are required.',
+    });
+  }
+
+  const { validatePasswordStrength } = await import('../services/authService.js');
+  const strength = validatePasswordStrength(newPassword);
+  if (!strength.isValid) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: strength.message,
+    });
+  }
+
+  const bcrypt = (await import('bcryptjs')).default;
+  const isMatch = await bcrypt.compare(currentPassword, req.user!.passwordHash);
+  if (!isMatch) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Current password is incorrect.',
+    });
+  }
+
+  const { getDatabase } = await import('../db/client.js');
+  const db = getDatabase();
+  const salt = await bcrypt.genSalt(10);
+  const newHash = await bcrypt.hash(newPassword, salt);
+  await db.updateUser(req.user!.id, {
+    passwordHash: newHash,
+    mustChangePassword: false,
+  });
+
+  return res.status(200).json({
+    message: 'Password changed successfully.',
   });
 });

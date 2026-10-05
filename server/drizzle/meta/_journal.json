@@ -15,6 +15,13 @@
       "when": 1791198368847,
       "tag": "0001_new_umar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791200156400,
+      "tag": "0002_glamorous_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

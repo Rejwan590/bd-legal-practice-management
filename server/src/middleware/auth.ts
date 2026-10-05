@@ -83,11 +83,35 @@ export async function authMiddleware(
       });
     }
 
-    const firm = await db.getFirm(user.firmId);
+    const firm = await db.getFirm(user.firmId, true);
     if (!firm) {
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Chamber firm not found.',
+      });
+    }
+
+    if (firm.deletedAt) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        code: 'FIRM_DELETED',
+        message: 'Your chamber firm account has been deleted. Please contact support.',
+      });
+    }
+
+    if (firm.status === 'suspended') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        code: 'FIRM_SUSPENDED',
+        message: 'Your chamber firm account has been suspended. Please contact support.',
+      });
+    }
+
+    if (firm.status === 'disabled') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        code: 'FIRM_DISABLED',
+        message: 'Your chamber firm account has been disabled. Please contact support.',
       });
     }
 

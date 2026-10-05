@@ -33,9 +33,12 @@ export const firms = pgTable('firms', {
   barCouncilReg: text('bar_council_reg'),
   officeAddress: text('office_address'),
   courtAffiliations: text('court_affiliations'),
+  contact: text('contact'),
+  maxDevices: integer('max_devices').default(5).notNull(),
   planId: text('plan_id').references(() => plans.id),
+  licenseStartsAt: timestamp('license_starts_at', { withTimezone: true }),
   licenseExpiresAt: timestamp('license_expires_at', { withTimezone: true }).notNull(),
-  status: text('status').$type<'active' | 'expired' | 'suspended'>().default('active').notNull(),
+  status: text('status').$type<'active' | 'expired' | 'suspended' | 'disabled'>().default('active').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -54,6 +57,7 @@ export const users = pgTable('users', {
   permissions: jsonb('permissions').$type<string[]>().notNull(),
   language: text('language').$type<'en' | 'bn'>().default('en').notNull(),
   active: boolean('active').default(true).notNull(),
+  mustChangePassword: boolean('must_change_password').default(false).notNull(),
   failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -150,6 +154,7 @@ export const payments = pgTable('payments', {
   amount: integer('amount').notNull(),
   method: text('method').notNull(),
   txnId: text('txn_id').notNull(),
+  note: text('note'),
   paidAt: timestamp('paid_at', { withTimezone: true }).defaultNow().notNull(),
   verifiedBy: text('verified_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -207,16 +212,35 @@ export const adminAudit = pgTable('admin_audit', {
   index('idx_admin_audit_at').on(table.at),
 ]);
 
+// License Events Table (Step B: Full history of license mutations and firm status changes)
+export const licenseEvents = pgTable('license_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  type: text('type').notNull(),
+  old: jsonb('old').$type<Record<string, unknown>>(),
+  new: jsonb('new').$type<Record<string, unknown>>(),
+  byAdmin: uuid('by_admin').references(() => platformAdmins.id).notNull(),
+  at: timestamp('at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_license_events_firm_id').on(table.firmId),
+  index('idx_license_events_at').on(table.at),
+]);
+
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
+export type NewFirm = typeof firms.$inferInsert;
 export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
 export type Case = typeof cases.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type NewPayment = typeof payments.$inferInsert;
 export type BackupLogEntry = typeof backupsLog.$inferSelect;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;
 export type NewPlatformAdmin = typeof platformAdmins.$inferInsert;
 export type AdminAuditEntry = typeof adminAudit.$inferSelect;
 export type NewAdminAuditEntry = typeof adminAudit.$inferInsert;
+export type LicenseEvent = typeof licenseEvents.$inferSelect;
+export type NewLicenseEvent = typeof licenseEvents.$inferInsert;
 

@@ -3,7 +3,7 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Super Admin Step A (Software Owner Foundation) completed. Firm-facing license mutation routes (`POST /firms/license/renew` and `/license/set-state`) and UI controls permanently removed. Database tables `platform_admins` (no firm_id) and `admin_audit` added via versioned Drizzle migration `0001_new_umar.sql` without modifying `users` table. Dedicated admin auth implemented with `ADMIN_JWT_SECRET`, `admin_access_token` cookie (httpOnly, strict, 15m expiry), login throttling/lockout, `adminAuthMiddleware` and `firmAuthMiddleware` cross-rejection. Interactive CLI script `server/scripts/createPlatformAdmin.ts` built. All 210 server tests pass (80 Foundation + 23 Clients + 38 Cases + 21 PostgreSQL + 48 Super Admin), 14 restFetch tests pass, 74 frontend health invariants pass, and zero lint/type errors. Waiting for "next".
+Super Admin Step B (Firm & License Management API under `/api/admin`) completed. All endpoints protected by `adminAuthMiddleware`, validated with Zod, and audited to `admin_audit` and `license_events`. Database table `license_events` added via versioned Drizzle migration `0002_glamorous_lord_hawal.sql`. Suspended and disabled firm accounts fail login with HTTP 403 and their existing sessions are immediately terminated on next request. License renewal extends from the later of now or current expiry and preserves all data. Firm creation provisions first Owner user with temporary password and forced password change. Firm Owners cannot access any admin endpoint (HTTP 401). All 296 server tests pass (80 Foundation + 23 Clients + 38 Cases + 22 PostgreSQL + 48 Admin Step A + 85 Admin Step B), 14 restFetch tests pass, 74 frontend health invariants pass, and builds/lint clean. Waiting for "next".
 
 ## Super Admin Implementation
 - **Super Admin Step A - Software Owner Foundation & Auth Separation**:
@@ -29,6 +29,39 @@ Super Admin Step A (Software Owner Foundation) completed. Firm-facing license mu
     - Added `server/tests/adminAuth.test.ts` (48 assertions) testing secret validation, CLI rules, lockout, session sliding, token cross-rejection, deleted route 404s, and audit logging.
     - Added platform admin and audit schema checks to `server/tests/postgres.test.ts` (21 assertions).
     - Total server backend test assertions: 210 PASSED (0 failed). Zero lint errors.
+
+- **Super Admin Step B - Firm & License Management API (/api/admin)**:
+  - **Database Schema & Versioned Migration**:
+    - Added table `license_events` (`id uuid`, `firm_id text`, `type text`, `old jsonb`, `new jsonb`, `by_admin uuid`, `at timestamp with timezone`) to `server/src/db/schema.ts`.
+    - Added `contact`, `max_devices`, `license_starts_at` to `firms` table; added `must_change_password` to `users` table; added `note` to `payments` table.
+    - Generated versioned Drizzle migration `server/drizzle/0002_glamorous_lord_hawal.sql` and updated migration journal.
+    - Updated `IDatabase`, `MemoryDatabase`, and `PostgresDatabase` in `server/src/db/client.ts` with firm listing, metrics, license events, and payments methods.
+  - **Admin Firm Endpoints (`server/src/routes/adminFirms.ts`)**:
+    - All routes mounted at `/api/admin/firms` behind `adminAuthMiddleware`.
+    - All inputs validated strictly via `zod`.
+    - `POST /firms`: Creates firm + first Owner user with secure temporary password (>= 14 chars) returned once in payload; sets `mustChangePassword: true`; writes to `adminAudit` and `license_events`.
+    - `POST /auth/change-password`: Allows users with `mustChangePassword` to change password and clears the flag.
+    - `GET /firms`: Paginated (`page`, `limit`), search across name, firmId, contact, address, bar council reg, filter by status (`active`, `expired`, `suspended`, `disabled`, `all`).
+    - `GET /firms/:id`: Returns firm, plan, license (including startsAt, expiresAt, status, isExpired), user count, device count (from audit session IPs or users), last activity.
+    - `PATCH /firms/:id`: Updates name, contact, addresses; writes to `adminAudit`.
+    - `POST /firms/:id/suspend`: Suspends firm; records `FIRM_SUSPEND` in `adminAudit` and `SUSPEND` in `license_events`.
+    - `POST /firms/:id/disable`: Disables firm; records `FIRM_DISABLE` in `adminAudit` and `DISABLE` in `license_events`.
+    - `POST /firms/:id/reactivate`: Reactivates firm; records `FIRM_REACTIVATE` in `adminAudit` and `REACTIVATE` in `license_events`.
+    - `DELETE /firms/:id`: Soft delete only (`deletedAt` timestamp); requires typing the exact firm name in `confirmFirmName`; firm and related client/case records preserved in DB; records `FIRM_SOFT_DELETE` in `adminAudit` and `license_events`.
+    - `PUT /firms/:id/license`: Updates plan, maxDevices, start date, expiry date; re-activates expired firm if new expiry date is in future; records `LICENSE_UPDATE` in `adminAudit` and `license_events`.
+    - `POST /firms/:id/renew`: Extends license from later of `now` (server clock only) or `currentExpiry`; preserves all data; re-activates if status was expired; records `LICENSE_RENEW` in `adminAudit` and `license_events`.
+    - `POST /firms/:id/payments`: Records payment (`amount`, `method` [bKash/Nagad/bank], `txnId`, `note`); writes to `adminAudit`.
+    - `GET /firms/:id/license-events` & `GET /firms/:id/payments`: History query endpoints.
+  - **Session & Security Invariants**:
+    - Updated `server/src/middleware/auth.ts`: `firmAuthMiddleware` immediately rejects any request from users belonging to a suspended or disabled firm with HTTP 403 (`FIRM_SUSPENDED` / `FIRM_DISABLED`).
+    - Updated `server/src/services/authService.ts`: `loginUser` rejects login for suspended or disabled firms with HTTP 403.
+    - Password hashes are never exposed in any responses.
+    - Server clock used exclusively for all temporal calculations.
+    - All admin actions write to `adminAudit` and `license_events`.
+  - **Automated Verification**:
+    - Created `server/tests/adminFirms.test.ts` (85 assertions): firm owner rejection on all admin routes (401), Zod validation, temporary password and forced password change, pagination, search, metrics, updates, suspend/disable lockout and session termination, reactivation, renewal data preservation, payments, soft deletion typing confirmation, and audit/license_events trail verification.
+    - Updated `server/tests/postgres.test.ts` (22 assertions) with `licenseEvents` schema check.
+    - Total server backend test assertions: 296 PASSED (0 failed). Zero lint errors.
 
 
 ## Done
