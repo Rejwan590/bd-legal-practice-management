@@ -83,6 +83,16 @@ async function runAdminAuthTests() {
     }
     assert(equalSecretThrown, 'validateStartupConfig throws error when ADMIN_JWT_SECRET equals JWT_SECRET');
 
+    // 1d. Forbidden ADMIN_JWT_SECRET from .env.example
+    process.env.ADMIN_JWT_SECRET = 'your_super_secret_admin_jwt_key_at_least_32_chars';
+    let forbiddenSecretThrown = false;
+    try {
+      validateStartupConfig();
+    } catch (e: any) {
+      forbiddenSecretThrown = e.message.includes('ADMIN_JWT_SECRET equals a known default or example secret');
+    }
+    assert(forbiddenSecretThrown, 'validateStartupConfig throws error when ADMIN_JWT_SECRET equals .env.example value');
+
     // Restore secrets
     process.env.ADMIN_JWT_SECRET = originalAdminSecret;
     process.env.JWT_SECRET = originalFirmSecret;

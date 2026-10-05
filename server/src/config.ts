@@ -42,6 +42,9 @@ export function getAdminJwtSecret(): string {
   if (secret.length < 32) {
     throw new Error(`FATAL: ADMIN_JWT_SECRET is too short (${secret.length} characters). Must be at least 32 characters long.`);
   }
+  if (FORBIDDEN_ADMIN_JWT_SECRETS.includes(secret.trim())) {
+    throw new Error('FATAL: ADMIN_JWT_SECRET equals a known default or example secret from .env.example.');
+  }
   const firmSecret = process.env.JWT_SECRET;
   if (firmSecret && secret.trim() === firmSecret.trim()) {
     throw new Error('FATAL: ADMIN_JWT_SECRET cannot be equal to JWT_SECRET.');
