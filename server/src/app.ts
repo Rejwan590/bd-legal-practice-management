@@ -19,6 +19,10 @@ export function createApp() {
 
   const app = express();
 
+  // Trust proxy configuration (do not hardcode: 0 default, 2 behind Cloudflare + Caddy)
+  const trustProxyHops = parseInt(process.env.TRUST_PROXY_HOPS || '0', 10);
+  app.set('trust proxy', isNaN(trustProxyHops) ? 0 : trustProxyHops);
+
   // Basic security and parsing middlewares
   app.use(
     cors({

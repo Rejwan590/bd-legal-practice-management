@@ -11,6 +11,7 @@ healthRouter.get('/health', async (req: Request, res: Response) => {
     status: 'ok',
     serverTime: new Date().toISOString(),
     database: dbHealthy ? 'connected' : 'disconnected',
+    clientIp: req.ip,
     version: '1.0.0',
     phase: 'Step 3.0 Foundation',
   });
