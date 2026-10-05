@@ -1,0 +1,10 @@
+# Local development compose override - binds services to localhost (127.0.0.1)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    ports:
+      - "127.0.0.1:4000:4000"

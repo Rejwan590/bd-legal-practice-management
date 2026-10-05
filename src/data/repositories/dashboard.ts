@@ -1,0 +1,169 @@
+import { can } from '../../permissions';
+import { IDashboardRepository } from '../interfaces';
+import { localStore } from '../mockStore';
+import {
+  DashboardMetrics,
+  DashboardUrgentItems,
+  HearingRecord,
+  SecurityContext,
+} from '../types';
+
+export class MockDashboardRepository implements IDashboardRepository {
+  async getMetrics(context: SecurityContext): Promise<DashboardMetrics> {
+    const { currentUser } = context;
+    const canSeeRestricted = can('restricted.view', currentUser);
+    const store = localStore.getData();
+    const firmId = currentUser.firmId;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const nowMs = now.getTime();
+
+    // 1. Cases: filter firmId, not deleted, and if restricted, requires restricted.view
+    const cases = (store.cases || []).filter((c) => {
+      if (c.firmId !== firmId || c.deletedAt !== null) return false;
+      if (c.restricted && !canSeeRestricted) return false;
+      return true;
+    });
+    const activeCasesCount = cases.filter((c) => c.status === 'ongoing').length;
+    const allowedCaseIds = new Set(cases.map((c) => c.id));
+
+    // 2. Clients: filter firmId, not deleted
+    const clients = (store.clients || []).filter((c) => c.firmId === firmId && c.deletedAt === null);
+    const totalClientsCount = clients.length;
+
+    // 3. Hearings: today's hearings
+    const hearings = (store.hearings || []).filter((h) => {
+      if (h.firmId !== firmId || h.deletedAt !== null) return false;
+      if (h.caseId && !allowedCaseIds.has(h.caseId)) return false;
+      return true;
+    });
+    const todayHearingsCount = hearings.filter((h) => h.scheduledAt.slice(0, 10) === todayStr).length;
+
+    // 4. Tasks: pending & overdue
+    let tasks = (store.tasks || []).filter((t) => {
+      if (t.firmId !== firmId || t.deletedAt !== null) return false;
+      if (t.caseId && !allowedCaseIds.has(t.caseId)) return false;
+      return true;
+    });
+    if (currentUser.role === 'Staff') {
+      tasks = tasks.filter((t) => t.assignedTo === currentUser.id);
+    }
+    const pendingTasks = tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+    const pendingTasksCount = pendingTasks.length;
+    const overdueTasksCount = pendingTasks.filter((t) => new Date(t.dueAt).getTime() < nowMs).length;
+
+    // 5. Files: checked out & overdue
+    const files = (store.physicalFiles || []).filter((f) => {
+      if (f.firmId !== firmId || f.deletedAt !== null) return false;
+      if (f.caseId && !allowedCaseIds.has(f.caseId)) return false;
+      return true;
+    });
+    const checkedOutFiles = files.filter((f) => f.status === 'checked_out' || f.status === 'in_court');
+    const checkedOutFilesCount = checkedOutFiles.length;
+    const overdueFilesCount = checkedOutFiles.filter(
+      (f) => f.dueBackAt && new Date(f.dueBackAt).getTime() < nowMs
+    ).length;
+
+    // 6. Reminders: active pending reminders
+    let reminders = (store.reminders || []).filter(
+      (r) => r.firmId === firmId && r.deletedAt === null && r.status !== 'dismissed'
+    );
+    if (currentUser.role === 'Staff') {
+      reminders = reminders.filter((r) => r.userId === currentUser.id);
+    }
+    const pendingRemindersCount = reminders.length;
+
+    return {
+      activeCasesCount,
+      totalClientsCount,
+      todayHearingsCount,
+      pendingTasksCount,
+      overdueTasksCount,
+      checkedOutFilesCount,
+      overdueFilesCount,
+      pendingRemindersCount,
+    };
+  }
+
+  async getUrgentItems(context: SecurityContext): Promise<DashboardUrgentItems> {
+    const { currentUser } = context;
+    const canSeeRestricted = can('restricted.view', currentUser);
+    const store = localStore.getData();
+    const firmId = currentUser.firmId;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const nowMs = now.getTime();
+
+    const cases = (store.cases || []).filter((c) => {
+      if (c.firmId !== firmId || c.deletedAt !== null) return false;
+      if (c.restricted && !canSeeRestricted) return false;
+      return true;
+    });
+    const allowedCaseIds = new Set(cases.map((c) => c.id));
+
+    // Today's hearings
+    const todayHearings = (store.hearings || []).filter((h) => {
+      if (h.firmId !== firmId || h.deletedAt !== null) return false;
+      if (h.caseId && !allowedCaseIds.has(h.caseId)) return false;
+      return h.scheduledAt.slice(0, 10) === todayStr;
+    });
+
+    // Overdue tasks
+    let tasks = (store.tasks || []).filter((t) => {
+      if (t.firmId !== firmId || t.deletedAt !== null) return false;
+      if (t.caseId && !allowedCaseIds.has(t.caseId)) return false;
+      return true;
+    });
+    if (currentUser.role === 'Staff') {
+      tasks = tasks.filter((t) => t.assignedTo === currentUser.id);
+    }
+    const overdueTasks = tasks.filter(
+      (t) => t.status !== 'completed' && t.status !== 'cancelled' && new Date(t.dueAt).getTime() < nowMs
+    );
+
+    // Overdue file checkouts
+    const files = (store.physicalFiles || []).filter((f) => {
+      if (f.firmId !== firmId || f.deletedAt !== null) return false;
+      if (f.caseId && !allowedCaseIds.has(f.caseId)) return false;
+      return true;
+    });
+    const overdueFiles = files.filter(
+      (f) =>
+        (f.status === 'checked_out' || f.status === 'in_court') &&
+        f.dueBackAt &&
+        new Date(f.dueBackAt).getTime() < nowMs
+    );
+
+    return {
+      todayHearings,
+      overdueTasks,
+      overdueFiles,
+    };
+  }
+
+  async getUpcomingHearings(context: SecurityContext, days: number = 7): Promise<HearingRecord[]> {
+    const { currentUser } = context;
+    const canSeeRestricted = can('restricted.view', currentUser);
+    const store = localStore.getData();
+    const firmId = currentUser.firmId;
+    const now = new Date();
+    const startMs = now.getTime();
+    const endMs = startMs + days * 24 * 60 * 60 * 1000;
+
+    const cases = (store.cases || []).filter((c) => {
+      if (c.firmId !== firmId || c.deletedAt !== null) return false;
+      if (c.restricted && !canSeeRestricted) return false;
+      return true;
+    });
+    const allowedCaseIds = new Set(cases.map((c) => c.id));
+
+    const hearings = (store.hearings || []).filter((h) => {
+      if (h.firmId !== firmId || h.deletedAt !== null) return false;
+      if (h.caseId && !allowedCaseIds.has(h.caseId)) return false;
+      const t = new Date(h.scheduledAt).getTime();
+      return t >= startMs && t <= endMs;
+    });
+
+    return hearings.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  }
+}
