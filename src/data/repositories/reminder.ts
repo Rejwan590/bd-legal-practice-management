@@ -1,3 +1,4 @@
+import { can } from '../../permissions';
 import { IAuditLogRepository, IReminderRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import {
@@ -36,6 +37,32 @@ export class MockReminderRepository implements IReminderRepository {
       reminders = reminders.filter((r) => r.userId === currentUser.id);
     } else if (filter?.userId) {
       reminders = reminders.filter((r) => r.userId === filter.userId);
+    }
+
+    // Confidentiality isolation: hide reminders linked to restricted cases if caller lacks restricted.view
+    const canSeeRestricted = can('restricted.view', currentUser);
+    if (!canSeeRestricted) {
+      const restrictedCaseIds = new Set(
+        (store.cases || []).filter((c) => c.restricted).map((c) => c.id)
+      );
+      const hearingMap = new Map((store.hearings || []).map((h) => [h.id, h]));
+      const taskMap = new Map((store.tasks || []).map((t) => [t.id, t]));
+      const fileMap = new Map((store.physicalFiles || []).map((f) => [f.id, f]));
+      reminders = reminders.filter((r) => {
+        if (r.sourceType === 'hearing') {
+          const h = hearingMap.get(r.sourceId);
+          if (h && h.caseId && restrictedCaseIds.has(h.caseId)) return false;
+        }
+        if (r.sourceType === 'task') {
+          const t = taskMap.get(r.sourceId);
+          if (t && t.caseId && restrictedCaseIds.has(t.caseId)) return false;
+        }
+        if (r.sourceType === 'file_return') {
+          const f = fileMap.get(r.sourceId);
+          if (f && f.caseId && restrictedCaseIds.has(f.caseId)) return false;
+        }
+        return true;
+      });
     }
 
     if (filter?.status) {

@@ -60,7 +60,7 @@ export interface IDatabase {
   ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null }>;
   resetFailedLogin(id: string): Promise<void>;
   insertAudit(entry: schema.AuditLogEntry): Promise<schema.AuditLogEntry>;
-  listAudit(firmId: string, limit?: number, offset?: number): Promise<schema.AuditLogEntry[]>;
+  listAudit(firmId: string, limit?: number, offset?: number, includeRestricted?: boolean): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
   listClients(firmId: string, search?: string): Promise<schema.Client[]>;
   getClientById(id: string): Promise<schema.Client | null>;
@@ -87,7 +87,8 @@ export interface IDatabase {
     firmId: string,
     caseNumber: string,
     court: string,
-    excludeId?: string
+    excludeId?: string,
+    includeRestricted?: boolean
   ): Promise<boolean>;
   getCaseLinkedCounts(caseId: string, firmId: string): Promise<CaseLinkedCounts>;
   // Platform Admins & Admin Audit (Super Admin for software owner)
@@ -335,12 +336,40 @@ class MemoryDatabase implements IDatabase {
     return { ...entry };
   }
 
-  public async listAudit(firmId: string, limit = 100, offset = 0): Promise<schema.AuditLogEntry[]> {
+  public async listAudit(
+    firmId: string,
+    limit = 100,
+    offset = 0,
+    includeRestricted = true
+  ): Promise<schema.AuditLogEntry[]> {
     await this.init();
-    return this.auditLogs
-      .filter((a) => a.firmId === firmId)
-      .slice(offset, offset + limit)
-      .map((a) => ({ ...a }));
+    let entries = this.auditLogs.filter((a) => a.firmId === firmId);
+    if (!includeRestricted) {
+      const restrictedCaseIds = new Set(
+        this.cases
+          .filter((c) => c.firmId === firmId && c.restricted)
+          .map((c) => c.id)
+      );
+      entries = entries.filter((a) => {
+        if (a.entity === 'Case' && restrictedCaseIds.has(a.entityId)) return false;
+        if (
+          a.oldValue &&
+          ((a.oldValue as any).restricted === true ||
+            ((a.oldValue as any).caseId && restrictedCaseIds.has(String((a.oldValue as any).caseId))))
+        ) {
+          return false;
+        }
+        if (
+          a.newValue &&
+          ((a.newValue as any).restricted === true ||
+            ((a.newValue as any).caseId && restrictedCaseIds.has(String((a.newValue as any).caseId))))
+        ) {
+          return false;
+        }
+        return true;
+      });
+    }
+    return entries.slice(offset, offset + limit).map((a) => ({ ...a }));
   }
 
   // Clients Methods
@@ -497,7 +526,8 @@ class MemoryDatabase implements IDatabase {
     firmId: string,
     caseNumber: string,
     court: string,
-    excludeId?: string
+    excludeId?: string,
+    includeRestricted = true
   ): Promise<boolean> {
     await this.init();
     const cleanNum = caseNumber.trim().toLowerCase();
@@ -508,6 +538,7 @@ class MemoryDatabase implements IDatabase {
         c.firmId === firmId &&
         !c.deletedAt &&
         c.id !== excludeId &&
+        (includeRestricted || !c.restricted) &&
         c.caseNumber.trim().toLowerCase() === cleanNum &&
         c.court.trim().toLowerCase() === cleanCourt
     );
@@ -979,11 +1010,22 @@ class PostgresDatabase implements IDatabase {
     return rows[0];
   }
 
-  public async listAudit(firmId: string, limit = 100, offset = 0): Promise<schema.AuditLogEntry[]> {
+  public async listAudit(
+    firmId: string,
+    limit = 100,
+    offset = 0,
+    includeRestricted = true
+  ): Promise<schema.AuditLogEntry[]> {
+    const conditions = [eq(schema.auditLog.firmId, firmId)];
+    if (!includeRestricted) {
+      conditions.push(
+        sql`(${schema.auditLog.entity} != 'Case' OR ${schema.auditLog.entityId} NOT IN (SELECT id FROM cases WHERE firm_id = ${firmId} AND restricted = true))`
+      );
+    }
     return this.db
       .select()
       .from(schema.auditLog)
-      .where(eq(schema.auditLog.firmId, firmId))
+      .where(and(...conditions))
       .orderBy(desc(schema.auditLog.timestamp))
       .limit(limit)
       .offset(offset);
@@ -1166,7 +1208,8 @@ class PostgresDatabase implements IDatabase {
     firmId: string,
     caseNumber: string,
     court: string,
-    excludeId?: string
+    excludeId?: string,
+    includeRestricted = true
   ): Promise<boolean> {
     const conditions = [
       eq(schema.cases.firmId, firmId),
@@ -1176,6 +1219,9 @@ class PostgresDatabase implements IDatabase {
     ];
     if (excludeId) {
       conditions.push(ne(schema.cases.id, excludeId));
+    }
+    if (!includeRestricted) {
+      conditions.push(eq(schema.cases.restricted, false));
     }
     const rows = await this.db
       .select({ id: schema.cases.id })

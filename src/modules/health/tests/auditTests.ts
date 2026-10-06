@@ -44,5 +44,55 @@ export async function runAuditTests(ctx: DiagnosticContext): Promise<TestResult[
     });
   }
 
+  // Test 8: Restricted Case Audit Confidentiality Invariant
+  try {
+    // Record an audit entry for confidential case-003 if repository supports recording
+    if ('record' in repos.auditLog && typeof (repos.auditLog as any).record === 'function') {
+      await (repos.auditLog as any).record(ownerCtx, {
+        entity: 'Case',
+        entityId: 'case-003',
+        action: 'UPDATE',
+        oldValue: { restricted: true },
+        newValue: { restricted: true, status: 'ongoing' },
+      });
+    }
+
+    const ownerAuditLogs = await repos.auditLog.list(ownerCtx, { entity: 'Case' });
+    const ownerSeesRestricted = ownerAuditLogs.some((l) => l.entityId === 'case-003');
+
+    // Create staff context with settings.manage but WITHOUT restricted.view
+    const staffWithSettingsCtx: typeof staffCtx = {
+      ...staffCtx,
+      currentUser: {
+        ...staffCtx.currentUser,
+        permissions: ['settings.manage', 'cases.view'],
+      },
+    };
+
+    const staffAuditLogs = await repos.auditLog.list(staffWithSettingsCtx, { entity: 'Case' });
+    const staffSeesRestricted = staffAuditLogs.some((l) => l.entityId === 'case-003');
+
+    const pass = ownerSeesRestricted && !staffSeesRestricted;
+    suite.push({
+      id: 'audit-restricted-confidentiality',
+      name: 'Restricted Case Audit Confidentiality Invariant',
+      category: 'Audit Trail',
+      passed: pass,
+      message: pass
+        ? 'Audit entries concerning confidential cases are strictly concealed from staff without restricted.view while visible to owners.'
+        : `Audit confidentiality breached: ownerSeesRestricted=${ownerSeesRestricted}, staffSeesRestricted=${staffSeesRestricted}`,
+      details: 'Verified against case-003 audit trail filtering.',
+    });
+  } catch (err: unknown) {
+    suite.push({
+      id: 'audit-restricted-confidentiality',
+      name: 'Restricted Case Audit Confidentiality Invariant',
+      category: 'Audit Trail',
+      passed: false,
+      message: 'Restricted case audit confidentiality check failed.',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   return suite;
 }

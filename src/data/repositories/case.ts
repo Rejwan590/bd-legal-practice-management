@@ -131,6 +131,7 @@ export class MockCaseRepository implements ICaseRepository {
     excludeId?: string
   ): Promise<boolean> {
     const { currentUser } = context;
+    const canSeeRestricted = can('restricted.view', currentUser);
     const store = localStore.getData();
     const cleanNum = caseNumber.trim().toLowerCase();
     const cleanCourt = court.trim().toLowerCase();
@@ -140,6 +141,7 @@ export class MockCaseRepository implements ICaseRepository {
         c.firmId === currentUser.firmId &&
         c.deletedAt === null &&
         c.id !== excludeId &&
+        (canSeeRestricted || !c.restricted) &&
         c.caseNumber.trim().toLowerCase() === cleanNum &&
         c.court.trim().toLowerCase() === cleanCourt
     );

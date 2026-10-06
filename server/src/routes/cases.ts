@@ -36,7 +36,8 @@ casesRouter.get(
       req.user!.firmId,
       caseNumber,
       court,
-      excludeId
+      excludeId,
+      canAccessRestricted(req)
     );
 
     res.json({ isDuplicate });
@@ -162,7 +163,9 @@ casesRouter.post(
     const isDuplicate = await db.checkDuplicateCase(
       req.user!.firmId,
       caseNumber.trim(),
-      court.trim()
+      court.trim(),
+      undefined,
+      canAccessRestricted(req)
     );
 
     const id = crypto.randomUUID();
@@ -259,7 +262,8 @@ casesRouter.patch(
         req.user!.firmId,
         targetCaseNumber,
         targetCourt,
-        existing.id
+        existing.id,
+        canAccessRestricted(req)
       );
     }
 

@@ -127,16 +127,28 @@ export async function runCasesTests(ctx: DiagnosticContext): Promise<TestResult[
       'Supreme Court of Bangladesh (High Court Division)'
     ));
 
-    const pass = isDup && isUnique;
+    // Confidential case duplicate check: staff without restricted.view must get false
+    const staffConfidentialDup = await repos.case.checkDuplicate(
+      staffCtx,
+      'Company Matter No. 88/2022',
+      'High Court Division (Company Bench)'
+    );
+    const ownerConfidentialDup = await repos.case.checkDuplicate(
+      ownerCtx,
+      'Company Matter No. 88/2022',
+      'High Court Division (Company Bench)'
+    );
+
+    const pass = isDup && isUnique && !staffConfidentialDup && ownerConfidentialDup;
     suite.push({
       id: 'case-duplicate-detection',
       name: 'Duplicate Case Detection Invariant',
       category: 'Cases Module',
       passed: pass,
       message: pass
-        ? 'Repository accurately detects duplicate case numbers within the same court jurisdiction and allows unique registrations.'
-        : `Duplicate detection check failed: isDup=${isDup}, isUnique=${isUnique}`,
-      details: 'Checked: Title Suit No. 45/2023 in 1st Joint District Judge Court, Dhaka.',
+        ? 'Repository accurately detects duplicate case numbers within the same court jurisdiction, allows unique registrations, and conceals confidential cases from unauthorized staff.'
+        : `Duplicate detection check failed: isDup=${isDup}, isUnique=${isUnique}, staffConfidentialDup=${staffConfidentialDup}, ownerConfidentialDup=${ownerConfidentialDup}`,
+      details: 'Checked: Title Suit No. 45/2023 & Company Matter No. 88/2022.',
     });
   } catch (err: unknown) {
     suite.push({

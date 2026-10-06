@@ -3,9 +3,19 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Reviewer Hardening - Batch 1 (Config and Safety: R-01, R-05, R-06, R-08, R-11, R-14) completed. All 6 config and safety issues remediated, tested with pre/post verification, and validated across root, server, and admin-app suites. Full write-route audit confirms 100% of `/api/v1` mutating endpoints are protected by `enforceSubscriptionReadOnly`. TypeScript strict lint passes cleanly across all projects. Total server test assertions: 340 passed (0 failed). Health diagnostics: 74/74 passed. Admin app build: passed cleanly.
+Reviewer Hardening - Batch 1 completed. Batch 2 in progress: R-03 (Restricted cases confidentiality isolation) completed and verified across backend routes, database adapters, repositories, and health diagnostics. Staff without `restricted.view` cannot detect or infer the existence of confidential matters through duplicate checks, audit logs, reminders, search, or counts.
 
 ## Reviewer Hardening
+- **Batch 2 (Restricted Cases: R-03, R-04, R-12)**:
+  - **R-03: Exclude Restricted Cases from Duplicate Check, Audit, Search and Counts**:
+    - `server/src/db/client.ts`: Added `includeRestricted?: boolean` parameter to `IDatabase.checkDuplicateCase` and `IDatabase.listAudit`. In `MemoryDatabase` and `PostgresDatabase`, when `includeRestricted = false`, queries strictly filter out restricted cases (`restricted = false`) and exclude case-specific audit entries for confidential cases.
+    - `server/src/routes/cases.ts`: `GET /check-duplicate`, `POST /cases`, and `PATCH /cases/:id` now pass caller's `canAccessRestricted(req)` so unauthorized staff receive `isDuplicate: false` for confidential cases.
+    - `server/src/routes/audit.ts`: `GET /api/v1/audit-log` now verifies whether caller has `restricted.view` (or `Owner` role) and hides audit entries concerning restricted cases.
+    - `src/data/repositories/case.ts`: `MockCaseRepository.checkDuplicate` verifies `can('restricted.view', currentUser) || !c.restricted`.
+    - `src/data/repositories/audit.ts`: `MockAuditLogRepository.list` filters out audit log entries regarding restricted cases if caller lacks `restricted.view`.
+    - `src/data/repositories/dashboard.ts` & `src/data/repositories/reminder.ts`: Filter out reminders pointing to restricted cases and hearings/tasks/files of restricted cases when caller lacks `restricted.view`.
+    - Automated tests: `server/tests/cases.test.ts` asserts that staff without `restricted.view` cannot see duplicate matches for `case-002` and cannot view its audit trail, while Owner and authorized staff can. Health check diagnostics (`casesTests.ts`, `auditTests.ts`) pass 75/75. Total server test assertions: 347 passed (0 failed).
+
 - **Batch 1 (Config and Safety: R-01, R-05, R-06, R-08, R-11, R-14)**:
   - **R-14: Remove Unused Dependencies**:
     - Removed unused `"motion": "^12.23.24"` from root `package.json`. Verified zero imports in `src/`. Ran `npm install --legacy-peer-deps`. `npm run build` and `npm audit` remain 0 vulnerabilities.

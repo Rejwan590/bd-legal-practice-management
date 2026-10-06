@@ -228,6 +228,28 @@ async function runTests() {
         ownerOverviewHasRestricted,
         'Owner can see restricted cases in client overview'
       );
+      // Staff without restricted.view checks duplicate for confidential case-002: must NOT reveal its existence
+      const staffDupCheckRes = await fetch(
+        `${baseUrl}/api/v1/cases/check-duplicate?caseNumber=Special+Criminal+Revision+No.+12/2024&court=High+Court+Division,+Supreme+Court+of+Bangladesh`,
+        { headers: { Cookie: `access_token=${staffToken}` } }
+      );
+      const staffDupCheck = await staffDupCheckRes.json();
+      assert(staffDupCheckRes.status === 200, 'Staff duplicate check endpoint returns HTTP 200');
+      assert(
+        staffDupCheck.isDuplicate === false,
+        'Staff without restricted.view does NOT see restricted case in duplicate check (confidentiality)'
+      );
+
+      // Owner checking duplicate for confidential case-002 gets isDuplicate: true
+      const ownerDupCheckRes = await fetch(
+        `${baseUrl}/api/v1/cases/check-duplicate?caseNumber=Special+Criminal+Revision+No.+12/2024&court=High+Court+Division,+Supreme+Court+of+Bangladesh`,
+        { headers: { Cookie: `access_token=${ownerToken}` } }
+      );
+      const ownerDupCheck = await ownerDupCheckRes.json();
+      assert(
+        ownerDupCheck.isDuplicate === true,
+        'Owner with restricted access sees restricted case in duplicate check'
+      );
     }
 
     // --- 3. Duplicate case number in the same court gives a warning ---
@@ -388,6 +410,80 @@ async function runTests() {
         (a: any) => a.entity === 'Case' && a.action === 'DELETE'
       );
       assert(Boolean(caseDeleteEntry), 'Audit log contains Case DELETE entry');
+
+      // R-03: Audit log entries concerning restricted cases are hidden from users without restricted.view
+      await db.insertAudit({
+        id: 'audit-case-002-test',
+        firmId: 'firm-bd-001',
+        userId: 'user-owner-001',
+        userName: 'Adv. Mahbubur Rahman',
+        entity: 'Case',
+        entityId: 'case-002',
+        action: 'UPDATE',
+        oldValue: { restricted: true, caseNumber: 'Special Criminal Revision No. 12/2024' },
+        newValue: { restricted: true, status: 'ongoing' },
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        createdBy: 'user-owner-001',
+        updatedBy: 'user-owner-001',
+      });
+
+      // Owner can see the restricted case audit entry
+      const ownerAuditWithRestricted = await (await fetch(`${baseUrl}/api/v1/audit-log`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      })).json();
+      const ownerSeesRestrictedAudit = ownerAuditWithRestricted.some(
+        (a: any) => a.entity === 'Case' && a.entityId === 'case-002'
+      );
+      assert(ownerSeesRestrictedAudit, 'Owner can see audit entries concerning restricted cases');
+
+      // Grant settings.manage to staff WITHOUT restricted.view
+      await fetch(`${baseUrl}/api/v1/users/user-staff-002/permissions`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify({ permissions: ['settings.manage', 'cases.view'] }),
+      });
+
+      // Staff queries audit log
+      const staffAuditRes = await fetch(`${baseUrl}/api/v1/audit-log`, {
+        headers: { Cookie: `access_token=${staffToken}` },
+      });
+      assert(staffAuditRes.status === 200, 'Staff with settings.manage can query audit log (HTTP 200)');
+      const staffAuditLogs = await staffAuditRes.json();
+      const staffSeesRestrictedAudit = staffAuditLogs.some(
+        (a: any) => a.entity === 'Case' && a.entityId === 'case-002'
+      );
+      assert(
+        !staffSeesRestrictedAudit,
+        'Staff without restricted.view CANNOT see audit entries concerning restricted cases (R-03 confidentiality)'
+      );
+
+      // Now grant restricted.view to staff
+      await fetch(`${baseUrl}/api/v1/users/user-staff-002/permissions`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify({ permissions: ['settings.manage', 'cases.view', 'restricted.view'] }),
+      });
+
+      // Staff queries audit log with restricted.view
+      const staffAuditWithPerm = await (await fetch(`${baseUrl}/api/v1/audit-log`, {
+        headers: { Cookie: `access_token=${staffToken}` },
+      })).json();
+      const staffWithPermSeesRestricted = staffAuditWithPerm.some(
+        (a: any) => a.entity === 'Case' && a.entityId === 'case-002'
+      );
+      assert(
+        staffWithPermSeesRestricted,
+        'Staff with restricted.view CAN see audit entries concerning restricted cases'
+      );
     }
 
     // --- 7. Firm Isolation on Cases ---

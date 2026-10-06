@@ -71,6 +71,26 @@ export class MockDashboardRepository implements IDashboardRepository {
     if (currentUser.role === 'Staff') {
       reminders = reminders.filter((r) => r.userId === currentUser.id);
     }
+    if (!canSeeRestricted) {
+      const hearingMap = new Map((store.hearings || []).map((h) => [h.id, h]));
+      const taskMap = new Map((store.tasks || []).map((t) => [t.id, t]));
+      const fileMap = new Map((store.physicalFiles || []).map((f) => [f.id, f]));
+      reminders = reminders.filter((r) => {
+        if (r.sourceType === 'hearing') {
+          const h = hearingMap.get(r.sourceId);
+          if (h && h.caseId && !allowedCaseIds.has(h.caseId)) return false;
+        }
+        if (r.sourceType === 'task') {
+          const t = taskMap.get(r.sourceId);
+          if (t && t.caseId && !allowedCaseIds.has(t.caseId)) return false;
+        }
+        if (r.sourceType === 'file_return') {
+          const f = fileMap.get(r.sourceId);
+          if (f && f.caseId && !allowedCaseIds.has(f.caseId)) return false;
+        }
+        return true;
+      });
+    }
     const pendingRemindersCount = reminders.length;
 
     return {
