@@ -58,14 +58,64 @@ export class MockBackupRepository implements IBackupRepository {
     // Filter all records strictly by caller's firmId
     const firmData: FirmRecord = { ...store.firm };
     const clients = (store.clients || []).filter((c) => c.firmId === firmId);
-    const cases = (store.cases || []).filter((c) => c.firmId === firmId);
-    const hearings = (store.hearings || []).filter((h) => h.firmId === firmId);
-    const hearingDateHistory = (store.hearingDateHistory || []).filter((hd) => hd.firmId === firmId);
-    const tasks = (store.tasks || []).filter((t) => t.firmId === firmId);
-    const physicalFiles = (store.physicalFiles || []).filter((f) => f.firmId === firmId);
-    const fileMovements = (store.fileMovements || []).filter((fm) => fm.firmId === firmId);
-    const reminders = (store.reminders || []).filter((r) => r.firmId === firmId);
-    const auditLogs = (store.auditLogs || []).filter((a) => a.firmId === firmId);
+    let cases = (store.cases || []).filter((c) => c.firmId === firmId);
+    let hearings = (store.hearings || []).filter((h) => h.firmId === firmId);
+    let hearingDateHistory = (store.hearingDateHistory || []).filter((hd) => hd.firmId === firmId);
+    let tasks = (store.tasks || []).filter((t) => t.firmId === firmId);
+    let physicalFiles = (store.physicalFiles || []).filter((f) => f.firmId === firmId);
+    let fileMovements = (store.fileMovements || []).filter((fm) => fm.firmId === firmId);
+    let reminders = (store.reminders || []).filter((r) => r.firmId === firmId);
+    let auditLogs = (store.auditLogs || []).filter((a) => a.firmId === firmId);
+
+    // Confidentiality boundary: omit restricted cases and derived records if lacking restricted.view
+    if (!can('restricted.view', currentUser)) {
+      const restrictedCaseIdSet = new Set(
+        cases.filter((c) => c.restricted).map((c) => c.id)
+      );
+
+      // Exclude restricted cases
+      cases = cases.filter((c) => !restrictedCaseIdSet.has(c.id));
+
+      // Exclude linked hearings
+      const restrictedHearingIdSet = new Set(
+        hearings.filter((h) => h.caseId && restrictedCaseIdSet.has(h.caseId)).map((h) => h.id)
+      );
+      hearings = hearings.filter((h) => !restrictedHearingIdSet.has(h.id));
+      hearingDateHistory = hearingDateHistory.filter((hd) => !restrictedHearingIdSet.has(hd.hearingId));
+
+      // Exclude linked tasks
+      const restrictedTaskIdSet = new Set(
+        tasks.filter((t) => t.caseId && restrictedCaseIdSet.has(t.caseId)).map((t) => t.id)
+      );
+      tasks = tasks.filter((t) => !restrictedTaskIdSet.has(t.id));
+
+      // Exclude linked physical files
+      const restrictedFileIdSet = new Set(
+        physicalFiles.filter((f) => f.caseId && restrictedCaseIdSet.has(f.caseId)).map((f) => f.id)
+      );
+      physicalFiles = physicalFiles.filter((f) => !restrictedFileIdSet.has(f.id));
+      fileMovements = fileMovements.filter((fm) => !restrictedFileIdSet.has(fm.fileId));
+
+      // Exclude reminders derived from restricted hearings, tasks, or files
+      reminders = reminders.filter((r) => {
+        if (r.sourceType === 'hearing' && restrictedHearingIdSet.has(r.sourceId)) return false;
+        if (r.sourceType === 'task' && restrictedTaskIdSet.has(r.sourceId)) return false;
+        if (r.sourceType === 'file_return' && restrictedFileIdSet.has(r.sourceId)) return false;
+        return true;
+      });
+
+      // Exclude audit logs referencing restricted cases or containing restricted flags
+      auditLogs = auditLogs.filter((a) => {
+        if (a.entity === 'Case' && restrictedCaseIdSet.has(a.entityId)) return false;
+        if (restrictedCaseIdSet.has(a.entityId)) return false;
+        const oldVal = a.oldValue as Record<string, unknown> | null;
+        const newVal = a.newValue as Record<string, unknown> | null;
+        if (oldVal?.caseId && typeof oldVal.caseId === 'string' && restrictedCaseIdSet.has(oldVal.caseId)) return false;
+        if (newVal?.caseId && typeof newVal.caseId === 'string' && restrictedCaseIdSet.has(newVal.caseId)) return false;
+        if (oldVal?.restricted === true || newVal?.restricted === true) return false;
+        return true;
+      });
+    }
 
     const counts: ChamberBackupCounts = {
       clients: clients.length,

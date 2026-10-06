@@ -7,6 +7,11 @@ Reviewer Hardening - Batch 1 completed. Batch 2 in progress: R-03 (Restricted ca
 
 ## Reviewer Hardening
 - **Batch 2 (Restricted Cases: R-03, R-04, R-12)**:
+  - **R-04: Filter Restricted Cases in Backup Export without restricted.view**:
+    - `src/data/repositories/backup.ts`: Updated `createBackup` method in `MockBackupRepository`. When caller lacks `restricted.view`, backup payload excludes all restricted cases (`c.restricted === true`), and strips all associated child/related rows: linked hearings (`h.caseId`), hearing date histories, linked tasks (`t.caseId`), linked physical files (`f.caseId`), file movements, reminders derived from restricted hearings/tasks/files, and audit logs targeting or referencing confidential matters.
+    - Updated `counts` in `metadata` to reflect the sanitized counts.
+    - Added Test 57 to `src/modules/health/tests/backupTests.ts` asserting that staff with `data.export` but without `restricted.view` produces an export without any trace of restricted matters or child entities, while Owner export retains full data.
+    - Diagnostic suite: 76/76 passed. All linters, builds, and server test suites passed cleanly.
   - **R-03: Exclude Restricted Cases from Duplicate Check, Audit, Search and Counts**:
     - `server/src/db/client.ts`: Added `includeRestricted?: boolean` parameter to `IDatabase.checkDuplicateCase` and `IDatabase.listAudit`. In `MemoryDatabase` and `PostgresDatabase`, when `includeRestricted = false`, queries strictly filter out restricted cases (`restricted = false`) and exclude case-specific audit entries for confidential cases.
     - `server/src/routes/cases.ts`: `GET /check-duplicate`, `POST /cases`, and `PATCH /cases/:id` now pass caller's `canAccessRestricted(req)` so unauthorized staff receive `isDuplicate: false` for confidential cases.
@@ -14,7 +19,7 @@ Reviewer Hardening - Batch 1 completed. Batch 2 in progress: R-03 (Restricted ca
     - `src/data/repositories/case.ts`: `MockCaseRepository.checkDuplicate` verifies `can('restricted.view', currentUser) || !c.restricted`.
     - `src/data/repositories/audit.ts`: `MockAuditLogRepository.list` filters out audit log entries regarding restricted cases if caller lacks `restricted.view`.
     - `src/data/repositories/dashboard.ts` & `src/data/repositories/reminder.ts`: Filter out reminders pointing to restricted cases and hearings/tasks/files of restricted cases when caller lacks `restricted.view`.
-    - Automated tests: `server/tests/cases.test.ts` asserts that staff without `restricted.view` cannot see duplicate matches for `case-002` and cannot view its audit trail, while Owner and authorized staff can. Health check diagnostics (`casesTests.ts`, `auditTests.ts`) pass 75/75. Total server test assertions: 347 passed (0 failed).
+    - Automated tests: `server/tests/cases.test.ts` asserts that staff without `restricted.view` cannot see duplicate matches for `case-002` and cannot view its audit trail, while Owner and authorized staff can. Health check diagnostics (`casesTests.ts`, `auditTests.ts`) pass 76/76. Total server test assertions: 347 passed (0 failed).
 
 - **Batch 1 (Config and Safety: R-01, R-05, R-06, R-08, R-11, R-14)**:
   - **R-14: Remove Unused Dependencies**:

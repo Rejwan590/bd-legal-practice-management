@@ -1,5 +1,6 @@
 import { encryptChamberBackup, decryptChamberBackup, LEGACY_PBKDF2_ITERATIONS, DEFAULT_PBKDF2_ITERATIONS } from '../../../data/backupCrypto';
 import { INITIAL_FIRM } from '../../../data/mockStore';
+import { SecurityContext } from '../../../data/types';
 import { DiagnosticContext, TestResult } from './types';
 
 export async function runBackupTests(ctx: DiagnosticContext): Promise<{ suite: TestResult[]; exportedBackupJson: string }> {
@@ -332,6 +333,62 @@ export async function runBackupTests(ctx: DiagnosticContext): Promise<{ suite: T
       category: 'Permissions',
       passed: false,
       message: 'Backup permission gatekeeping check failed.',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Test 57: Backup Export Confidentiality Isolation Invariant (restricted.view)
+  try {
+    // Staff with data.export permission but without restricted.view
+    const staffWithExportCtx: SecurityContext = {
+      currentUser: {
+        ...staffUser,
+        permissions: [...staffUser.permissions, 'data.export'],
+      },
+    };
+
+    const staffBackup = await repos.backup.createBackup(staffWithExportCtx);
+    const parsedStaffBackup = JSON.parse(staffBackup.jsonString);
+    const staffData = parsedStaffBackup.data;
+
+    const containsRestrictedCase = staffData.cases.some((c: any) => c.restricted || c.id === 'case-003');
+    const containsRestrictedHearing = staffData.hearings.some((h: any) => h.caseId === 'case-003');
+    const containsRestrictedTask = staffData.tasks.some((t: any) => t.caseId === 'case-003');
+    const containsRestrictedFile = staffData.physicalFiles.some((f: any) => f.caseId === 'case-003');
+    const containsRestrictedAudit = staffData.auditLogs.some(
+      (a: any) => a.entityId === 'case-003' || (a.entity === 'Case' && (a.oldValue?.restricted || a.newValue?.restricted))
+    );
+
+    // Verify Owner backup DOES contain case-003
+    const parsedOwnerBackup = JSON.parse(exportedBackupJson);
+    const ownerContainsRestrictedCase = parsedOwnerBackup.data.cases.some((c: any) => c.id === 'case-003');
+
+    const pass =
+      !containsRestrictedCase &&
+      !containsRestrictedHearing &&
+      !containsRestrictedTask &&
+      !containsRestrictedFile &&
+      !containsRestrictedAudit &&
+      ownerContainsRestrictedCase &&
+      parsedStaffBackup.metadata.counts.cases === staffData.cases.length;
+
+    suite.push({
+      id: 'backup-restricted-isolation',
+      name: 'Restricted Cases Backup Export Isolation Invariant',
+      category: 'Backup & Restore',
+      passed: pass,
+      message: pass
+        ? 'Backup export performed without restricted.view completely filters out restricted cases and all linked records.'
+        : `Confidentiality breach in backup export: restrictedCase=${containsRestrictedCase}, hearing=${containsRestrictedHearing}, task=${containsRestrictedTask}, file=${containsRestrictedFile}, audit=${containsRestrictedAudit}, ownerSees=${ownerContainsRestrictedCase}`,
+      details: `Filtered backup cases count: ${staffData.cases.length}, Owner cases count: ${parsedOwnerBackup.data.cases.length}`,
+    });
+  } catch (err: unknown) {
+    suite.push({
+      id: 'backup-restricted-isolation',
+      name: 'Restricted Cases Backup Export Isolation Invariant',
+      category: 'Backup & Restore',
+      passed: false,
+      message: 'Backup restricted isolation test failed with exception.',
       details: err instanceof Error ? err.message : String(err),
     });
   }
