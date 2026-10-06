@@ -32,7 +32,7 @@ clientsRouter.get(
   requirePermission('clients.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const client = await db.getClientById(req.params.id);
+    const client = await db.getClientById(req.params.id, req.user!.firmId);
 
     if (!client || client.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Client not found' });
@@ -48,7 +48,7 @@ clientsRouter.get(
   requirePermission('clients.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const client = await db.getClientById(req.params.id);
+    const client = await db.getClientById(req.params.id, req.user!.firmId);
 
     if (!client || client.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Client not found' });
@@ -129,7 +129,7 @@ clientsRouter.patch(
   enforceSubscriptionReadOnly,
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const existing = await db.getClientById(req.params.id);
+    const existing = await db.getClientById(req.params.id, req.user!.firmId);
 
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Client not found' });
@@ -155,7 +155,7 @@ clientsRouter.patch(
       archived: existing.archived,
     };
 
-    const updated = await db.updateClient(existing.id, {
+    const updated = await db.updateClient(existing.id, req.user!.firmId, {
       ...updates,
       updatedBy: req.user!.id,
     });
@@ -183,14 +183,14 @@ clientsRouter.delete(
   enforceSubscriptionReadOnly,
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const existing = await db.getClientById(req.params.id);
+    const existing = await db.getClientById(req.params.id, req.user!.firmId);
 
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Client not found' });
     }
 
     // CHECKLIST: Soft delete warns when the client has cases and does not orphan them
-    const activeCasesCount = await db.countActiveCasesForClient(existing.id);
+    const activeCasesCount = await db.countActiveCasesForClient(existing.id, req.user!.firmId);
     if (activeCasesCount > 0) {
       return res.status(400).json({
         error: 'Cannot delete client with active cases',
@@ -202,7 +202,7 @@ clientsRouter.delete(
     const now = new Date();
 
     // SOFT DELETE ONLY: never hard delete
-    await db.updateClient(existing.id, {
+    await db.updateClient(existing.id, req.user!.firmId, {
       deletedAt: now,
       updatedAt: now,
       updatedBy: req.user!.id,

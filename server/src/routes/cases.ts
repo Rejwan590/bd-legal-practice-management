@@ -72,7 +72,7 @@ casesRouter.get(
   requirePermission('cases.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const c = await db.getCaseById(req.params.id);
+    const c = await db.getCaseById(req.params.id, req.user!.firmId);
 
     if (!c || c.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
@@ -93,7 +93,7 @@ casesRouter.get(
   requirePermission('cases.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const c = await db.getCaseById(req.params.id);
+    const c = await db.getCaseById(req.params.id, req.user!.firmId);
 
     if (!c || c.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
@@ -146,7 +146,7 @@ casesRouter.post(
     }
 
     // Client verification: Client must exist, belong to this firm, and not be soft-deleted
-    const client = await db.getClientById(clientId.trim());
+    const client = await db.getClientById(clientId.trim(), req.user!.firmId);
     if (!client || client.firmId !== req.user!.firmId) {
       return res.status(400).json({ error: 'Client not found or does not belong to this chamber' });
     }
@@ -230,7 +230,7 @@ casesRouter.patch(
   enforceSubscriptionReadOnly,
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const existing = await db.getCaseById(req.params.id);
+    const existing = await db.getCaseById(req.params.id, req.user!.firmId);
 
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
@@ -247,7 +247,7 @@ casesRouter.patch(
 
     // If changing clientId, verify new client exists and belongs to firm
     if (req.body.clientId && req.body.clientId !== existing.clientId) {
-      const client = await db.getClientById(req.body.clientId);
+      const client = await db.getClientById(req.body.clientId, req.user!.firmId);
       if (!client || client.firmId !== req.user!.firmId) {
         return res.status(400).json({ error: 'Client not found or does not belong to this chamber' });
       }
@@ -287,7 +287,7 @@ casesRouter.patch(
       updatedBy: req.user!.id,
     };
 
-    const updated = await db.updateCase(existing.id, updates);
+    const updated = await db.updateCase(existing.id, req.user!.firmId, updates);
 
     // Record immutable audit log
     await recordAudit({
@@ -332,14 +332,14 @@ casesRouter.delete(
     }
 
     const db = getDatabase();
-    const existing = await db.getCaseById(req.params.id);
+    const existing = await db.getCaseById(req.params.id, req.user!.firmId);
 
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
     }
 
     const now = new Date();
-    await db.updateCase(existing.id, {
+    await db.updateCase(existing.id, req.user!.firmId, {
       deletedAt: now,
       updatedBy: req.user!.id,
     });

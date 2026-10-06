@@ -3,9 +3,15 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Reviewer Hardening - Batch 1 and Batch 2 completed. Batch 2 (Restricted Cases: R-03, R-04, R-12) fully implemented, tested, and committed. Staff without `restricted.view` cannot detect or infer confidential matters across duplicate check, audit log, backup export, search, or counts. Future server-side backup rules and confidentiality filtering are explicitly documented in ARCHITECTURE.md and tested. Ready for Batch 3 on user's "next".
+Reviewer Hardening - Batch 1 and Batch 2 completed. Batch 3 in progress: R-07 (Database adapter firm scoping) completed and verified across all entity lookups and mutations. Next item in Batch 3: R-10 (Wrap multi-step writes in transactions).
 
 ## Reviewer Hardening
+- **Batch 3 (Database layer: R-07, R-10)**:
+  - **R-07: Scoped DB Adapter Lookups and Updates (WHERE id = ? AND firm_id = ?)**:
+    - `server/src/db/client.ts`: Updated `IDatabase`, `MemoryDatabase`, and `PostgresDatabase` adapters for firm-owned tables (`clients`, `cases`). Methods `getClientById(id, firmId)`, `updateClient(id, firmId, updates)`, `countActiveCasesForClient(clientId, firmId)`, `getCaseById(id, firmId)`, and `updateCase(id, firmId, updates)` strictly require `firmId` and filter by `WHERE id = $id AND firm_id = $firmId`. Unscoped versions removed.
+    - `server/src/routes/clients.ts` & `server/src/routes/cases.ts`: Routes enforce two defense-in-depth layers: passing `req.user!.firmId` into DB queries and checking record `firmId` afterwards.
+    - Automated tests: `server/tests/cases.test.ts` asserts that calling `db.getClientById` or `db.getCaseById` with a foreign `firmId` returns `null` for both entities. Total server test assertions: 349 passed (0 failed).
+
 - **Batch 2 (Restricted Cases: R-03, R-04, R-12)**:
   - **R-12: Explicit Future Server-Side Backup Rule in ARCHITECTURE.md**:
     - `ARCHITECTURE.md`: Explicitly documented Rule 14 with three essential requirements: (1) Off-site nightly database dump with SHA-256 integrity verification, (2) Future server-side backup export endpoint must strictly enforce caller firm_id scoping (`WHERE firm_id = $firmId`, never trusting client input) with `data.export` gate, and (3) Confidentiality boundary where exports on behalf of staff without `restricted.view` must omit restricted cases and all derived records.

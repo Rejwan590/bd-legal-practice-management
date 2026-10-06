@@ -553,6 +553,15 @@ async function runTests() {
         firmBQueryRes.status === 404,
         'Firm B querying Firm A case ID returns 404 Not Found'
       );
+
+      // --- R-07: DB Adapter Scoping Test ---
+      // Direct call to db.getClientById(id, foreignFirmId) must return null
+      const crossFirmClient = await (db as any).getClientById('client-001', firmBId);
+      assert(crossFirmClient === null, 'DB adapter getClientById with foreign firmId returns null');
+
+      // Direct call to db.getCaseById(id, foreignFirmId) must return null
+      const crossFirmCase = await (db as any).getCaseById('case-001', firmBId);
+      assert(crossFirmCase === null, 'DB adapter getCaseById with foreign firmId returns null');
     }
   } finally {
     server.close();

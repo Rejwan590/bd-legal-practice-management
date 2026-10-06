@@ -63,10 +63,10 @@ export interface IDatabase {
   listAudit(firmId: string, limit?: number, offset?: number, includeRestricted?: boolean): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
   listClients(firmId: string, search?: string): Promise<schema.Client[]>;
-  getClientById(id: string): Promise<schema.Client | null>;
+  getClientById(id: string, firmId: string): Promise<schema.Client | null>;
   insertClient(client: schema.Client): Promise<schema.Client>;
-  updateClient(id: string, updates: Partial<schema.Client>): Promise<schema.Client>;
-  countActiveCasesForClient(clientId: string): Promise<number>;
+  updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client>;
+  countActiveCasesForClient(clientId: string, firmId: string): Promise<number>;
   getClientLinkedOverview(clientId: string, firmId: string, includeRestricted?: boolean): Promise<ClientLinkedOverview>;
   // Cases (Step 3.2)
   listCases(
@@ -80,9 +80,9 @@ export interface IDatabase {
       includeRestricted?: boolean;
     }
   ): Promise<schema.Case[]>;
-  getCaseById(id: string): Promise<schema.Case | null>;
+  getCaseById(id: string, firmId: string): Promise<schema.Case | null>;
   insertCase(c: schema.Case): Promise<schema.Case>;
-  updateCase(id: string, updates: Partial<schema.Case>): Promise<schema.Case>;
+  updateCase(id: string, firmId: string, updates: Partial<schema.Case>): Promise<schema.Case>;
   checkDuplicateCase(
     firmId: string,
     caseNumber: string,
@@ -391,9 +391,9 @@ class MemoryDatabase implements IDatabase {
     );
   }
 
-  public async getClientById(id: string): Promise<schema.Client | null> {
+  public async getClientById(id: string, firmId: string): Promise<schema.Client | null> {
     await this.init();
-    const c = this.clients.find((x) => x.id === id && !x.deletedAt);
+    const c = this.clients.find((x) => x.id === id && x.firmId === firmId && !x.deletedAt);
     return c ? { ...c } : null;
   }
 
@@ -403,9 +403,9 @@ class MemoryDatabase implements IDatabase {
     return { ...client };
   }
 
-  public async updateClient(id: string, updates: Partial<schema.Client>): Promise<schema.Client> {
+  public async updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client> {
     await this.init();
-    const index = this.clients.findIndex((c) => c.id === id);
+    const index = this.clients.findIndex((c) => c.id === id && c.firmId === firmId);
     if (index === -1) throw new Error(`Client not found: ${id}`);
     const updated = {
       ...this.clients[index],
@@ -416,10 +416,10 @@ class MemoryDatabase implements IDatabase {
     return { ...updated };
   }
 
-  public async countActiveCasesForClient(clientId: string): Promise<number> {
+  public async countActiveCasesForClient(clientId: string, firmId: string): Promise<number> {
     await this.init();
     return this.cases.filter(
-      (c) => c.clientId === clientId && !c.deletedAt && c.status === 'ongoing'
+      (c) => c.clientId === clientId && c.firmId === firmId && !c.deletedAt && c.status === 'ongoing'
     ).length;
   }
 
@@ -497,9 +497,9 @@ class MemoryDatabase implements IDatabase {
     );
   }
 
-  public async getCaseById(id: string): Promise<schema.Case | null> {
+  public async getCaseById(id: string, firmId: string): Promise<schema.Case | null> {
     await this.init();
-    const c = this.cases.find((x) => x.id === id && !x.deletedAt);
+    const c = this.cases.find((x) => x.id === id && x.firmId === firmId && !x.deletedAt);
     return c ? { ...c } : null;
   }
 
@@ -509,9 +509,9 @@ class MemoryDatabase implements IDatabase {
     return { ...c };
   }
 
-  public async updateCase(id: string, updates: Partial<schema.Case>): Promise<schema.Case> {
+  public async updateCase(id: string, firmId: string, updates: Partial<schema.Case>): Promise<schema.Case> {
     await this.init();
-    const index = this.cases.findIndex((c) => c.id === id);
+    const index = this.cases.findIndex((c) => c.id === id && c.firmId === firmId);
     if (index === -1) throw new Error(`Case not found: ${id}`);
     const updated = {
       ...this.cases[index],
@@ -1054,11 +1054,11 @@ class PostgresDatabase implements IDatabase {
       .orderBy(desc(schema.clients.createdAt));
   }
 
-  public async getClientById(id: string): Promise<schema.Client | null> {
+  public async getClientById(id: string, firmId: string): Promise<schema.Client | null> {
     const rows = await this.db
       .select()
       .from(schema.clients)
-      .where(and(eq(schema.clients.id, id), isNull(schema.clients.deletedAt)))
+      .where(and(eq(schema.clients.id, id), eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)))
       .limit(1);
     return rows[0] || null;
   }
@@ -1068,23 +1068,24 @@ class PostgresDatabase implements IDatabase {
     return rows[0];
   }
 
-  public async updateClient(id: string, updates: Partial<schema.Client>): Promise<schema.Client> {
+  public async updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client> {
     const rows = await this.db
       .update(schema.clients)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(schema.clients.id, id))
+      .where(and(eq(schema.clients.id, id), eq(schema.clients.firmId, firmId)))
       .returning();
     if (!rows[0]) throw new Error(`Client not found: ${id}`);
     return rows[0];
   }
 
-  public async countActiveCasesForClient(clientId: string): Promise<number> {
+  public async countActiveCasesForClient(clientId: string, firmId: string): Promise<number> {
     const rows = await this.db
       .select()
       .from(schema.cases)
       .where(
         and(
           eq(schema.cases.clientId, clientId),
+          eq(schema.cases.firmId, firmId),
           isNull(schema.cases.deletedAt),
           eq(schema.cases.status, 'ongoing')
         )
@@ -1180,11 +1181,11 @@ class PostgresDatabase implements IDatabase {
       .orderBy(desc(schema.cases.createdAt));
   }
 
-  public async getCaseById(id: string): Promise<schema.Case | null> {
+  public async getCaseById(id: string, firmId: string): Promise<schema.Case | null> {
     const rows = await this.db
       .select()
       .from(schema.cases)
-      .where(and(eq(schema.cases.id, id), isNull(schema.cases.deletedAt)))
+      .where(and(eq(schema.cases.id, id), eq(schema.cases.firmId, firmId), isNull(schema.cases.deletedAt)))
       .limit(1);
     return rows[0] || null;
   }
@@ -1194,11 +1195,11 @@ class PostgresDatabase implements IDatabase {
     return rows[0];
   }
 
-  public async updateCase(id: string, updates: Partial<schema.Case>): Promise<schema.Case> {
+  public async updateCase(id: string, firmId: string, updates: Partial<schema.Case>): Promise<schema.Case> {
     const rows = await this.db
       .update(schema.cases)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(schema.cases.id, id))
+      .where(and(eq(schema.cases.id, id), eq(schema.cases.firmId, firmId)))
       .returning();
     if (!rows[0]) throw new Error(`Case not found: ${id}`);
     return rows[0];

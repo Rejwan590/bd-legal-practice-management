@@ -366,7 +366,7 @@ async function runAdminFirmsTests() {
     check(updatedExpiry > currentExpiry, 'Renewal extends license beyond current expiry');
 
     // Invariant: renewal never deletes data
-    const clientAfterRenewal = await db.getClientById(newClient.id);
+    const clientAfterRenewal = await db.getClientById(newClient.id, createdFirmId);
     check(clientAfterRenewal !== null, 'Client data preserved after renewal (never deletes data)');
 
     // --- 11. Payments (POST /api/admin/firms/:id/payments) ---
@@ -421,7 +421,7 @@ async function runAdminFirmsTests() {
     // Invariant: data preserved in database
     const softDeletedFirm = await db.getFirm(createdFirmId, true);
     check(softDeletedFirm !== null, 'Soft-deleted firm record is preserved in database');
-    const preservedClient = await db.getClientById(newClient.id);
+    const preservedClient = await db.getClientById(newClient.id, createdFirmId);
     check(preservedClient !== null, 'Firm client records are preserved in database');
 
     // --- 13. Audit Trail Verification (adminAudit & license_events) ---
