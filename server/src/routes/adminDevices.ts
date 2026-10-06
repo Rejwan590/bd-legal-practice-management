@@ -63,19 +63,24 @@ adminDevicesRouter.post('/devices/:id/approve', async (req: AuthenticatedAdminRe
   }
 
   const oldStatus = device.status;
-  const updatedDevice = await db.updateDevice(device.id, {
-    status: 'approved',
-    approvedByAdminId: req.admin!.id,
-    lastSeenAt: new Date(),
-  });
+  const updatedDevice = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateDevice(device.id, {
+      status: 'approved',
+      approvedByAdminId: req.admin!.id,
+      lastSeenAt: new Date(),
+    });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'DEVICE_APPROVE',
-    targetFirmId: device.firmId,
-    old: { deviceId: device.id, status: oldStatus },
-    new: { deviceId: device.id, status: 'approved' },
-    ip: req.ip,
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'DEVICE_APPROVE',
+      targetFirmId: device.firmId,
+      old: { deviceId: device.id, status: oldStatus },
+      new: { deviceId: device.id, status: 'approved' },
+      ip: req.ip,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -94,18 +99,23 @@ adminDevicesRouter.post('/devices/:id/reject', async (req: AuthenticatedAdminReq
   }
 
   const oldStatus = device.status;
-  const updatedDevice = await db.updateDevice(device.id, {
-    status: 'rejected',
-    lastSeenAt: new Date(),
-  });
+  const updatedDevice = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateDevice(device.id, {
+      status: 'rejected',
+      lastSeenAt: new Date(),
+    });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'DEVICE_REJECT',
-    targetFirmId: device.firmId,
-    old: { deviceId: device.id, status: oldStatus },
-    new: { deviceId: device.id, status: 'rejected' },
-    ip: req.ip,
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'DEVICE_REJECT',
+      targetFirmId: device.firmId,
+      old: { deviceId: device.id, status: oldStatus },
+      new: { deviceId: device.id, status: 'rejected' },
+      ip: req.ip,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -124,18 +134,23 @@ adminDevicesRouter.post('/devices/:id/revoke', async (req: AuthenticatedAdminReq
   }
 
   const oldStatus = device.status;
-  const updatedDevice = await db.updateDevice(device.id, {
-    status: 'revoked',
-    lastSeenAt: new Date(),
-  });
+  const updatedDevice = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateDevice(device.id, {
+      status: 'revoked',
+      lastSeenAt: new Date(),
+    });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'DEVICE_REVOKE',
-    targetFirmId: device.firmId,
-    old: { deviceId: device.id, status: oldStatus },
-    new: { deviceId: device.id, status: 'revoked' },
-    ip: req.ip,
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'DEVICE_REVOKE',
+      targetFirmId: device.firmId,
+      old: { deviceId: device.id, status: oldStatus },
+      new: { deviceId: device.id, status: 'revoked' },
+      ip: req.ip,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({

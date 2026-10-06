@@ -177,6 +177,36 @@ async function runAdminFirmsTests() {
     });
     check(duplicateCreateRes.status === 409, 'Duplicate owner email rejected with HTTP 409 Conflict');
 
+    // --- R-10 Transaction Atomicity Invariant: failure halfway leaves no partial rows ---
+    console.log('\n--- R-10. Transaction Atomicity & Rollback Invariant ---');
+    const abortedFirmId = 'firm-aborted-test-999';
+    let transactionRolledBack = false;
+    try {
+      await db.transaction(async (txDb) => {
+        await txDb.insertFirm({
+          id: abortedFirmId,
+          firmId: abortedFirmId,
+          name: 'Aborted Transaction Chambers',
+          planId: 'annual-standard',
+          maxDevices: 5,
+          licenseStartsAt: new Date(),
+          licenseExpiresAt: new Date(Date.now() + 86400000),
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        // Intentionally simulate failure halfway through multi-step operation
+        throw new Error('Simulated failure during multi-step write');
+      });
+    } catch (err: any) {
+      transactionRolledBack = err.message === 'Simulated failure during multi-step write';
+    }
+    check(transactionRolledBack, 'Multi-step transaction caught error and triggered rollback');
+
+    // Verify aborted firm does not exist in database (no partial/orphan rows left)
+    const abortedFirmInDb = await db.getFirm(abortedFirmId, true);
+    check(abortedFirmInDb === null, 'Transaction rollback leaves zero partial rows in database');
+
     // First login with temporary password
     const firstLoginRes = await makeRequest(server, '/auth/login', {
       method: 'POST',

@@ -3,10 +3,27 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Reviewer Hardening - Batch 1 and Batch 2 completed. Batch 3 in progress: R-07 (Database adapter firm scoping) completed and verified across all entity lookups and mutations. Next item in Batch 3: R-10 (Wrap multi-step writes in transactions).
+Reviewer Hardening - Batch 1, Batch 2, and Batch 3 (R-07, R-10) completed and verified across all tests. Ready for Batch 4 (R-16).
 
 ## Reviewer Hardening
 - **Batch 3 (Database layer: R-07, R-10)**:
+  - **R-10: Wrap Multi-Step Writes in Atomic Database Transactions**:
+    - `server/src/db/client.ts`: Added `transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T>` to `IDatabase`.
+      - In `MemoryDatabase`: Takes shallow snapshots of all database table arrays before invoking callback; automatically rolls back all tables upon any caught error.
+      - In `PostgresDatabase`: Connects a dedicated client from `this.pool`, executes `BEGIN`, instantiates a transaction-scoped Drizzle/Postgres adapter, and commits or rolls back (`COMMIT` / `ROLLBACK`) with guaranteed `client.release()` in a `finally` block.
+    - Wrapped all identified multi-step database writes in `db.transaction`:
+      1. `POST /api/admin/firms`: Firm insert -> First Owner user insert -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      2. `POST /api/admin/firms/:id/suspend`: Firm status update -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      3. `POST /api/admin/firms/:id/disable`: Firm status update -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      4. `POST /api/admin/firms/:id/reactivate`: Firm status update -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      5. `DELETE /api/admin/firms/:id`: Soft delete firm -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      6. `PUT /api/admin/firms/:id/license`: Firm license update -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      7. `POST /api/admin/firms/:id/renew`: Firm license renew -> AdminAudit insert -> LicenseEvent insert (`server/src/routes/adminFirms.ts`).
+      8. `POST /api/admin/firms/:id/payments`: Payment insert -> AdminAudit insert (`server/src/routes/adminFirms.ts`).
+      9. `POST /api/admin/devices/:id/approve`: Device update -> AdminAudit insert (`server/src/routes/adminDevices.ts`).
+      10. `POST /api/admin/devices/:id/reject`: Device update -> AdminAudit insert (`server/src/routes/adminDevices.ts`).
+      11. `POST /api/admin/devices/:id/revoke`: Device update -> AdminAudit insert (`server/src/routes/adminDevices.ts`).
+    - Automated tests: `server/tests/adminFirms.test.ts` asserts that a simulated failure halfway through a multi-step write triggers transaction rollback and leaves 0 partial/orphan rows in the database (`abortedFirmInDb === null`). Total server tests: 349 passed (0 failed).
   - **R-07: Scoped DB Adapter Lookups and Updates (WHERE id = ? AND firm_id = ?)**:
     - `server/src/db/client.ts`: Updated `IDatabase`, `MemoryDatabase`, and `PostgresDatabase` adapters for firm-owned tables (`clients`, `cases`). Methods `getClientById(id, firmId)`, `updateClient(id, firmId, updates)`, `countActiveCasesForClient(clientId, firmId)`, `getCaseById(id, firmId)`, and `updateCase(id, firmId, updates)` strictly require `firmId` and filter by `WHERE id = $id AND firm_id = $firmId`. Unscoped versions removed.
     - `server/src/routes/clients.ts` & `server/src/routes/cases.ts`: Routes enforce two defense-in-depth layers: passing `req.user!.firmId` into DB queries and checking record `firmId` afterwards.

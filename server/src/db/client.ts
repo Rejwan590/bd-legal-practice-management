@@ -121,6 +121,8 @@ export interface IDatabase {
   deleteDevice(id: string): Promise<void>;
   // Metrics (Step B & D)
   getFirmMetrics(firmId: string): Promise<{ userCount: number; deviceCount: number; pendingDeviceCount: number; lastActivity: Date | null }>;
+  // Transactions (R-10: Multi-step write atomicity)
+  transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T>;
 }
 
 // In-Memory Database Adapter (for headless testing and local development without active Docker container)
@@ -811,6 +813,42 @@ class MemoryDatabase implements IDatabase {
     }
     return { userCount, deviceCount, pendingDeviceCount, lastActivity };
   }
+
+  public async transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T> {
+    await this.init();
+    // Snapshot state for rollback on error
+    const snapshot = {
+      plans: [...this.plans],
+      firms: [...this.firms],
+      users: [...this.users],
+      clients: [...this.clients],
+      cases: [...this.cases],
+      auditLogs: [...this.auditLogs],
+      platformAdmins: [...this.platformAdmins],
+      adminAudits: [...this.adminAudits],
+      licenseEvents: [...this.licenseEvents],
+      payments: [...this.payments],
+      devices: [...this.devices],
+    };
+
+    try {
+      return await callback(this);
+    } catch (err) {
+      // Rollback all tables to snapshot
+      this.plans = snapshot.plans;
+      this.firms = snapshot.firms;
+      this.users = snapshot.users;
+      this.clients = snapshot.clients;
+      this.cases = snapshot.cases;
+      this.auditLogs = snapshot.auditLogs;
+      this.platformAdmins = snapshot.platformAdmins;
+      this.adminAudits = snapshot.adminAudits;
+      this.licenseEvents = snapshot.licenseEvents;
+      this.payments = snapshot.payments;
+      this.devices = snapshot.devices;
+      throw err;
+    }
+  }
 }
 
 // PostgreSQL Database Adapter via Drizzle ORM
@@ -1464,6 +1502,26 @@ class PostgresDatabase implements IDatabase {
     }
 
     return { userCount, deviceCount, pendingDeviceCount, lastActivity };
+  }
+
+  public async transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const txDrizzle = drizzle(client, { schema });
+      // Create a scoped PostgresDatabase instance wrapping client/txDrizzle
+      const txAdapter = Object.create(this) as PostgresDatabase;
+      (txAdapter as any).pool = client;
+      (txAdapter as any).db = txDrizzle;
+      const result = await callback(txAdapter);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 

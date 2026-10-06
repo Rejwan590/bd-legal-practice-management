@@ -109,76 +109,82 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
   const expiresAt = new Date(now.getTime() + data.months * 30 * 24 * 60 * 60 * 1000);
 
   const firmId = `firm-${crypto.randomUUID()}`;
-  const newFirm = await db.insertFirm({
-    id: firmId,
-    firmId,
-    name: data.name,
-    contact: data.contact ?? null,
-    officeAddress: data.officeAddress ?? null,
-    barCouncilReg: data.barCouncilReg ?? null,
-    courtAffiliations: data.courtAffiliations ?? null,
-    planId: data.planId,
-    maxDevices: data.maxDevices,
-    licenseStartsAt: startsAt,
-    licenseExpiresAt: expiresAt,
-    status: 'active',
-    createdBy: req.admin!.id,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Provision first Owner user with temporary password and forced password change
   const tempPassword = generateTemporaryPassword();
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(tempPassword, salt);
 
-  const ownerUser = await db.insertUser({
-    id: `user-${crypto.randomUUID()}`,
-    firmId: newFirm.id,
-    name: data.ownerName,
-    email: data.ownerEmail,
-    passwordHash,
-    role: 'Owner',
-    permissions: ALL_PERMISSIONS,
-    language: 'en',
-    active: true,
-    mustChangePassword: true,
-    failedLoginAttempts: 0,
-    createdBy: req.admin!.id,
-    createdAt: now,
-    updatedAt: now,
-  });
+  // Wrap firm creation and all dependent records in an atomic database transaction (R-10)
+  const { newFirm, ownerUser } = await db.transaction(async (txDb) => {
+    const createdFirm = await txDb.insertFirm({
+      id: firmId,
+      firmId,
+      name: data.name,
+      contact: data.contact ?? null,
+      officeAddress: data.officeAddress ?? null,
+      barCouncilReg: data.barCouncilReg ?? null,
+      courtAffiliations: data.courtAffiliations ?? null,
+      planId: data.planId,
+      maxDevices: data.maxDevices,
+      licenseStartsAt: startsAt,
+      licenseExpiresAt: expiresAt,
+      status: 'active',
+      createdBy: req.admin!.id,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  // Record in admin_audit
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'FIRM_CREATE',
-    targetFirmId: newFirm.id,
-    new: {
-      firmId: newFirm.id,
-      name: newFirm.name,
-      ownerEmail: ownerUser.email,
-      ownerId: ownerUser.id,
-      planId: newFirm.planId,
-      maxDevices: newFirm.maxDevices,
-      licenseExpiresAt: newFirm.licenseExpiresAt,
-    },
-    ip: req.ip,
-  });
+    // Provision first Owner user with temporary password and forced password change
+    const createdOwner = await txDb.insertUser({
+      id: `user-${crypto.randomUUID()}`,
+      firmId: createdFirm.id,
+      name: data.ownerName,
+      email: data.ownerEmail,
+      passwordHash,
+      role: 'Owner',
+      permissions: ALL_PERMISSIONS,
+      language: 'en',
+      active: true,
+      mustChangePassword: true,
+      failedLoginAttempts: 0,
+      createdBy: req.admin!.id,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  // Record in license_events
-  await db.insertLicenseEvent({
-    firmId: newFirm.id,
-    type: 'CREATE',
-    new: {
-      planId: newFirm.planId,
-      maxDevices: newFirm.maxDevices,
-      licenseStartsAt: newFirm.licenseStartsAt,
-      licenseExpiresAt: newFirm.licenseExpiresAt,
-      status: newFirm.status,
-    },
-    byAdmin: req.admin!.id,
-    at: now,
+    // Record in admin_audit
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_CREATE',
+      targetFirmId: createdFirm.id,
+      new: {
+        firmId: createdFirm.id,
+        name: createdFirm.name,
+        ownerEmail: createdOwner.email,
+        ownerId: createdOwner.id,
+        planId: createdFirm.planId,
+        maxDevices: createdFirm.maxDevices,
+        licenseExpiresAt: createdFirm.licenseExpiresAt,
+      },
+      ip: req.ip,
+      at: now,
+    });
+
+    // Record in license_events
+    await txDb.insertLicenseEvent({
+      firmId: createdFirm.id,
+      type: 'CREATE',
+      new: {
+        planId: createdFirm.planId,
+        maxDevices: createdFirm.maxDevices,
+        licenseStartsAt: createdFirm.licenseStartsAt,
+        licenseExpiresAt: createdFirm.licenseExpiresAt,
+        status: createdFirm.status,
+      },
+      byAdmin: req.admin!.id,
+      at: now,
+    });
+
+    return { newFirm: createdFirm, ownerUser: createdOwner };
   });
 
   return res.status(201).json({
@@ -321,24 +327,29 @@ adminFirmsRouter.post('/:id/suspend', async (req: AuthenticatedAdminRequest, res
   }
 
   const oldStatus = firm.status;
-  const updatedFirm = await db.updateFirm(firm.id, { status: 'suspended' });
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, { status: 'suspended' });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'FIRM_SUSPEND',
-    targetFirmId: firm.id,
-    old: { status: oldStatus },
-    new: { status: 'suspended' },
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_SUSPEND',
+      targetFirmId: firm.id,
+      old: { status: oldStatus },
+      new: { status: 'suspended' },
+      ip: req.ip,
+      at: new Date(),
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'SUSPEND',
-    old: { status: oldStatus },
-    new: { status: 'suspended' },
-    byAdmin: req.admin!.id,
-    at: new Date(),
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'SUSPEND',
+      old: { status: oldStatus },
+      new: { status: 'suspended' },
+      byAdmin: req.admin!.id,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -357,24 +368,29 @@ adminFirmsRouter.post('/:id/disable', async (req: AuthenticatedAdminRequest, res
   }
 
   const oldStatus = firm.status;
-  const updatedFirm = await db.updateFirm(firm.id, { status: 'disabled' });
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, { status: 'disabled' });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'FIRM_DISABLE',
-    targetFirmId: firm.id,
-    old: { status: oldStatus },
-    new: { status: 'disabled' },
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_DISABLE',
+      targetFirmId: firm.id,
+      old: { status: oldStatus },
+      new: { status: 'disabled' },
+      ip: req.ip,
+      at: new Date(),
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'DISABLE',
-    old: { status: oldStatus },
-    new: { status: 'disabled' },
-    byAdmin: req.admin!.id,
-    at: new Date(),
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'DISABLE',
+      old: { status: oldStatus },
+      new: { status: 'disabled' },
+      byAdmin: req.admin!.id,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -393,24 +409,29 @@ adminFirmsRouter.post('/:id/reactivate', async (req: AuthenticatedAdminRequest, 
   }
 
   const oldStatus = firm.status;
-  const updatedFirm = await db.updateFirm(firm.id, { status: 'active' });
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, { status: 'active' });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'FIRM_REACTIVATE',
-    targetFirmId: firm.id,
-    old: { status: oldStatus },
-    new: { status: 'active' },
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_REACTIVATE',
+      targetFirmId: firm.id,
+      old: { status: oldStatus },
+      new: { status: 'active' },
+      ip: req.ip,
+      at: new Date(),
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'REACTIVATE',
-    old: { status: oldStatus },
-    new: { status: 'active' },
-    byAdmin: req.admin!.id,
-    at: new Date(),
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'REACTIVATE',
+      old: { status: oldStatus },
+      new: { status: 'active' },
+      byAdmin: req.admin!.id,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -446,24 +467,29 @@ adminFirmsRouter.delete('/:id', async (req: AuthenticatedAdminRequest, res: Resp
   }
 
   const now = new Date();
-  const updatedFirm = await db.updateFirm(firm.id, { deletedAt: now });
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, { deletedAt: now });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'FIRM_SOFT_DELETE',
-    targetFirmId: firm.id,
-    old: { deletedAt: null },
-    new: { deletedAt: now },
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_SOFT_DELETE',
+      targetFirmId: firm.id,
+      old: { deletedAt: null },
+      new: { deletedAt: now },
+      ip: req.ip,
+      at: now,
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'SOFT_DELETE',
-    old: { deletedAt: null },
-    new: { deletedAt: now },
-    byAdmin: req.admin!.id,
-    at: now,
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'SOFT_DELETE',
+      old: { deletedAt: null },
+      new: { deletedAt: now },
+      byAdmin: req.admin!.id,
+      at: now,
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -511,24 +537,29 @@ adminFirmsRouter.put('/:id/license', async (req: AuthenticatedAdminRequest, res:
     }
   }
 
-  const updatedFirm = await db.updateFirm(firm.id, updates);
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, updates);
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'LICENSE_UPDATE',
-    targetFirmId: firm.id,
-    old: oldLicense,
-    new: updates,
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'LICENSE_UPDATE',
+      targetFirmId: firm.id,
+      old: oldLicense,
+      new: updates,
+      ip: req.ip,
+      at: new Date(),
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'UPDATE',
-    old: oldLicense,
-    new: updates,
-    byAdmin: req.admin!.id,
-    at: new Date(),
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'UPDATE',
+      old: oldLicense,
+      new: updates,
+      byAdmin: req.admin!.id,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -576,24 +607,29 @@ adminFirmsRouter.post('/:id/renew', async (req: AuthenticatedAdminRequest, res: 
     updates.status = 'active';
   }
 
-  const updatedFirm = await db.updateFirm(firm.id, updates);
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, updates);
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'LICENSE_RENEW',
-    targetFirmId: firm.id,
-    old: oldLicense,
-    new: updates,
-    ip: req.ip,
-  });
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'LICENSE_RENEW',
+      targetFirmId: firm.id,
+      old: oldLicense,
+      new: updates,
+      ip: req.ip,
+      at: new Date(),
+    });
 
-  await db.insertLicenseEvent({
-    firmId: firm.id,
-    type: 'RENEW',
-    old: oldLicense,
-    new: updates,
-    byAdmin: req.admin!.id,
-    at: new Date(),
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'RENEW',
+      old: oldLicense,
+      new: updates,
+      byAdmin: req.admin!.id,
+      at: new Date(),
+    });
+
+    return updated;
   });
 
   return res.status(200).json({
@@ -623,30 +659,35 @@ adminFirmsRouter.post('/:id/payments', async (req: AuthenticatedAdminRequest, re
   }
 
   const now = new Date();
-  const payment = await db.insertPayment({
-    id: `pay-${crypto.randomUUID()}`,
-    firmId: firm.id,
-    amount: data.amount,
-    method: data.method,
-    txnId: data.txnId,
-    note: data.note ?? null,
-    paidAt: now,
-    verifiedBy: req.admin!.email,
-    createdBy: req.admin!.id,
-  });
+  const payment = await db.transaction(async (txDb) => {
+    const createdPayment = await txDb.insertPayment({
+      id: `pay-${crypto.randomUUID()}`,
+      firmId: firm.id,
+      amount: data.amount,
+      method: data.method,
+      txnId: data.txnId,
+      note: data.note ?? null,
+      paidAt: now,
+      verifiedBy: req.admin!.email,
+      createdBy: req.admin!.id,
+    });
 
-  await recordAdminAudit({
-    adminId: req.admin!.id,
-    action: 'PAYMENT_RECORD',
-    targetFirmId: firm.id,
-    new: {
-      paymentId: payment.id,
-      amount: payment.amount,
-      method: payment.method,
-      txnId: payment.txnId,
-      note: payment.note,
-    },
-    ip: req.ip,
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'PAYMENT_RECORD',
+      targetFirmId: firm.id,
+      new: {
+        paymentId: createdPayment.id,
+        amount: createdPayment.amount,
+        method: createdPayment.method,
+        txnId: createdPayment.txnId,
+        note: createdPayment.note,
+      },
+      ip: req.ip,
+      at: now,
+    });
+
+    return createdPayment;
   });
 
   return res.status(201).json({
