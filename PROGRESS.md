@@ -3,10 +3,13 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Reviewer Hardening - Batch 1 completed. Batch 2 in progress: R-03 (Restricted cases confidentiality isolation) completed and verified across backend routes, database adapters, repositories, and health diagnostics. Staff without `restricted.view` cannot detect or infer the existence of confidential matters through duplicate checks, audit logs, reminders, search, or counts.
+Reviewer Hardening - Batch 1 and Batch 2 completed. Batch 2 (Restricted Cases: R-03, R-04, R-12) fully implemented, tested, and committed. Staff without `restricted.view` cannot detect or infer confidential matters across duplicate check, audit log, backup export, search, or counts. Future server-side backup rules and confidentiality filtering are explicitly documented in ARCHITECTURE.md and tested. Ready for Batch 3 on user's "next".
 
 ## Reviewer Hardening
 - **Batch 2 (Restricted Cases: R-03, R-04, R-12)**:
+  - **R-12: Explicit Future Server-Side Backup Rule in ARCHITECTURE.md**:
+    - `ARCHITECTURE.md`: Explicitly documented Rule 14 with three essential requirements: (1) Off-site nightly database dump with SHA-256 integrity verification, (2) Future server-side backup export endpoint must strictly enforce caller firm_id scoping (`WHERE firm_id = $firmId`, never trusting client input) with `data.export` gate, and (3) Confidentiality boundary where exports on behalf of staff without `restricted.view` must omit restricted cases and all derived records.
+    - `server/tests/foundation.test.ts`: Added automated invariant checks asserting ARCHITECTURE.md specifies server-side backup firm_id scoping and confidentiality boundaries.
   - **R-04: Filter Restricted Cases in Backup Export without restricted.view**:
     - `src/data/repositories/backup.ts`: Updated `createBackup` method in `MockBackupRepository`. When caller lacks `restricted.view`, backup payload excludes all restricted cases (`c.restricted === true`), and strips all associated child/related rows: linked hearings (`h.caseId`), hearing date histories, linked tasks (`t.caseId`), linked physical files (`f.caseId`), file movements, reminders derived from restricted hearings/tasks/files, and audit logs targeting or referencing confidential matters.
     - Updated `counts` in `metadata` to reflect the sanitized counts.

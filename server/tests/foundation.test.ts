@@ -675,7 +675,9 @@ async function runTests() {
       assert(archContent.includes('Never trust a firm_id sent by the client'), 'ARCHITECTURE.md enforces never trusting client firm_id');
       assert(archContent.includes('Migrations must never drop data'), 'ARCHITECTURE.md enforces migrations never drop data');
       assert(archContent.includes('payments(id, firm_id') && archContent.includes('backups_log(id, firm_id'), 'ARCHITECTURE.md specifies payments and backups_log tables');
-      assert(archContent.includes('Off-site nightly dump') || archContent.includes('Off-site nightly backup rule'), 'ARCHITECTURE.md includes off-site nightly backup rule');
+      assert(archContent.includes('Off-site nightly dump') || archContent.includes('Off-site nightly backup rule') || archContent.includes('Off-site nightly database dump'), 'ARCHITECTURE.md includes off-site nightly backup rule');
+      assert(archContent.includes('Future server-side chamber backup export endpoint') && archContent.includes('WHERE firm_id = $firmId'), 'ARCHITECTURE.md specifies future server-side backup firm_id scoping');
+      assert(archContent.includes('lacking `restricted.view`, the export pipeline must strictly filter out all restricted cases'), 'ARCHITECTURE.md specifies server-side backup confidentiality boundary');
       assert(archContent.includes('/server/src/routes/') && archContent.includes('httpOnly secure cookie') && archContent.includes('admin-only via CLI'), 'ARCHITECTURE.md specifies backend folder layout and auth/license rules');
 
       // ----------------------------------------------------
