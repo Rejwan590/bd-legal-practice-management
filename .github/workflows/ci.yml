@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    name: Lint, Build, and Test against PostgreSQL 16
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bd_legal_test_db
+          POSTGRES_USER: bd_legal_test_user
+          POSTGRES_PASSWORD: bd_legal_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Root Dependencies
+        run: npm ci
+
+      - name: Install Server Dependencies
+        run: npm ci --prefix server
+
+      - name: Install Admin App Dependencies
+        run: npm ci --prefix admin-app
+
+      - name: Run Root Linter
+        run: npm run lint
+
+      - name: Run Admin App Linter
+        run: npm run lint --prefix admin-app
+
+      - name: Run Chamber Health Diagnostics
+        run: npm run test:health
+
+      - name: Run REST Fetch Handshake Tests
+        run: npm run test:restFetch
+
+      - name: Build Root App
+        run: npm run build
+
+      - name: Build Admin App
+        run: npm run build --prefix admin-app
+
+      - name: Build Server
+        run: npm run build --prefix server
+
+      - name: Run Full Server Test Suite against Live PostgreSQL 16
+        env:
+          CI: "true"
+          DATABASE_URL: "postgres://bd_legal_test_user:bd_legal_test_password@localhost:5432/bd_legal_test_db"
+          JWT_SECRET: "ci_jwt_secret_key_at_least_32_characters_long_12345"
+          ADMIN_JWT_SECRET: "ci_admin_jwt_secret_key_at_least_32_characters_9876"
+        run: |
+          npm test --prefix server

@@ -2,6 +2,7 @@ import pg from 'pg';
 import crypto from 'crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, isNull, desc, or, ilike, ne, sql } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
 
@@ -147,6 +148,22 @@ class MemoryDatabase implements IDatabase {
     this.users = await getSeedUsers();
     this.clients = [...SEED_CLIENTS];
     this.cases = [...SEED_CASES];
+    if (this.platformAdmins.length === 0) {
+      const adminHash = await bcrypt.hash('PlatformAdmin2026!', 10);
+      this.platformAdmins = [
+        {
+          id: 'admin-platform-001',
+          email: 'admin@platform.bd',
+          passwordHash: adminHash,
+          active: true,
+          failedAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: null,
+          createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+        },
+      ];
+    }
     this.initialized = true;
   }
 

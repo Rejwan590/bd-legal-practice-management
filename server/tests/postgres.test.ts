@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -77,129 +78,219 @@ async function runPostgresTests() {
 
     // --- 3. Real PostgreSQL Live Container Execution ---
     console.log('\n--- 3. Real PostgreSQL Live Container Execution ---');
-    const dbUrl = process.env.DATABASE_URL || 'postgres://bd_legal_user:bd_legal_secret_password@127.0.0.1:5432/bd_legal_db';
+    const isCI = process.env.CI === 'true';
+    const dbUrl = process.env.DATABASE_URL;
 
-    let pgConnected = false;
-    const testClient = new pg.Client({ connectionString: dbUrl, connectionTimeoutMillis: 2000 });
-    try {
-      await testClient.connect();
-      pgConnected = true;
-      console.log(`[PostgreSQL Real Container]: Connected successfully to ${dbUrl}`);
-    } catch {
-      pgConnected = false;
-    } finally {
-      try {
-        await testClient.end();
-      } catch {}
-    }
-
-    if (pgConnected) {
-      console.log('Live PostgreSQL available - running full migration & DB integration tests...');
-
-      // 3a. Run migrations against live PostgreSQL
-      await runMigrations(dbUrl);
-      assert(true, 'runMigrations() applied versioned migrations to live PostgreSQL');
-
-      // 3b. Verify __drizzle_migrations table exists
-      const verifyClient = new pg.Client({ connectionString: dbUrl });
-      await verifyClient.connect();
-      const migTableRes = await verifyClient.query(
-        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '__drizzle_migrations') as exists;"
-      );
-      assert(migTableRes.rows[0]?.exists === true, '__drizzle_migrations history table exists in live PostgreSQL');
-      await verifyClient.end();
-
-      // 3c. Live Adapter CRUD with firm isolation & RETURNING clauses
-      const livePg: IDatabase = createPostgresDatabase(dbUrl);
-      const isLiveHealthy = await livePg.isHealthy();
-      assert(isLiveHealthy === true, 'PostgresDatabase.isHealthy() returns true on live PostgreSQL');
-
-      // Test Firm insertion and retrieval
-      const testFirmId = 'firm-test-pg-001';
-      await livePg.insertFirm({
-        id: testFirmId,
-        firmId: testFirmId,
-        name: 'Postgres Live Test Chambers',
-        licenseExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        status: 'active',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deletedAt: null,
-        createdBy: 'test-admin',
-        updatedBy: null,
-        planId: null,
-        barCouncilReg: 'REG-PG-001',
-        officeAddress: 'Dhaka, Bangladesh',
-        courtAffiliations: 'Supreme Court',
-      });
-      const fetchedFirm = await livePg.getFirm(testFirmId);
-      assert(fetchedFirm !== null && fetchedFirm.name === 'Postgres Live Test Chambers', 'Live PostgreSQL insertFirm & getFirm succeed');
-
-      // Test Client insertion with bilingual search
-      const testClientId = 'client-test-pg-001';
-      await livePg.insertClient({
-        id: testClientId,
-        firmId: testFirmId,
-        name: 'Rashid Khan',
-        nameBn: 'রশিদ খান',
-        phone: '01711998877',
-        email: 'rashid@test.bd',
-        address: 'Motijheel, Dhaka',
-        notes: 'Live PG test client',
-        archived: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deletedAt: null,
-        createdBy: 'test-admin',
-        updatedBy: null,
-      });
-      const searchResEn = await livePg.listClients(testFirmId, 'Rashid');
-      assert(searchResEn.length > 0 && searchResEn[0].name === 'Rashid Khan', 'Live PostgreSQL listClients bilingual search by English name');
-      const searchResBn = await livePg.listClients(testFirmId, 'রশিদ');
-      assert(searchResBn.length > 0 && searchResBn[0].nameBn === 'রশিদ খান', 'Live PostgreSQL listClients bilingual search by Bangla name');
-
-      // Firm isolation check in PostgreSQL
-      const foreignFirmSearch = await livePg.listClients('foreign-firm-999', 'Rashid');
-      assert(foreignFirmSearch.length === 0, 'Live PostgreSQL enforces firm isolation (foreign firm gets 0 results)');
-
-      // Atomic failed login update and reset in PostgreSQL
-      const testUserId = 'user-test-pg-001';
-      await livePg.insertUser({
-        id: testUserId,
-        firmId: testFirmId,
-        name: 'Test Advocate',
-        email: 'advocate@pgtest.bd',
-        passwordHash: '$2a$10$abcdefghijklmnopqrstuu',
-        role: 'Staff',
-        permissions: ['cases.view'],
-        language: 'en',
-        active: true,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deletedAt: null,
-        createdBy: 'test-admin',
-        updatedBy: null,
-      });
-      const incRes = await livePg.incrementFailedLogin(testUserId, null);
-      assert(incRes.failedLoginAttempts === 1, 'Live PostgreSQL atomic incrementFailedLogin returns updated count');
-      await livePg.resetFailedLogin(testUserId);
-      const userAfterReset = await livePg.getUserById(testUserId);
-      assert(userAfterReset?.failedLoginAttempts === 0, 'Live PostgreSQL atomic resetFailedLogin clears failed count');
-
-      console.log('\n[REAL POSTGRES LIVE TEST] Passed all live container assertions against PostgreSQL.');
+    if (!dbUrl) {
+      if (isCI) {
+        assert(false, 'DATABASE_URL is required in CI environment (CI=true) to verify migrations and database against PostgreSQL');
+      } else {
+        console.log(
+          '\n[SKIPPED] Real PostgreSQL container execution skipped: DATABASE_URL environment variable is not set.'
+        );
+        console.log(
+          '[SKIPPED] To run live container assertions, start PostgreSQL and set DATABASE_URL, e.g.:'
+        );
+        console.log(
+          '          docker compose -f docker-compose.dev.yml up -d postgres'
+        );
+        console.log(
+          '          $env:DATABASE_URL="postgres://bd_legal_user:bd_legal_secret_password@127.0.0.1:5432/bd_legal_db"'
+        );
+      }
     } else {
-      console.log(
-        '\n[Notice] Real PostgreSQL container is not currently running at 127.0.0.1:5432 (Docker container not started).'
-      );
-      console.log(
-        '[Notice] To run live container assertions, execute: docker compose -f docker-compose.dev.yml up -d postgres'
-      );
-      console.log(
-        '[Notice] Verified single schema source of truth, Drizzle versioned migrations, and adapter architecture.'
-      );
-      assert(true, 'PostgreSQL Docker test harness verified (ready for containerized / CI execution)');
+      let pgConnected = false;
+      const testClient = new pg.Client({ connectionString: dbUrl, connectionTimeoutMillis: 3000 });
+      try {
+        await testClient.connect();
+        pgConnected = true;
+        console.log(`[PostgreSQL Real Container]: Connected successfully to ${dbUrl.replace(/:[^:@]+@/, ':***@')}`);
+      } catch (err: any) {
+        pgConnected = false;
+        console.error(`[PostgreSQL Real Container]: Connection failed: ${err.message}`);
+      } finally {
+        try {
+          await testClient.end();
+        } catch {}
+      }
+
+      if (pgConnected) {
+        console.log('Live PostgreSQL available - running full migration & DB integration tests...');
+
+        // 3a. Run migrations against live PostgreSQL (0000 - 0003)
+        await runMigrations(dbUrl);
+        assert(true, 'runMigrations() applied versioned migrations (0000-0003) to live PostgreSQL');
+
+        // 3b. Verify __drizzle_migrations table exists
+        const verifyClient = new pg.Client({ connectionString: dbUrl });
+        await verifyClient.connect();
+        const migTableRes = await verifyClient.query(
+          "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '__drizzle_migrations') as exists;"
+        );
+        assert(migTableRes.rows[0]?.exists === true, '__drizzle_migrations history table exists in live PostgreSQL');
+
+        const migCountRes = await verifyClient.query(
+          "SELECT count(*)::int as count FROM __drizzle_migrations;"
+        );
+        assert(Number(migCountRes.rows[0]?.count) >= 4, 'All migrations (0000-0003) recorded in __drizzle_migrations');
+        await verifyClient.end();
+
+        // 3c. Live Adapter CRUD with firm isolation & RETURNING clauses
+        const livePg: IDatabase = createPostgresDatabase(dbUrl);
+        const isLiveHealthy = await livePg.isHealthy();
+        assert(isLiveHealthy === true, 'PostgresDatabase.isHealthy() returns true on live PostgreSQL');
+
+        // Test Plan insertion
+        const testPlanId = `plan-pg-${Date.now()}`;
+        await livePg.insertPlan({
+          id: testPlanId,
+          name: 'Postgres Test Plan',
+          durationMonths: 12,
+          priceBdt: 12000,
+          seats: 5,
+          features: ['cases', 'clients', 'devices'],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: 'test-admin',
+          updatedBy: null,
+        });
+
+        // Test Firm insertion and retrieval
+        const testFirmId = `firm-pg-${Date.now()}`;
+        await livePg.insertFirm({
+          id: testFirmId,
+          firmId: testFirmId,
+          name: 'Postgres Live Test Chambers',
+          licenseExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: 'test-admin',
+          updatedBy: null,
+          planId: testPlanId,
+          barCouncilReg: 'REG-PG-001',
+          officeAddress: 'Dhaka, Bangladesh',
+          courtAffiliations: 'Supreme Court',
+          maxDevices: 5,
+          devicePolicy: 'auto-approve',
+          allowOwnerDeviceRemoval: false,
+        });
+        const fetchedFirm = await livePg.getFirm(testFirmId);
+        assert(fetchedFirm !== null && fetchedFirm.name === 'Postgres Live Test Chambers', 'Live PostgreSQL insertFirm & getFirm succeed');
+
+        // Test Client insertion with bilingual search
+        const testClientId = `client-pg-${Date.now()}`;
+        await livePg.insertClient({
+          id: testClientId,
+          firmId: testFirmId,
+          name: 'Rashid Khan',
+          nameBn: 'রশিদ খান',
+          phone: '01711998877',
+          email: 'rashid@test.bd',
+          address: 'Motijheel, Dhaka',
+          notes: 'Live PG test client',
+          archived: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: 'test-admin',
+          updatedBy: null,
+        });
+        const searchResEn = await livePg.listClients(testFirmId, 'Rashid');
+        assert(searchResEn.length > 0 && searchResEn[0].name === 'Rashid Khan', 'Live PostgreSQL listClients bilingual search by English name');
+        const searchResBn = await livePg.listClients(testFirmId, 'রশিদ');
+        assert(searchResBn.length > 0 && searchResBn[0].nameBn === 'রশিদ খান', 'Live PostgreSQL listClients bilingual search by Bangla name');
+
+        // Scoped getClientById check (R-07)
+        const scopedClient = await livePg.getClientById(testClientId, testFirmId);
+        assert(scopedClient !== null && scopedClient.id === testClientId, 'Live PostgreSQL getClientById succeeds with matching firmId');
+        const foreignClient = await livePg.getClientById(testClientId, 'foreign-firm-999');
+        assert(foreignClient === null, 'Live PostgreSQL getClientById returns null with mismatched firmId (R-07)');
+
+        // Firm isolation check in PostgreSQL
+        const foreignFirmSearch = await livePg.listClients('foreign-firm-999', 'Rashid');
+        assert(foreignFirmSearch.length === 0, 'Live PostgreSQL enforces firm isolation (foreign firm gets 0 results)');
+
+        // Atomic failed login update and reset in PostgreSQL
+        const testUserId = `user-pg-${Date.now()}`;
+        await livePg.insertUser({
+          id: testUserId,
+          firmId: testFirmId,
+          name: 'Test Advocate',
+          email: `advocate-${Date.now()}@pgtest.bd`,
+          passwordHash: '$2a$10$abcdefghijklmnopqrstuu',
+          role: 'Staff',
+          permissions: ['cases.view'],
+          language: 'en',
+          active: true,
+          mustChangePassword: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: 'test-admin',
+          updatedBy: null,
+        });
+        const incRes = await livePg.incrementFailedLogin(testUserId, null);
+        assert(incRes.failedLoginAttempts === 1, 'Live PostgreSQL atomic incrementFailedLogin returns updated count');
+        await livePg.resetFailedLogin(testUserId);
+        const userAfterReset = await livePg.getUserById(testUserId);
+        assert(userAfterReset?.failedLoginAttempts === 0, 'Live PostgreSQL atomic resetFailedLogin clears failed count');
+
+        // Device insertion and status query in PostgreSQL
+        const testDeviceId = crypto.randomUUID();
+        const testDeviceHash = `hash-${Date.now()}`;
+        await livePg.insertDevice({
+          id: testDeviceId,
+          firmId: testFirmId,
+          userId: testUserId,
+          deviceKeyHash: testDeviceHash,
+          name: 'Chrome Windows 11',
+          userAgent: 'Mozilla/5.0 Windows',
+          status: 'pending',
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        });
+        const pendingCount = await livePg.countPendingDevices(testFirmId);
+        assert(pendingCount === 1, 'Live PostgreSQL countPendingDevices returns 1');
+        await livePg.updateDevice(testDeviceId, { status: 'approved' });
+        const approvedCount = await livePg.countApprovedDevices(testFirmId);
+        assert(approvedCount === 1, 'Live PostgreSQL countApprovedDevices returns 1 after status update');
+
+        // Transaction atomicity & rollback verification (R-10) in PostgreSQL
+        const abortedFirmId = `firm-aborted-${Date.now()}`;
+        let txRolledBack = false;
+        try {
+          await livePg.transaction(async (txDb) => {
+            await txDb.insertFirm({
+              id: abortedFirmId,
+              firmId: abortedFirmId,
+              name: 'Aborted Chambers',
+              licenseExpiresAt: new Date(Date.now() + 86400000),
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            throw new Error('Simulated rollback error');
+          });
+        } catch (err: any) {
+          txRolledBack = err.message === 'Simulated rollback error';
+        }
+        assert(txRolledBack, 'Live PostgreSQL transaction properly catches error and triggers ROLLBACK');
+        const abortedFirmCheck = await livePg.getFirm(abortedFirmId, true);
+        assert(abortedFirmCheck === null, 'Live PostgreSQL rolled back transaction leaves 0 rows in database');
+
+        console.log('\n[REAL POSTGRES LIVE TEST] Passed all live container assertions against PostgreSQL.');
+      } else {
+        if (isCI) {
+          assert(false, `In CI, unable to connect to PostgreSQL at ${dbUrl}`);
+        } else {
+          console.log(`\n[SKIPPED] PostgreSQL server at ${dbUrl} unreachable. Skipped live DB queries.`);
+        }
+      }
     }
 
     console.log(`\n========================================`);
