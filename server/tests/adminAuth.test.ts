@@ -137,6 +137,9 @@ async function runAdminAuthTests() {
 
     // 2d. Audit log written for admin creation
     const db = getDatabase();
+    const seededAdmin = await db.getPlatformAdminByEmail('admin@platform.bd');
+    assert(Boolean(seededAdmin), 'Default seeded platform admin is available');
+    assert(seededAdmin?.totpSecret === null, 'Default seeded platform admin uses nullable totpSecret field');
     const adminAudits = await db.listAdminAudit(10);
     const creationAudit = adminAudits.find(
       (a) => a.adminId === createdAdmin.id && a.action === 'PLATFORM_ADMIN_CREATED'
