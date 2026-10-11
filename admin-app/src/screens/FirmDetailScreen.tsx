@@ -21,7 +21,6 @@ import {
   Sliders,
   CheckCircle,
   XCircle,
-  ShieldAlert,
   Info,
 } from 'lucide-react';
 
