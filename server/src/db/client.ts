@@ -188,6 +188,7 @@ class MemoryDatabase implements IDatabase {
           id: 'admin-platform-001',
           email: 'admin@platform.bd',
           passwordHash: adminHash,
+          totpSecret: null,
           active: true,
           failedAttempts: 0,
           lockedUntil: null,
