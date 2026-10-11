@@ -191,7 +191,6 @@ class MemoryDatabase implements IDatabase {
           active: true,
           failedAttempts: 0,
           lockedUntil: null,
-          lastLoginAt: null,
           createdAt: new Date('2024-01-01T00:00:00.000Z'),
           updatedAt: new Date('2024-01-01T00:00:00.000Z'),
         },
