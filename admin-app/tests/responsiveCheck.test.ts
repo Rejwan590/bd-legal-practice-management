@@ -32,7 +32,8 @@ function startStaticServer(port = 4174): Promise<http.Server> {
   };
 
   const server = http.createServer((req, res) => {
-    let filePath = path.join(distDir, req.url === '/' ? 'index.html' : req.url!.split('?')[0]);
+    const rawPath = (req.url || '/').split('?')[0].replace(/^\/admin(?=\/|$)/, '') || '/';
+    let filePath = path.join(distDir, rawPath === '/' ? 'index.html' : rawPath);
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       filePath = path.join(distDir, 'index.html');
     }
