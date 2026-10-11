@@ -4,6 +4,7 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
 
 ## Current status
 Case Dossier Hub, Client Profile Hub, and URL Navigation completed and verified. Team Hierarchy & Visibility for Firm Users, Reviewer Hardening (Batches 1-4), and Super Admin (Steps A, B, D) completed and verified.
+- [x] Fixed Vercel `npm install` ERESOLVE by removing unused `"esbuild": "^0.25.0"` devDependency pin from root `package.json` and regenerating `package-lock.json` (`npm ci` clean installs, `npm run lint`, `npm run build`, `npm run test:health` [87/87], `npm test --prefix server` [381 passed], and `npm run build --prefix admin-app` all verified).
 
 ## Case Dossier Hub, Client Profile Hub & URL Navigation (Frontend)
 - **Dependency-Light URL Router (`src/modules/foundation/NavigationContext.tsx` & `vercel.json`)**:
