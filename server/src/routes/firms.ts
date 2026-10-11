@@ -39,7 +39,7 @@ firmsRouter.patch(
       return res.status(404).json({ error: 'Firm not found' });
     }
 
-    const ALLOWED_FIELDS = ['name', 'officeAddress', 'courtAffiliations', 'barCouncilReg'];
+    const ALLOWED_FIELDS = ['name', 'officeAddress', 'courtAffiliations', 'barCouncilReg', 'visibilityMode'];
     const bodyKeys = Object.keys(req.body || {});
     const disallowed = bodyKeys.filter((k) => !ALLOWED_FIELDS.includes(k));
     if (disallowed.length > 0) {
@@ -50,18 +50,26 @@ firmsRouter.patch(
       });
     }
 
-    const { name, officeAddress, courtAffiliations, barCouncilReg } = req.body || {};
+    const { name, officeAddress, courtAffiliations, barCouncilReg, visibilityMode } = req.body || {};
+    if (visibilityMode !== undefined && visibilityMode !== 'open' && visibilityMode !== 'team') {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'visibilityMode must be either "open" or "team"',
+      });
+    }
     const updates: Partial<schema.Firm> = {};
     if (name !== undefined) updates.name = name;
     if (officeAddress !== undefined) updates.officeAddress = officeAddress;
     if (courtAffiliations !== undefined) updates.courtAffiliations = courtAffiliations;
     if (barCouncilReg !== undefined) updates.barCouncilReg = barCouncilReg;
+    if (visibilityMode !== undefined) updates.visibilityMode = visibilityMode;
 
     const oldValues = {
       name: currentFirm.name,
       officeAddress: currentFirm.officeAddress,
       courtAffiliations: currentFirm.courtAffiliations,
       barCouncilReg: currentFirm.barCouncilReg,
+      visibilityMode: currentFirm.visibilityMode,
     };
 
     const updated = await db.updateFirm(currentFirm.id, updates);

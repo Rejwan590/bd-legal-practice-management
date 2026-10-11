@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord } from '../../data/types';
+import { CaseRecord, UserRecord } from '../../data/types';
+import { isLawyerOrOwner } from '../../rolePresets';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Calendar, Save, AlertCircle } from 'lucide-react';
 
@@ -12,6 +13,7 @@ interface HearingFormModalProps {
   defaultCaseId?: string;
   onSave: (data: {
     caseId: string;
+    appearingLawyerId?: string | null;
     scheduledAt: string;
     purpose: string;
     outcomeNote?: string;
@@ -41,7 +43,9 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   const repos = getRepositories();
 
   const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [activeLawyers, setActiveLawyers] = useState<UserRecord[]>([]);
   const [caseId, setCaseId] = useState(defaultCaseId || '');
+  const [appearingLawyerId, setAppearingLawyerId] = useState<string>('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [purpose, setPurpose] = useState(COMMON_PURPOSES[0]);
   const [customPurpose, setCustomPurpose] = useState('');
@@ -61,10 +65,21 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         })
         .catch(console.error);
 
+      repos.user
+        .list({ currentUser })
+        .then((usersData) => {
+          const lawyers = usersData.filter(
+            (u) => (u.status ?? 'active') === 'active' && isLawyerOrOwner(u)
+          );
+          setActiveLawyers(lawyers);
+        })
+        .catch(console.error);
+
       const d = new Date();
       d.setDate(d.getDate() + 7);
       d.setHours(10, 30, 0, 0);
       setScheduledAt(d.toISOString().slice(0, 16));
+      setAppearingLawyerId('');
       setPurpose(COMMON_PURPOSES[0]);
       setCustomPurpose('');
       setOutcomeNote('');
@@ -94,6 +109,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
     try {
       await onSave({
         caseId,
+        appearingLawyerId: appearingLawyerId || null,
         scheduledAt: new Date(scheduledAt).toISOString(),
         purpose: finalPurpose,
         outcomeNote: outcomeNote.trim() || undefined,
@@ -164,6 +180,24 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
               {cases.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.caseNumber} ({c.court}) - {c.fileSerial}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('hearings.appearingLawyer')}
+            </label>
+            <select
+              value={appearingLawyerId}
+              onChange={(e) => setAppearingLawyerId(e.target.value)}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+            >
+              <option value="">{t('hearings.selectAppearingLawyer')}</option>
+              {activeLawyers.map((lw) => (
+                <option key={lw.id} value={lw.id}>
+                  {lw.name} ({lw.role === 'Owner' ? 'Owner' : t(`settings.jobType_${lw.jobType || 'lawyer_junior'}`)})
                 </option>
               ))}
             </select>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, ClientRecord } from '../../data/types';
+import { CaseRecord, ClientRecord, UserRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { CaseFormModal } from './CaseFormModal';
 import { CaseDetailsView } from './CaseDetailsView';
@@ -36,10 +36,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
   const { currentUser, can, isReadOnly } = useAuth();
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [clientsMap, setClientsMap] = useState<Record<string, ClientRecord>>({});
+  const [usersMap, setUsersMap] = useState<Record<string, UserRecord>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'closed'>('all');
   const [courtFilter, setCourtFilter] = useState<string>('ALL');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'my' | 'team'>('all');
 
   // Selected dossier & modal
   const [selectedCase, setSelectedCase] = useState<CaseRecord | null>(null);
@@ -63,16 +65,18 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [casesData, clientsData] = await Promise.all([
+      const [casesData, clientsData, usersData] = await Promise.all([
         repos.case.list(
           { currentUser },
           {
             search: searchQuery,
             status: statusFilter,
             court: courtFilter,
+            scope: scopeFilter,
           }
         ),
         repos.client.list({ currentUser }),
+        repos.user.list({ currentUser }),
       ]);
 
       setCases(casesData);
@@ -81,6 +85,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
         cmap[c.id] = c;
       });
       setClientsMap(cmap);
+
+      const umap: Record<string, UserRecord> = {};
+      usersData.forEach((u) => {
+        umap[u.id] = u;
+      });
+      setUsersMap(umap);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to load cases');
     } finally {
@@ -90,7 +100,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
 
   useEffect(() => {
     fetchCases();
-  }, [currentUser, searchQuery, statusFilter, courtFilter, canView]);
+  }, [currentUser, searchQuery, statusFilter, courtFilter, scopeFilter, canView]);
 
   useEffect(() => {
     if (initialSelectedCaseId && cases.length > 0) {
@@ -229,7 +239,22 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              {t('cases.scopeFilter')}
+            </label>
+            <select
+              value={scopeFilter}
+              onChange={(e) => setScopeFilter(e.target.value as 'all' | 'my' | 'team')}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-slate-500 focus:outline-hidden font-semibold"
+            >
+              <option value="all">{t('cases.scopeAllCases')}</option>
+              <option value="my">{t('cases.scopeMyCases')}</option>
+              <option value="team">{t('cases.scopeMyTeam')}</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-1">
               {t('cases.filterStatus')}
@@ -352,6 +377,19 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
               ),
             },
             {
+              header: t('cases.responsibleLawyer'),
+              accessor: (c) => {
+                const respLawyer = c.responsibleLawyerId ? usersMap[c.responsibleLawyerId] : null;
+                return respLawyer ? (
+                  <div className="text-xs">
+                    <span className="font-medium text-indigo-900 block truncate">{respLawyer.name}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-400">{t('cases.unassignedLawyer')}</span>
+                );
+              },
+            },
+            {
               header: 'Client',
               accessor: (c) => {
                 const linkedClient = clientsMap[c.clientId];
@@ -399,6 +437,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
           ]}
           renderMobileCard={(c) => {
             const linkedClient = clientsMap[c.clientId];
+            const respLawyer = c.responsibleLawyerId ? usersMap[c.responsibleLawyerId] : null;
             return (
               <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition space-y-3">
                 <div className="flex items-start justify-between gap-2">
@@ -443,6 +482,14 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                       <span className="text-slate-600">{c.defendant}</span>
                     </span>
                   </div>
+                  {respLawyer && (
+                    <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-medium">
+                      <User className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span className="truncate">
+                        {t('cases.responsibleLawyer')}: {respLawyer.name}
+                      </span>
+                    </div>
+                  )}
                   {linkedClient && (
                     <div className="flex items-center gap-1 text-[11px] text-slate-500">
                       <User className="w-3 h-3 text-slate-400 shrink-0" />

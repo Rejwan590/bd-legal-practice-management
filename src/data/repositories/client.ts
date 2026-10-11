@@ -2,6 +2,7 @@ import { can } from '../../permissions';
 import { IAuditLogRepository, IClientRepository, ClientLinkedOverview } from '../interfaces';
 import { localStore } from '../mockStore';
 import { ClientRecord, SecurityContext } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export class MockClientRepository implements IClientRepository {
@@ -302,14 +303,14 @@ export class MockClientRepository implements IClientRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
-    const canSeeRestricted = can('restricted.view', currentUser);
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
     const storeCases = (store.cases || []).filter(
       (c) =>
         c.clientId === clientId &&
         c.firmId === currentUser.firmId &&
         c.deletedAt === null &&
-        (!c.restricted || canSeeRestricted)
+        visibleCaseIds.has(c.id)
     );
 
     const caseIds = new Set(storeCases.map((c) => c.id));

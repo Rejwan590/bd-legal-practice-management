@@ -1,4 +1,6 @@
 import { PermissionKey, UserRole } from '../permissions';
+import { JobType, VisibilityMode } from '../rolePresets';
+export type { JobType, VisibilityMode };
 
 export interface BaseRecord {
   id: string;
@@ -51,15 +53,22 @@ export interface FirmRecord extends BaseRecord {
   planId: string;
   licenseExpiresAt: string;
   status: 'active' | 'expired' | 'suspended';
+  visibilityMode: VisibilityMode;
+  seatLimit?: number;
 }
 
 export interface UserRecord extends BaseRecord {
   name: string;
   email: string;
   role: UserRole;
+  jobType?: JobType;
+  jobTitleLabel?: string | null;
+  reportsToUserId?: string | null;
   permissions: PermissionKey[];
   language: 'en' | 'bn';
   active: boolean;
+  status?: 'active' | 'deactivated';
+  mustChangePassword?: boolean;
 }
 
 export interface ClientRecord extends BaseRecord {
@@ -92,15 +101,27 @@ export interface CaseRecord extends BaseRecord {
   ourRole: CourtRole;
   plaintiffLawyer: string;
   defendantLawyer: string;
+  responsibleLawyerId?: string | null;
   status: 'ongoing' | 'closed';
   restricted: boolean;
   nextHearingAt: string | null;
+}
+
+export interface CaseShareRecord {
+  id: string;
+  firmId: string;
+  caseId: string;
+  userId: string;
+  createdBy: string;
+  createdAt: string;
+  deletedAt: string | null;
 }
 
 export type HearingStatus = 'scheduled' | 'held' | 'adjourned' | 'cancelled';
 
 export interface HearingRecord extends BaseRecord {
   caseId: string;
+  appearingLawyerId?: string | null;
   scheduledAt: string; // ISO 8601
   court?: string;
   purpose: string;

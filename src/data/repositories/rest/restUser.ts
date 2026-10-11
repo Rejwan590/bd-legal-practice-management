@@ -17,6 +17,45 @@ export class RestUserRepository implements IUserRepository {
     }
   }
 
+  async create(
+    _context: SecurityContext,
+    data: {
+      name: string;
+      email: string;
+      role?: 'Owner' | 'Staff';
+      jobType?: string;
+      jobTitleLabel?: string | null;
+      reportsToUserId?: string | null;
+      preset?: string;
+      permissions?: PermissionKey[];
+      language?: 'en' | 'bn';
+      temporaryPassword?: string;
+    }
+  ): Promise<UserRecord & { temporaryPassword?: string }> {
+    return restFetch<UserRecord & { temporaryPassword?: string }>('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async update(
+    _context: SecurityContext,
+    targetUserId: string,
+    data: {
+      name?: string;
+      email?: string;
+      jobType?: string;
+      jobTitleLabel?: string | null;
+      reportsToUserId?: string | null;
+      language?: 'en' | 'bn';
+    }
+  ): Promise<UserRecord> {
+    return restFetch<UserRecord>(`/users/${targetUserId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async updatePermissions(
     _context: SecurityContext,
     targetUserId: string,
@@ -26,5 +65,50 @@ export class RestUserRepository implements IUserRepository {
       method: 'PATCH',
       body: JSON.stringify({ permissions }),
     });
+  }
+
+  async updateRole(
+    _context: SecurityContext,
+    targetUserId: string,
+    role: 'Owner' | 'Staff'
+  ): Promise<UserRecord> {
+    return restFetch<UserRecord>(`/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async deactivate(
+    _context: SecurityContext,
+    targetUserId: string,
+    reassignToUserId?: string
+  ): Promise<UserRecord & { warnings?: string[]; openCasesCount?: number; futureHearingsCount?: number }> {
+    return restFetch<UserRecord & { warnings?: string[]; openCasesCount?: number; futureHearingsCount?: number }>(
+      `/users/${targetUserId}/deactivate`,
+      {
+        method: 'POST',
+        body: JSON.stringify(reassignToUserId ? { reassignToUserId } : {}),
+      }
+    );
+  }
+
+  async reactivate(_context: SecurityContext, targetUserId: string): Promise<UserRecord> {
+    return restFetch<UserRecord>(`/users/${targetUserId}/reactivate`, {
+      method: 'POST',
+    });
+  }
+
+  async reassignTeam(
+    _context: SecurityContext,
+    fromLawyerId: string,
+    toLawyerId: string
+  ): Promise<{ success: boolean; affectedUserIds: string[] }> {
+    return restFetch<{ success: boolean; affectedUserIds: string[] }>(
+      `/users/${fromLawyerId}/reassign-team`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ toLawyerId }),
+      }
+    );
   }
 }

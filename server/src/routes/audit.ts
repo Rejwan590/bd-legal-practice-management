@@ -44,7 +44,7 @@ auditRouter.get(
     const canSeeRestricted =
       req.user!.role === 'Owner' ||
       Boolean(req.user!.permissions && req.user!.permissions.includes('restricted.view'));
-    const logs = await db.listAudit(req.user!.firmId, limit, offset, canSeeRestricted);
+    const logs = await db.listAudit(req.user!.firmId, limit, offset, canSeeRestricted, req.user);
 
     res.json(logs);
   }

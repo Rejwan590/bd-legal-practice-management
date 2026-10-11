@@ -6,6 +6,7 @@ import { enforceFirmIsolation } from '../middleware/firmIsolation.js';
 import { enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
 import { recordAudit } from '../services/auditService.js';
+import { isLawyerOrOwner } from '../rolePresets.js';
 
 export const casesRouter = Router();
 
@@ -37,7 +38,8 @@ casesRouter.get(
       caseNumber,
       court,
       excludeId,
-      canAccessRestricted(req)
+      canAccessRestricted(req),
+      req.user
     );
 
     res.json({ isDuplicate });
@@ -50,7 +52,7 @@ casesRouter.get(
   requirePermission('cases.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const { search, status, court, matterType, clientId } = req.query;
+    const { search, status, court, matterType, clientId, scope } = req.query;
     const includeRestricted = canAccessRestricted(req);
 
     const casesList = await db.listCases(req.user!.firmId, {
@@ -60,6 +62,8 @@ casesRouter.get(
       matterType: matterType as string | undefined,
       clientId: clientId as string | undefined,
       includeRestricted,
+      user: req.user,
+      scope: (scope as 'my' | 'team' | 'all') || undefined,
     });
 
     res.json(casesList);
@@ -72,7 +76,7 @@ casesRouter.get(
   requirePermission('cases.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const c = await db.getCaseById(req.params.id, req.user!.firmId);
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
 
     if (!c || c.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
@@ -87,13 +91,99 @@ casesRouter.get(
   }
 );
 
+// GET /api/v1/cases/:id/shares - List case shares
+casesRouter.get(
+  '/:id/shares',
+  requirePermission('cases.view'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const shares = await db.listCaseShares(c.id, req.user!.firmId);
+    res.json(shares);
+  }
+);
+
+// POST /api/v1/cases/:id/shares - Share a case with another user in the firm
+casesRouter.post(
+  '/:id/shares',
+  requirePermission('cases.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const { userId } = req.body;
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    const targetUser = await db.getUserById(userId);
+    if (!targetUser || targetUser.firmId !== req.user!.firmId || !targetUser.active) {
+      return res.status(400).json({ error: 'Target user not found or inactive in this chamber' });
+    }
+    const share = await db.insertCaseShare({
+      id: `share-${crypto.randomUUID()}`,
+      firmId: req.user!.firmId,
+      caseId: c.id,
+      userId: targetUser.id,
+      createdBy: req.user!.id,
+    });
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'Case',
+      entityId: c.id,
+      action: 'SHARE_CASE',
+      oldValue: null,
+      newValue: { shareId: share.id, caseId: c.id, sharedWithUserId: targetUser.id, sharedWithName: targetUser.name },
+    });
+    res.status(201).json(share);
+  }
+);
+
+// DELETE /api/v1/cases/:id/shares/:shareId - Remove case share
+casesRouter.delete(
+  '/:id/shares/:shareId',
+  requirePermission('cases.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const shares = await db.listCaseShares(c.id, req.user!.firmId);
+    const targetShare = shares.find((s) => s.id === req.params.shareId || s.userId === req.params.shareId);
+    if (!targetShare) {
+      return res.status(404).json({ error: 'Share not found' });
+    }
+    await db.deleteCaseShare(targetShare.id, req.user!.firmId);
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'Case',
+      entityId: c.id,
+      action: 'UNSHARE_CASE',
+      oldValue: { shareId: targetShare.id, caseId: c.id, sharedWithUserId: targetShare.userId },
+      newValue: { deletedAt: new Date().toISOString() },
+    });
+    res.json({ success: true });
+  }
+);
+
 // GET /api/v1/cases/:id - Get case by ID
 casesRouter.get(
   '/:id',
   requirePermission('cases.view'),
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const c = await db.getCaseById(req.params.id, req.user!.firmId);
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
 
     if (!c || c.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
@@ -127,6 +217,7 @@ casesRouter.post(
       ourRole,
       plaintiffLawyer,
       defendantLawyer,
+      responsibleLawyerId,
       status,
       restricted,
     } = req.body;
@@ -151,6 +242,23 @@ casesRouter.post(
       return res.status(400).json({ error: 'Client not found or does not belong to this chamber' });
     }
 
+    // Validate responsibleLawyerId if provided
+    let resolvedRespLawyerId: string | null = null;
+    if (responsibleLawyerId !== undefined && responsibleLawyerId !== null && responsibleLawyerId !== '') {
+      const respUser = await db.getUserById(String(responsibleLawyerId));
+      if (!respUser || respUser.firmId !== req.user!.firmId || !respUser.active) {
+        return res.status(400).json({ error: 'Responsible lawyer must be an active user of the same firm' });
+      }
+      if (!isLawyerOrOwner(respUser.role, respUser.jobType)) {
+        return res.status(400).json({ error: 'Responsible lawyer must be a lawyer or Owner' });
+      }
+      resolvedRespLawyerId = respUser.id;
+    } else if (isLawyerOrOwner(req.user!.role, req.user!.jobType)) {
+      resolvedRespLawyerId = req.user!.id;
+    } else if (req.user!.reportsToUserId) {
+      resolvedRespLawyerId = req.user!.reportsToUserId;
+    }
+
     // Confidentiality permission check
     const isRestricted = Boolean(restricted);
     if (isRestricted && !canAccessRestricted(req)) {
@@ -165,7 +273,8 @@ casesRouter.post(
       caseNumber.trim(),
       court.trim(),
       undefined,
-      canAccessRestricted(req)
+      canAccessRestricted(req),
+      req.user
     );
 
     const id = crypto.randomUUID();
@@ -185,6 +294,7 @@ casesRouter.post(
       ourRole: ourRole || 'Plaintiff',
       plaintiffLawyer: plaintiffLawyer?.trim() || null,
       defendantLawyer: defendantLawyer?.trim() || null,
+      responsibleLawyerId: resolvedRespLawyerId,
       status: status === 'closed' ? 'closed' : 'ongoing',
       restricted: isRestricted,
       nextHearingAt: null,
@@ -209,6 +319,7 @@ casesRouter.post(
         caseNumber: newCase.caseNumber,
         court: newCase.court,
         clientId: newCase.clientId,
+        responsibleLawyerId: newCase.responsibleLawyerId,
         restricted: newCase.restricted,
         status: newCase.status,
       },
@@ -230,13 +341,17 @@ casesRouter.patch(
   enforceSubscriptionReadOnly,
   async (req: AuthenticatedRequest, res: Response) => {
     const db = getDatabase();
-    const existing = await db.getCaseById(req.params.id, req.user!.firmId);
-
+    const hasRestrictedPermission = canAccessRestricted(req);
+    // Check team visibility first (ignoring restricted flag so team-visible restricted cases return 403 below, while other teams' cases return 404)
+    const existing = await db.getCaseById(req.params.id, req.user!.firmId, {
+      ...req.user!,
+      permissions: hasRestrictedPermission
+        ? req.user!.permissions
+        : [...req.user!.permissions, 'restricted.view'],
+    });
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });
     }
-
-    const hasRestrictedPermission = canAccessRestricted(req);
 
     // If case is restricted, or request is trying to change restricted flag, verify permission
     if ((existing.restricted || req.body.restricted !== undefined) && !hasRestrictedPermission) {
@@ -253,6 +368,17 @@ casesRouter.patch(
       }
     }
 
+    // Validate responsibleLawyerId if provided
+    if (req.body.responsibleLawyerId !== undefined && req.body.responsibleLawyerId !== null && req.body.responsibleLawyerId !== '') {
+      const respUser = await db.getUserById(String(req.body.responsibleLawyerId));
+      if (!respUser || respUser.firmId !== req.user!.firmId || !respUser.active) {
+        return res.status(400).json({ error: 'Responsible lawyer must be an active user of the same firm' });
+      }
+      if (!isLawyerOrOwner(respUser.role, respUser.jobType)) {
+        return res.status(400).json({ error: 'Responsible lawyer must be a lawyer or Owner' });
+      }
+    }
+
     // Check duplicate warning if caseNumber or court changed
     let isDuplicate = false;
     const targetCaseNumber = req.body.caseNumber || existing.caseNumber;
@@ -263,7 +389,8 @@ casesRouter.patch(
         targetCaseNumber,
         targetCourt,
         existing.id,
-        canAccessRestricted(req)
+        canAccessRestricted(req),
+        req.user
       );
     }
 
@@ -279,6 +406,9 @@ casesRouter.patch(
       ...(req.body.ourRole && { ourRole: req.body.ourRole }),
       ...(req.body.plaintiffLawyer !== undefined && { plaintiffLawyer: req.body.plaintiffLawyer?.trim() || null }),
       ...(req.body.defendantLawyer !== undefined && { defendantLawyer: req.body.defendantLawyer?.trim() || null }),
+      ...(req.body.responsibleLawyerId !== undefined && {
+        responsibleLawyerId: req.body.responsibleLawyerId || null,
+      }),
       ...(req.body.status && { status: req.body.status }),
       ...(req.body.restricted !== undefined && { restricted: Boolean(req.body.restricted) }),
       ...(req.body.nextHearingAt !== undefined && {
@@ -302,12 +432,14 @@ casesRouter.patch(
         court: existing.court,
         status: existing.status,
         restricted: existing.restricted,
+        responsibleLawyerId: existing.responsibleLawyerId,
       },
       newValue: {
         caseNumber: updated.caseNumber,
         court: updated.court,
         status: updated.status,
         restricted: updated.restricted,
+        responsibleLawyerId: updated.responsibleLawyerId,
       },
     });
 
@@ -332,7 +464,7 @@ casesRouter.delete(
     }
 
     const db = getDatabase();
-    const existing = await db.getCaseById(req.params.id, req.user!.firmId);
+    const existing = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
 
     if (!existing || existing.firmId !== req.user!.firmId) {
       return res.status(404).json({ error: 'Case not found' });

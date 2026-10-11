@@ -2,6 +2,7 @@ import { can } from '../../permissions';
 import { IAuditLogRepository, IReminderRepository, ITaskRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import { SecurityContext, TaskPriority, TaskRecord, TaskStatus } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export class MockTaskRepository implements ITaskRepository {
@@ -30,17 +31,14 @@ export class MockTaskRepository implements ITaskRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
-    let tasks = (store.tasks || []).filter(
-      (t) => t.firmId === currentUser.firmId && t.deletedAt === null
-    );
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
-    // Filter out tasks belonging to restricted cases if user lacks restricted.view
-    if (!can('restricted.view', currentUser)) {
-      const restrictedCaseIds = new Set(
-        (store.cases || []).filter((c) => c.restricted).map((c) => c.id)
-      );
-      tasks = tasks.filter((t) => !t.caseId || !restrictedCaseIds.has(t.caseId));
-    }
+    let tasks = (store.tasks || []).filter(
+      (t) =>
+        t.firmId === currentUser.firmId &&
+        t.deletedAt === null &&
+        (!t.caseId || visibleCaseIds.has(t.caseId))
+    );
 
     // Staff Partitioning Invariant:
     // If user is Staff (and does NOT have tasks.assign or special firm-wide privilege):
@@ -99,6 +97,13 @@ export class MockTaskRepository implements ITaskRepository {
       const caseRec = (store.cases || []).find((c) => c.id === task.caseId);
       if (caseRec?.restricted) {
         throw new Error('Permission denied: task is linked to a confidential case');
+      }
+    }
+
+    if (task.caseId) {
+      const visibleCaseIds = getVisibleCaseIdsForContext(context);
+      if (!visibleCaseIds.has(task.caseId)) {
+        return null;
       }
     }
 

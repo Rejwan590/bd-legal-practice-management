@@ -59,6 +59,7 @@ export const SEED_FIRMS = [
     maxDevices: 20,
     devicePolicy: 'auto-approve' as const,
     allowOwnerDeviceRemoval: false,
+    visibilityMode: 'open' as const,
     licenseStartsAt: new Date('2024-01-01T00:00:00.000Z'),
     licenseExpiresAt: new Date('2027-12-31T23:59:59.000Z'),
     status: 'active' as const,
@@ -136,6 +137,7 @@ export const SEED_CASES = [
     ourRole: 'Plaintiff',
     plaintiffLawyer: 'Adv. Mahbubur Rahman',
     defendantLawyer: 'Adv. Shamsul Huda',
+    responsibleLawyerId: 'user-owner-001',
     status: 'ongoing' as const,
     restricted: false,
     nextHearingAt: new Date('2026-10-15T04:30:00.000Z'),
@@ -159,6 +161,7 @@ export const SEED_CASES = [
     ourRole: 'Petitioner',
     plaintiffLawyer: 'Deputy Attorney General',
     defendantLawyer: 'Adv. Mahbubur Rahman',
+    responsibleLawyerId: 'user-owner-001',
     status: 'ongoing' as const,
     restricted: true,
     nextHearingAt: new Date('2026-11-04T05:00:00.000Z'),
@@ -212,6 +215,9 @@ export async function getSeedUsers() {
       email: 'owner@firm.bd',
       passwordHash: ownerHash,
       role: 'Owner' as const,
+      jobType: 'lawyer_senior' as const,
+      jobTitleLabel: 'Senior Advocate & Head of Chamber',
+      reportsToUserId: null,
       permissions: ALL_PERMISSIONS,
       language: 'en' as const,
       active: true,
@@ -231,6 +237,9 @@ export async function getSeedUsers() {
       email: 'staff@firm.bd',
       passwordHash: staffHash,
       role: 'Staff' as const,
+      jobType: 'other' as const,
+      jobTitleLabel: 'Associate',
+      reportsToUserId: null,
       permissions: DEFAULT_STAFF_PERMISSIONS,
       language: 'en' as const,
       active: true,
@@ -278,20 +287,20 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
 
     for (const firm of SEED_FIRMS) {
       await client.query(
-        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, license_expires_at, status, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, license_expires_at, status, visibility_mode, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (id) DO NOTHING`,
-        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.licenseExpiresAt, firm.status, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
+        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.licenseExpiresAt, firm.status, firm.visibilityMode, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
       );
     }
 
     const users = await getSeedUsers();
     for (const user of users) {
       await client.query(
-        `INSERT INTO users (id, firm_id, name, email, password_hash, role, permissions, language, active, failed_login_attempts, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        `INSERT INTO users (id, firm_id, name, email, password_hash, role, job_type, job_title_label, reports_to_user_id, permissions, language, active, failed_login_attempts, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          ON CONFLICT (id) DO NOTHING`,
-        [user.id, user.firmId, user.name, user.email, user.passwordHash, user.role, JSON.stringify(user.permissions), user.language, user.active, user.failedLoginAttempts, user.createdAt, user.updatedAt, user.createdBy, user.updatedBy]
+        [user.id, user.firmId, user.name, user.email, user.passwordHash, user.role, user.jobType, user.jobTitleLabel, user.reportsToUserId, JSON.stringify(user.permissions), user.language, user.active, user.failedLoginAttempts, user.createdAt, user.updatedAt, user.createdBy, user.updatedBy]
       );
     }
 
@@ -306,10 +315,10 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
 
     for (const cs of SEED_CASES) {
       await client.query(
-        `INSERT INTO cases (id, firm_id, client_id, file_serial, case_number, court, matter_type, description, plaintiff, defendant, our_role, plaintiff_lawyer, defendant_lawyer, status, restricted, next_hearing_at, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        `INSERT INTO cases (id, firm_id, client_id, file_serial, case_number, court, matter_type, description, plaintiff, defendant, our_role, plaintiff_lawyer, defendant_lawyer, responsible_lawyer_id, status, restricted, next_hearing_at, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
          ON CONFLICT (id) DO NOTHING`,
-        [cs.id, cs.firmId, cs.clientId, cs.fileSerial, cs.caseNumber, cs.court, cs.matterType, cs.description, cs.plaintiff, cs.defendant, cs.ourRole, cs.plaintiffLawyer, cs.defendantLawyer, cs.status, cs.restricted, cs.nextHearingAt, cs.createdAt, cs.updatedAt, cs.createdBy, cs.updatedBy]
+        [cs.id, cs.firmId, cs.clientId, cs.fileSerial, cs.caseNumber, cs.court, cs.matterType, cs.description, cs.plaintiff, cs.defendant, cs.ourRole, cs.plaintiffLawyer, cs.defendantLawyer, cs.responsibleLawyerId, cs.status, cs.restricted, cs.nextHearingAt, cs.createdAt, cs.updatedAt, cs.createdBy, cs.updatedBy]
       );
     }
 

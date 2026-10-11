@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, ClientRecord, CourtRole } from '../../data/types';
+import { CaseRecord, ClientRecord, CourtRole, UserRecord } from '../../data/types';
+import { isLawyerOrOwner } from '../../rolePresets';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import {
   X,
@@ -58,7 +59,9 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
   const repos = getRepositories();
 
   const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [activeLawyers, setActiveLawyers] = useState<UserRecord[]>([]);
   const [clientId, setClientId] = useState('');
+  const [responsibleLawyerId, setResponsibleLawyerId] = useState<string>('');
   const [fileSerial, setFileSerial] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
   const [court, setCourt] = useState(COMMON_COURTS[0]);
@@ -80,7 +83,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
 
   const canRestricted = can('restricted.view');
 
-  // Load clients list for the client selector dropdown
+  // Load clients list and active lawyers for selector dropdowns
   useEffect(() => {
     if (isOpen) {
       repos.client
@@ -92,12 +95,32 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
           }
         })
         .catch(console.error);
+
+      repos.user
+        .list({ currentUser })
+        .then((usersData) => {
+          const lawyers = usersData.filter(
+            (u) => (u.status ?? 'active') === 'active' && isLawyerOrOwner(u)
+          );
+          setActiveLawyers(lawyers);
+          if (!initialData) {
+            if (isLawyerOrOwner(currentUser)) {
+              setResponsibleLawyerId(currentUser.id);
+            } else if (currentUser.reportsToUserId) {
+              setResponsibleLawyerId(currentUser.reportsToUserId);
+            } else if (lawyers.length > 0) {
+              setResponsibleLawyerId(lawyers[0].id);
+            }
+          }
+        })
+        .catch(console.error);
     }
   }, [isOpen, currentUser, defaultClientId]);
 
   useEffect(() => {
     if (initialData) {
       setClientId(initialData.clientId);
+      setResponsibleLawyerId(initialData.responsibleLawyerId || '');
       setFileSerial(initialData.fileSerial);
       setCaseNumber(initialData.caseNumber);
 
@@ -204,6 +227,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
     try {
       await onSave({
         clientId,
+        responsibleLawyerId: responsibleLawyerId || null,
         fileSerial: fileSerial.trim(),
         caseNumber: caseNumber.trim(),
         court: finalCourt,
@@ -269,8 +293,8 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
         )}
 
         <form id="case-form-modal" onSubmit={handleSubmit} className="space-y-4">
-          {/* Client & File Serial */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Client, Responsible Lawyer & File Serial */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 {t('cases.linkedClient')} *
@@ -279,12 +303,30 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
                 required
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
               >
                 {clients.length === 0 && <option value="">{t('cases.noClientsRegistered')}</option>}
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} {c.nameBn ? `(${c.nameBn})` : ''} - {c.phone}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {t('cases.responsibleLawyer')}
+              </label>
+              <select
+                value={responsibleLawyerId}
+                onChange={(e) => setResponsibleLawyerId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
+              >
+                <option value="">{t('cases.unassignedLawyer')}</option>
+                {activeLawyers.map((lw) => (
+                  <option key={lw.id} value={lw.id}>
+                    {lw.name} ({lw.role === 'Owner' ? 'Owner' : t(`settings.jobType_${lw.jobType || 'lawyer_junior'}`)})
                   </option>
                 ))}
               </select>
@@ -299,7 +341,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
                 required
                 value={fileSerial}
                 onChange={(e) => setFileSerial(e.target.value)}
-                className="w-full font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                className="w-full font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
               />
             </div>
           </div>

@@ -5,6 +5,7 @@ import {
   CalendarEventRecord,
   CalendarEventType,
   CaseRecord,
+  CaseShareRecord,
   ClientRecord,
   FileMovementRecord,
   FirmRecord,
@@ -56,7 +57,46 @@ export interface IAuditLogRepository {
 export interface IUserRepository {
   list(context: SecurityContext): Promise<UserRecord[]>;
   getById(context: SecurityContext, id: string): Promise<UserRecord | null>;
+  create(
+    context: SecurityContext,
+    data: {
+      name: string;
+      email: string;
+      role?: 'Owner' | 'Staff';
+      jobType?: string;
+      jobTitleLabel?: string | null;
+      reportsToUserId?: string | null;
+      preset?: string;
+      permissions?: PermissionKey[];
+      language?: 'en' | 'bn';
+      temporaryPassword?: string;
+    }
+  ): Promise<UserRecord & { temporaryPassword?: string }>;
+  update(
+    context: SecurityContext,
+    targetUserId: string,
+    data: {
+      name?: string;
+      email?: string;
+      jobType?: string;
+      jobTitleLabel?: string | null;
+      reportsToUserId?: string | null;
+      language?: 'en' | 'bn';
+    }
+  ): Promise<UserRecord>;
   updatePermissions(context: SecurityContext, targetUserId: string, permissions: PermissionKey[]): Promise<UserRecord>;
+  updateRole(context: SecurityContext, targetUserId: string, role: 'Owner' | 'Staff'): Promise<UserRecord>;
+  deactivate(
+    context: SecurityContext,
+    targetUserId: string,
+    reassignToUserId?: string
+  ): Promise<UserRecord & { warnings?: string[]; openCasesCount?: number; futureHearingsCount?: number }>;
+  reactivate(context: SecurityContext, targetUserId: string): Promise<UserRecord>;
+  reassignTeam(
+    context: SecurityContext,
+    fromLawyerId: string,
+    toLawyerId: string
+  ): Promise<{ success: boolean; affectedUserIds: string[] }>;
 }
 
 export interface IFirmRepository {
@@ -120,6 +160,7 @@ export interface ICaseRepository {
       court?: string;
       matterType?: string;
       clientId?: string;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<CaseRecord[]>;
   getById(context: SecurityContext, id: string): Promise<CaseRecord | null>;
@@ -149,6 +190,9 @@ export interface ICaseRepository {
     court: string,
     excludeId?: string
   ): Promise<boolean>;
+  listShares?(context: SecurityContext, caseId: string): Promise<CaseShareRecord[]>;
+  shareCase?(context: SecurityContext, caseId: string, userId: string): Promise<CaseShareRecord>;
+  unshareCase?(context: SecurityContext, caseId: string, shareIdOrUserId: string): Promise<void>;
 }
 
 export interface CaseHearingsOverview {
@@ -173,6 +217,7 @@ export interface IHearingRepository {
     context: SecurityContext,
     data: {
       caseId: string;
+      appearingLawyerId?: string | null;
       scheduledAt: string;
       purpose: string;
       court?: string;

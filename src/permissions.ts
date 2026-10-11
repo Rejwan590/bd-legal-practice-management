@@ -30,6 +30,9 @@ export interface UserPermissionProfile {
   name: string;
   email: string;
   role: UserRole;
+  jobType?: string;
+  jobTitleLabel?: string | null;
+  reportsToUserId?: string | null;
   permissions: PermissionKey[];
   language: 'en' | 'bn';
   active: boolean;

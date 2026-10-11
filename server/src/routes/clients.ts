@@ -56,7 +56,7 @@ clientsRouter.get(
 
     const canSeeRestricted =
       req.user!.role === 'Owner' || (req.user!.permissions && req.user!.permissions.includes('restricted.view'));
-    const overview = await db.getClientLinkedOverview(client.id, req.user!.firmId, canSeeRestricted);
+    const overview = await db.getClientLinkedOverview(client.id, req.user!.firmId, canSeeRestricted, req.user);
     res.json(overview);
   }
 );

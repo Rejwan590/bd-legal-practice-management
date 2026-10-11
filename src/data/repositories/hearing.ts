@@ -12,7 +12,7 @@ import {
   HearingStatus,
   SecurityContext,
 } from '../types';
-import { syncCaseNextHearing } from './case';
+import { getVisibleCaseIdsForContext, syncCaseNextHearing } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export class MockHearingRepository implements IHearingRepository {
@@ -39,17 +39,12 @@ export class MockHearingRepository implements IHearingRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
-    const canSeeRestricted = can('restricted.view', currentUser);
-
-    // Build map of case restricted flags
-    const restrictedCaseIds = new Set(
-      (store.cases || []).filter((c) => c.restricted).map((c) => c.id)
-    );
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
     let hearings = (store.hearings || []).filter((h) => {
       if (h.firmId !== currentUser.firmId) return false;
       if (h.deletedAt !== null) return false;
-      if (restrictedCaseIds.has(h.caseId) && !canSeeRestricted) return false;
+      if (!visibleCaseIds.has(h.caseId)) return false;
       return true;
     });
 
@@ -93,6 +88,11 @@ export class MockHearingRepository implements IHearingRepository {
       throw new Error('Permission denied: restricted.view required for this hearing');
     }
 
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
+    if (!visibleCaseIds.has(hearing.caseId)) {
+      return null;
+    }
+
     return hearing;
   }
 
@@ -100,6 +100,7 @@ export class MockHearingRepository implements IHearingRepository {
     context: SecurityContext,
     data: {
       caseId: string;
+      appearingLawyerId?: string | null;
       scheduledAt: string;
       purpose: string;
       court?: string;
@@ -113,8 +114,13 @@ export class MockHearingRepository implements IHearingRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
     const targetCase = (store.cases || []).find(
-      (c) => c.id === data.caseId && c.firmId === currentUser.firmId && c.deletedAt === null
+      (c) =>
+        c.id === data.caseId &&
+        c.firmId === currentUser.firmId &&
+        c.deletedAt === null &&
+        visibleCaseIds.has(c.id)
     );
 
     if (!targetCase) {
@@ -126,6 +132,10 @@ export class MockHearingRepository implements IHearingRepository {
       id: generateUUID(),
       firmId: currentUser.firmId,
       caseId: data.caseId,
+      appearingLawyerId:
+        data.appearingLawyerId !== undefined
+          ? data.appearingLawyerId
+          : targetCase.responsibleLawyerId ?? null,
       scheduledAt: data.scheduledAt,
       court: data.court || targetCase.court,
       purpose: data.purpose.trim(),
@@ -151,6 +161,7 @@ export class MockHearingRepository implements IHearingRepository {
       oldValue: null,
       newValue: {
         caseId: newHearing.caseId,
+        appearingLawyerId: newHearing.appearingLawyerId,
         scheduledAt: newHearing.scheduledAt,
         purpose: newHearing.purpose,
       },

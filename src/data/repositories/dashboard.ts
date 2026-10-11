@@ -1,4 +1,3 @@
-import { can } from '../../permissions';
 import { IDashboardRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import {
@@ -7,25 +6,21 @@ import {
   HearingRecord,
   SecurityContext,
 } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 
 export class MockDashboardRepository implements IDashboardRepository {
   async getMetrics(context: SecurityContext): Promise<DashboardMetrics> {
     const { currentUser } = context;
-    const canSeeRestricted = can('restricted.view', currentUser);
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const nowMs = now.getTime();
 
-    // 1. Cases: filter firmId, not deleted, and if restricted, requires restricted.view
-    const cases = (store.cases || []).filter((c) => {
-      if (c.firmId !== firmId || c.deletedAt !== null) return false;
-      if (c.restricted && !canSeeRestricted) return false;
-      return true;
-    });
+    // 1. Cases: use central visibility rule
+    const allowedCaseIds = getVisibleCaseIdsForContext(context);
+    const cases = (store.cases || []).filter((c) => allowedCaseIds.has(c.id));
     const activeCasesCount = cases.filter((c) => c.status === 'ongoing').length;
-    const allowedCaseIds = new Set(cases.map((c) => c.id));
 
     // 2. Clients: filter firmId, not deleted
     const clients = (store.clients || []).filter((c) => c.firmId === firmId && c.deletedAt === null);
@@ -71,26 +66,24 @@ export class MockDashboardRepository implements IDashboardRepository {
     if (currentUser.role === 'Staff') {
       reminders = reminders.filter((r) => r.userId === currentUser.id);
     }
-    if (!canSeeRestricted) {
-      const hearingMap = new Map((store.hearings || []).map((h) => [h.id, h]));
-      const taskMap = new Map((store.tasks || []).map((t) => [t.id, t]));
-      const fileMap = new Map((store.physicalFiles || []).map((f) => [f.id, f]));
-      reminders = reminders.filter((r) => {
-        if (r.sourceType === 'hearing') {
-          const h = hearingMap.get(r.sourceId);
-          if (h && h.caseId && !allowedCaseIds.has(h.caseId)) return false;
-        }
-        if (r.sourceType === 'task') {
-          const t = taskMap.get(r.sourceId);
-          if (t && t.caseId && !allowedCaseIds.has(t.caseId)) return false;
-        }
-        if (r.sourceType === 'file_return') {
-          const f = fileMap.get(r.sourceId);
-          if (f && f.caseId && !allowedCaseIds.has(f.caseId)) return false;
-        }
-        return true;
-      });
-    }
+    const hearingMap = new Map((store.hearings || []).map((h) => [h.id, h]));
+    const taskMap = new Map((store.tasks || []).map((t) => [t.id, t]));
+    const fileMap = new Map((store.physicalFiles || []).map((f) => [f.id, f]));
+    reminders = reminders.filter((r) => {
+      if (r.sourceType === 'hearing') {
+        const h = hearingMap.get(r.sourceId);
+        if (h && h.caseId && !allowedCaseIds.has(h.caseId)) return false;
+      }
+      if (r.sourceType === 'task') {
+        const t = taskMap.get(r.sourceId);
+        if (t && t.caseId && !allowedCaseIds.has(t.caseId)) return false;
+      }
+      if (r.sourceType === 'file_return') {
+        const f = fileMap.get(r.sourceId);
+        if (f && f.caseId && !allowedCaseIds.has(f.caseId)) return false;
+      }
+      return true;
+    });
     const pendingRemindersCount = reminders.length;
 
     return {
@@ -107,19 +100,13 @@ export class MockDashboardRepository implements IDashboardRepository {
 
   async getUrgentItems(context: SecurityContext): Promise<DashboardUrgentItems> {
     const { currentUser } = context;
-    const canSeeRestricted = can('restricted.view', currentUser);
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const nowMs = now.getTime();
 
-    const cases = (store.cases || []).filter((c) => {
-      if (c.firmId !== firmId || c.deletedAt !== null) return false;
-      if (c.restricted && !canSeeRestricted) return false;
-      return true;
-    });
-    const allowedCaseIds = new Set(cases.map((c) => c.id));
+    const allowedCaseIds = getVisibleCaseIdsForContext(context);
 
     // Today's hearings
     const todayHearings = (store.hearings || []).filter((h) => {
@@ -163,19 +150,13 @@ export class MockDashboardRepository implements IDashboardRepository {
 
   async getUpcomingHearings(context: SecurityContext, days: number = 7): Promise<HearingRecord[]> {
     const { currentUser } = context;
-    const canSeeRestricted = can('restricted.view', currentUser);
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const now = new Date();
     const startMs = now.getTime();
     const endMs = startMs + days * 24 * 60 * 60 * 1000;
 
-    const cases = (store.cases || []).filter((c) => {
-      if (c.firmId !== firmId || c.deletedAt !== null) return false;
-      if (c.restricted && !canSeeRestricted) return false;
-      return true;
-    });
-    const allowedCaseIds = new Set(cases.map((c) => c.id));
+    const allowedCaseIds = getVisibleCaseIdsForContext(context);
 
     const hearings = (store.hearings || []).filter((h) => {
       if (h.firmId !== firmId || h.deletedAt !== null) return false;

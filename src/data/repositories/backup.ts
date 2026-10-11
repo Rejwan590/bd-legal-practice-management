@@ -20,6 +20,7 @@ import {
   RestoreResult,
   SecurityContext,
 } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export class MockBackupRepository implements IBackupRepository {
@@ -67,52 +68,55 @@ export class MockBackupRepository implements IBackupRepository {
     let reminders = (store.reminders || []).filter((r) => r.firmId === firmId);
     let auditLogs = (store.auditLogs || []).filter((a) => a.firmId === firmId);
 
-    // Confidentiality boundary: omit restricted cases and derived records if lacking restricted.view
-    if (!can('restricted.view', currentUser)) {
-      const restrictedCaseIdSet = new Set(
-        cases.filter((c) => c.restricted).map((c) => c.id)
-      );
+    // Central visibility boundary: omit any cases (restricted or team-hidden) and derived records not visible to currentUser
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
+    const hiddenCaseIdSet = new Set(
+      cases.filter((c) => !visibleCaseIds.has(c.id)).map((c) => c.id)
+    );
 
-      // Exclude restricted cases
-      cases = cases.filter((c) => !restrictedCaseIdSet.has(c.id));
+    if (hiddenCaseIdSet.size > 0 || !can('restricted.view', currentUser)) {
+      // Exclude hidden cases
+      cases = cases.filter((c) => !hiddenCaseIdSet.has(c.id));
 
       // Exclude linked hearings
-      const restrictedHearingIdSet = new Set(
-        hearings.filter((h) => h.caseId && restrictedCaseIdSet.has(h.caseId)).map((h) => h.id)
+      const hiddenHearingIdSet = new Set(
+        hearings.filter((h) => h.caseId && hiddenCaseIdSet.has(h.caseId)).map((h) => h.id)
       );
-      hearings = hearings.filter((h) => !restrictedHearingIdSet.has(h.id));
-      hearingDateHistory = hearingDateHistory.filter((hd) => !restrictedHearingIdSet.has(hd.hearingId));
+      hearings = hearings.filter((h) => !hiddenHearingIdSet.has(h.id));
+      hearingDateHistory = hearingDateHistory.filter((hd) => !hiddenHearingIdSet.has(hd.hearingId));
 
       // Exclude linked tasks
-      const restrictedTaskIdSet = new Set(
-        tasks.filter((t) => t.caseId && restrictedCaseIdSet.has(t.caseId)).map((t) => t.id)
+      const hiddenTaskIdSet = new Set(
+        tasks.filter((t) => t.caseId && hiddenCaseIdSet.has(t.caseId)).map((t) => t.id)
       );
-      tasks = tasks.filter((t) => !restrictedTaskIdSet.has(t.id));
+      tasks = tasks.filter((t) => !hiddenTaskIdSet.has(t.id));
 
       // Exclude linked physical files
-      const restrictedFileIdSet = new Set(
-        physicalFiles.filter((f) => f.caseId && restrictedCaseIdSet.has(f.caseId)).map((f) => f.id)
+      const hiddenFileIdSet = new Set(
+        physicalFiles.filter((f) => f.caseId && hiddenCaseIdSet.has(f.caseId)).map((f) => f.id)
       );
-      physicalFiles = physicalFiles.filter((f) => !restrictedFileIdSet.has(f.id));
-      fileMovements = fileMovements.filter((fm) => !restrictedFileIdSet.has(fm.fileId));
+      physicalFiles = physicalFiles.filter((f) => !hiddenFileIdSet.has(f.id));
+      fileMovements = fileMovements.filter((fm) => !hiddenFileIdSet.has(fm.fileId));
 
-      // Exclude reminders derived from restricted hearings, tasks, or files
+      // Exclude reminders derived from hidden hearings, tasks, or files
       reminders = reminders.filter((r) => {
-        if (r.sourceType === 'hearing' && restrictedHearingIdSet.has(r.sourceId)) return false;
-        if (r.sourceType === 'task' && restrictedTaskIdSet.has(r.sourceId)) return false;
-        if (r.sourceType === 'file_return' && restrictedFileIdSet.has(r.sourceId)) return false;
+        if (r.sourceType === 'hearing' && hiddenHearingIdSet.has(r.sourceId)) return false;
+        if (r.sourceType === 'task' && hiddenTaskIdSet.has(r.sourceId)) return false;
+        if (r.sourceType === 'file_return' && hiddenFileIdSet.has(r.sourceId)) return false;
         return true;
       });
 
-      // Exclude audit logs referencing restricted cases or containing restricted flags
+      const canSeeRestricted = can('restricted.view', currentUser);
+
+      // Exclude audit logs referencing hidden cases or containing restricted flags when lacking restricted.view
       auditLogs = auditLogs.filter((a) => {
-        if (a.entity === 'Case' && restrictedCaseIdSet.has(a.entityId)) return false;
-        if (restrictedCaseIdSet.has(a.entityId)) return false;
+        if (a.entity === 'Case' && hiddenCaseIdSet.has(a.entityId)) return false;
+        if (hiddenCaseIdSet.has(a.entityId)) return false;
         const oldVal = a.oldValue as Record<string, unknown> | null;
         const newVal = a.newValue as Record<string, unknown> | null;
-        if (oldVal?.caseId && typeof oldVal.caseId === 'string' && restrictedCaseIdSet.has(oldVal.caseId)) return false;
-        if (newVal?.caseId && typeof newVal.caseId === 'string' && restrictedCaseIdSet.has(newVal.caseId)) return false;
-        if (oldVal?.restricted === true || newVal?.restricted === true) return false;
+        if (oldVal?.caseId && typeof oldVal.caseId === 'string' && hiddenCaseIdSet.has(oldVal.caseId)) return false;
+        if (newVal?.caseId && typeof newVal.caseId === 'string' && hiddenCaseIdSet.has(newVal.caseId)) return false;
+        if (!canSeeRestricted && (oldVal?.restricted === true || newVal?.restricted === true)) return false;
         return true;
       });
     }

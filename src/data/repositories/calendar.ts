@@ -2,6 +2,7 @@ import { can } from '../../permissions';
 import { ICalendarRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import { CalendarEventRecord, CalendarEventType, SecurityContext } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 
 export class MockCalendarRepository implements ICalendarRepository {
   async getEvents(
@@ -14,10 +15,7 @@ export class MockCalendarRepository implements ICalendarRepository {
   ): Promise<CalendarEventRecord[]> {
     const { currentUser } = context;
     const store = localStore.getData();
-    const canRestricted = can('restricted.view', currentUser);
-    const restrictedCaseIds = new Set(
-      (store.cases || []).filter((c) => c.restricted).map((c) => c.id)
-    );
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
     const events: CalendarEventRecord[] = [];
     const nowMs = Date.now();
@@ -29,11 +27,10 @@ export class MockCalendarRepository implements ICalendarRepository {
       );
 
       hearings.forEach((h) => {
-        const caseRec = (store.cases || []).find((c) => c.id === h.caseId);
-        // Enforce confidential case isolation
-        if (caseRec?.restricted && !canRestricted) {
+        if (!visibleCaseIds.has(h.caseId)) {
           return;
         }
+        const caseRec = (store.cases || []).find((c) => c.id === h.caseId);
 
         const clientRec = caseRec ? (store.clients || []).find((cl) => cl.id === caseRec.clientId) : null;
 
@@ -66,7 +63,7 @@ export class MockCalendarRepository implements ICalendarRepository {
       }
 
       tasks.forEach((t) => {
-        if (t.caseId && restrictedCaseIds.has(t.caseId) && !canRestricted) {
+        if (t.caseId && !visibleCaseIds.has(t.caseId)) {
           return;
         }
 
@@ -105,7 +102,7 @@ export class MockCalendarRepository implements ICalendarRepository {
       );
 
       files.forEach((f) => {
-        if (f.caseId && restrictedCaseIds.has(f.caseId) && !canRestricted) {
+        if (f.caseId && !visibleCaseIds.has(f.caseId)) {
           return;
         }
 

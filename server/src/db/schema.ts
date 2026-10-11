@@ -37,6 +37,7 @@ export const firms = pgTable('firms', {
   maxDevices: integer('max_devices').default(5).notNull(),
   devicePolicy: text('device_policy').$type<'auto-approve' | 'manual'>().default('auto-approve').notNull(),
   allowOwnerDeviceRemoval: boolean('allow_owner_device_removal').default(false).notNull(),
+  visibilityMode: text('visibility_mode').$type<'open' | 'team'>().default('team').notNull(),
   planId: text('plan_id').references(() => plans.id),
   licenseStartsAt: timestamp('license_starts_at', { withTimezone: true }),
   licenseExpiresAt: timestamp('license_expires_at', { withTimezone: true }).notNull(),
@@ -56,6 +57,9 @@ export const users = pgTable('users', {
   email: text('email').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').$type<'Owner' | 'Staff'>().notNull(),
+  jobType: text('job_type').$type<'lawyer_senior' | 'lawyer_junior' | 'clerk' | 'receptionist' | 'intern' | 'other'>().default('other').notNull(),
+  jobTitleLabel: text('job_title_label'),
+  reportsToUserId: text('reports_to_user_id'),
   permissions: jsonb('permissions').$type<string[]>().notNull(),
   language: text('language').$type<'en' | 'bn'>().default('en').notNull(),
   active: boolean('active').default(true).notNull(),
@@ -70,6 +74,7 @@ export const users = pgTable('users', {
 }, (table) => [
   index('idx_users_firm_id').on(table.firmId),
   index('idx_users_email').on(table.email),
+  index('idx_users_reports_to').on(table.reportsToUserId),
 ]);
 
 // Clients Table (Step 3.1)
@@ -109,6 +114,7 @@ export const cases = pgTable('cases', {
   ourRole: text('our_role'),
   plaintiffLawyer: text('plaintiff_lawyer'),
   defendantLawyer: text('defendant_lawyer'),
+  responsibleLawyerId: text('responsible_lawyer_id'),
   status: text('status').$type<'ongoing' | 'closed'>().default('ongoing').notNull(),
   restricted: boolean('restricted').default(false).notNull(),
   nextHearingAt: timestamp('next_hearing_at', { withTimezone: true }),
@@ -124,7 +130,45 @@ export const cases = pgTable('cases', {
   index('idx_cases_court').on(table.court),
   index('idx_cases_status').on(table.status),
   index('idx_cases_file_serial').on(table.fileSerial),
+  index('idx_cases_resp_lawyer').on(table.responsibleLawyerId),
   uniqueIndex('uidx_cases_firm_file_serial').on(table.firmId, table.fileSerial),
+]);
+
+// Hearings Table
+export const hearings = pgTable('hearings', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  caseId: text('case_id').references(() => cases.id).notNull(),
+  appearingLawyerId: text('appearing_lawyer_id'),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+  court: text('court'),
+  purpose: text('purpose'),
+  status: text('status').$type<'scheduled' | 'held' | 'adjourned' | 'cancelled'>().default('scheduled').notNull(),
+  outcomeNote: text('outcome_note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_hearings_firm_id').on(table.firmId),
+  index('idx_hearings_case_id').on(table.caseId),
+  index('idx_hearings_appearing_lawyer').on(table.appearingLawyerId),
+]);
+
+// Case Shares Table
+export const caseShares = pgTable('case_shares', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  caseId: text('case_id').references(() => cases.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('idx_case_shares_firm_id').on(table.firmId),
+  index('idx_case_shares_case_id').on(table.caseId),
+  index('idx_case_shares_user_id').on(table.userId),
 ]);
 
 // Audit Log Table
@@ -255,6 +299,10 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
 export type Case = typeof cases.$inferSelect;
+export type Hearing = typeof hearings.$inferSelect;
+export type NewHearing = typeof hearings.$inferInsert;
+export type CaseShare = typeof caseShares.$inferSelect;
+export type NewCaseShare = typeof caseShares.$inferInsert;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;

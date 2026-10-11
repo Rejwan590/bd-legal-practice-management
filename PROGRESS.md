@@ -3,7 +3,33 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Reviewer Hardening - Batch 1, Batch 2, Batch 3, and Batch 4 (R-16) completed. All batches complete and verified.
+Team Hierarchy & Visibility for Firm Users completed and verified. Reviewer Hardening (Batches 1-4) and Super Admin (Steps A, B, D) completed and verified.
+
+## Team Hierarchy & Visibility (Firm Users)
+- **Schema & Safe Migration (`0004_team_hierarchy_and_visibility.sql`)**:
+  - `users`: added `job_type` (`'lawyer_senior' | 'lawyer_junior' | 'clerk' | 'receptionist' | 'intern' | 'other'`), `job_title_label` (nullable), and `reports_to_user_id` (nullable, same firm, must be a lawyer or Owner, no cycles, cannot be self). Existing `Owner` rows migrated to `'lawyer_senior'`; existing `Staff` rows migrated to `'other'` with `reports_to_user_id = NULL`.
+  - `firms`: added `visibility_mode` (`'open' | 'team'`), defaulting to `'team'` for new firms while migrating existing firms to `'open'` so no currently visible data is hidden on upgrade.
+  - `cases`: added `responsible_lawyer_id` (nullable, lawyer or Owner of the same firm).
+  - `hearings`: added `appearing_lawyer_id` (nullable).
+  - `case_shares`: created table (`id`, `firm_id`, `case_id`, `user_id`, `created_by`, `created_at`, `deleted_at`) for explicit per-case access sharing.
+- **One Central Visibility Rule (`server/src/services/visibilityService.ts` & `src/data/caseVisibility.ts`)**:
+  - A user can see a case if: (1) Owner; or (2) firm `visibility_mode` is `'open'`; or (3) they are `responsible_lawyer_id`; or (4) they report to the responsible lawyer; or (5) they are above the responsible lawyer in the supervisor chain; or (6) they created the case; or (7) the case is shared with them via `case_shares`. Restricted cases (`restricted = true`) additionally require `restricted.view`.
+  - Enforced across all case and case-derived queries (list, direct lookup by ID returning 404, hearings, case-linked tasks, case-linked files, calendar, dashboard metrics/urgent items, global search, case linked counts, client overview, case audit entries, duplicate check, and backup export).
+  - Automated route scanner test (`server/tests/teamVisibility.test.ts`) scans all non-admin route files to verify no case-derived query skips the user visibility context.
+- **User Management & Role Presets (`server/src/routes/users.ts`, `src/rolePresets.ts`, `server/src/rolePresets.ts`)**:
+  - Shared role presets (`Senior Lawyer`, `Junior Lawyer`, `Clerk`, `Receptionist`) populate default permissions and job types; permission and role changes take effect on the very next HTTP request via `firmAuthMiddleware` DB refresh.
+  - `POST /api/v1/users`, `PATCH /api/v1/users/:id`, `PATCH /api/v1/users/:id/permissions`, `PATCH /api/v1/users/:id/role`, `POST /api/v1/users/:id/deactivate`, `POST /api/v1/users/:id/reactivate`, and `POST /api/v1/users/:id/reassign-team` implemented with firm scoping, Owner or `users.manage` guard, subscription read-only guard, Zod validation, and audit logging.
+  - Enforces: last active Owner cannot be demoted or deactivated; users cannot change their own permissions; `reports_to_user_id` rejects cycles, self, non-lawyers, and other firms' users; unknown permission keys rejected; plan seat limit enforced; deactivation revokes active sessions/devices and warns on open cases/future hearings with optional reassignment.
+- **Frontend UI & Bilingual i18n (`en.json` & `bn.json`)**:
+  - Staff hierarchy tree view (`Owner > Lawyer > Team`), Add/Edit/Deactivate user modals, temporary team cover reassignment, and firm `visibility_mode` toggle with explanation in `SettingsScreen.tsx`.
+  - Responsible lawyer picker/badge, `"my cases / my team / all"` scope filter, and `"Share with..."` / `"Remove access"` modal on `CasesScreen.tsx`, `CaseFormModal.tsx`, and `CaseDetailsView.tsx`.
+  - Appearing lawyer picker on `HearingFormModal.tsx`.
+- **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm run build`: PASS
+  - `npm run test:health`: PASS (81/81 passed, 0 failed)
+  - `npm test --prefix server`: PASS (381 assertions passed, 0 failed across `foundation`, `clients`, `cases`, `postgres` [live container skipped when `DATABASE_URL` unset], `adminAuth`, `adminFirms`, `devices`, and `teamVisibility`)
+  - `npm run build --prefix admin-app`: PASS
 
 ## Reviewer Hardening
 - **Batch 4 (Honest tests: R-16)**:

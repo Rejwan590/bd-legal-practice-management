@@ -1,5 +1,5 @@
 import { ICaseRepository } from '../../interfaces';
-import { BaseRecord, CaseRecord, SecurityContext } from '../../types';
+import { BaseRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../../types';
 import { restFetch } from './restCommon';
 
 export class RestCaseRepository implements ICaseRepository {
@@ -11,6 +11,7 @@ export class RestCaseRepository implements ICaseRepository {
       court?: string;
       matterType?: string;
       clientId?: string;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<CaseRecord[]> {
     const params = new URLSearchParams();
@@ -19,6 +20,7 @@ export class RestCaseRepository implements ICaseRepository {
     if (filter?.court) params.set('court', filter.court);
     if (filter?.matterType) params.set('matterType', filter.matterType);
     if (filter?.clientId) params.set('clientId', filter.clientId);
+    if (filter?.scope) params.set('scope', filter.scope);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<CaseRecord[]>(`/cases${qs}`);
   }
@@ -96,5 +98,22 @@ export class RestCaseRepository implements ICaseRepository {
     if (excludeId) params.set('excludeId', excludeId);
     const res = await restFetch<{ isDuplicate: boolean }>(`/cases/check-duplicate?${params.toString()}`);
     return Boolean(res?.isDuplicate);
+  }
+
+  async listShares(_context: SecurityContext, caseId: string): Promise<CaseShareRecord[]> {
+    return restFetch<CaseShareRecord[]>(`/cases/${caseId}/shares`);
+  }
+
+  async shareCase(_context: SecurityContext, caseId: string, userId: string): Promise<CaseShareRecord> {
+    return restFetch<CaseShareRecord>(`/cases/${caseId}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+  }
+
+  async unshareCase(_context: SecurityContext, caseId: string, shareIdOrUserId: string): Promise<void> {
+    await restFetch<{ success: boolean }>(`/cases/${caseId}/shares/${shareIdOrUserId}`, {
+      method: 'DELETE',
+    });
   }
 }

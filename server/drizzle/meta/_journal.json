@@ -29,6 +29,13 @@
       "when": 1791210753927,
       "tag": "0003_wild_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791220000000,
+      "tag": "0004_team_hierarchy_and_visibility",
+      "breakpoints": true
     }
   ]
 }

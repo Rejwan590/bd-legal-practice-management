@@ -7,6 +7,7 @@ import {
   PhysicalFileStatus,
   SecurityContext,
 } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export class MockPhysicalFileRepository implements IPhysicalFileRepository {
@@ -34,17 +35,14 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
-    let files = (store.physicalFiles || []).filter(
-      (f) => f.firmId === currentUser.firmId && f.deletedAt === null
-    );
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
-    // Confidential case isolation
-    if (!can('restricted.view', currentUser)) {
-      const restrictedCaseIds = new Set(
-        (store.cases || []).filter((c) => c.restricted).map((c) => c.id)
-      );
-      files = files.filter((f) => !f.caseId || !restrictedCaseIds.has(f.caseId));
-    }
+    let files = (store.physicalFiles || []).filter(
+      (f) =>
+        f.firmId === currentUser.firmId &&
+        f.deletedAt === null &&
+        (!f.caseId || visibleCaseIds.has(f.caseId))
+    );
 
     if (filter?.caseId) {
       files = files.filter((f) => f.caseId === filter.caseId);
@@ -93,6 +91,13 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       }
     }
 
+    if (file.caseId) {
+      const visibleCaseIds = getVisibleCaseIdsForContext(context);
+      if (!visibleCaseIds.has(file.caseId)) {
+        return null;
+      }
+    }
+
     return file;
   }
 
@@ -116,6 +121,13 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       const caseRec = (store.cases || []).find((c) => c.id === file.caseId);
       if (caseRec?.restricted) {
         throw new Error('Permission denied: file belongs to confidential case');
+      }
+    }
+
+    if (file.caseId) {
+      const visibleCaseIds = getVisibleCaseIdsForContext(context);
+      if (!visibleCaseIds.has(file.caseId)) {
+        return null;
       }
     }
 

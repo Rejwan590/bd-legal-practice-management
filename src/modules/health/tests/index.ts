@@ -13,6 +13,7 @@ import { runCalendarRemindersTests } from './calendarRemindersTests';
 import { runDashboardSearchTests } from './dashboardSearchTests';
 import { runBackupTests } from './backupTests';
 import { runSubscriptionTests } from './subscriptionTests';
+import { runTeamVisibilityTests } from './teamVisibilityTests';
 
 export * from './types';
 export {
@@ -27,6 +28,7 @@ export {
   runDashboardSearchTests,
   runBackupTests,
   runSubscriptionTests,
+  runTeamVisibilityTests,
 };
 
 export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
@@ -93,6 +95,10 @@ export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
     // 11. Subscription & Read-Only Enforcement
     const subscriptionResults = await runSubscriptionTests(ctx, exportedBackupJson);
     suite.push(...subscriptionResults);
+
+    // 12. Team Hierarchy & Central Case Visibility
+    const teamVisibilityResults = await runTeamVisibilityTests(ctx);
+    suite.push(...teamVisibilityResults);
   } finally {
     // Item 7: Always restore exact snapshot so user's demo data is never altered
     localStore.restoreSnapshot(preSuiteSnapshot);

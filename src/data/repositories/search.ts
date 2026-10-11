@@ -7,6 +7,7 @@ import {
   SearchResultItem,
   SecurityContext,
 } from '../types';
+import { getVisibleCaseIdsForContext } from './case';
 
 export class MockSearchRepository implements ISearchRepository {
   async search(
@@ -21,14 +22,14 @@ export class MockSearchRepository implements ISearchRepository {
     if (!q) return [];
 
     const { currentUser } = context;
-    const canSeeRestricted = can('restricted.view', currentUser);
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const limit = filter?.limit || 50;
     const results: SearchResultItem[] = [];
 
-    // Helper map of cases for quick lookup & confidentiality checking
-    const cases = (store.cases || []).filter((c) => c.firmId === firmId && c.deletedAt === null);
+    // Central visibility rule for cases
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
+    const cases = (store.cases || []).filter((c) => visibleCaseIds.has(c.id));
     const caseMap = new Map<string, CaseRecord>();
     cases.forEach((c) => caseMap.set(c.id, c));
 
@@ -65,11 +66,6 @@ export class MockSearchRepository implements ISearchRepository {
     if (!filter?.entity || filter.entity === 'all' || filter.entity === 'case') {
       if (can('cases.view', currentUser)) {
         for (const c of cases) {
-          // Strict confidentiality check: if case is restricted and user cannot view restricted, SKIP completely!
-          if (c.restricted && !canSeeRestricted) {
-            continue;
-          }
-
           const numMatch = c.caseNumber.toLowerCase().includes(q);
           const serialMatch = c.fileSerial.toLowerCase().includes(q);
           const courtMatch = c.court.toLowerCase().includes(q);
@@ -103,14 +99,10 @@ export class MockSearchRepository implements ISearchRepository {
     if (!filter?.entity || filter.entity === 'all' || filter.entity === 'hearing') {
       if (can('hearings.update', currentUser) || can('cases.view', currentUser)) {
         const hearings = (store.hearings || []).filter(
-          (h) => h.firmId === firmId && h.deletedAt === null
+          (h) => h.firmId === firmId && h.deletedAt === null && visibleCaseIds.has(h.caseId)
         );
         for (const h of hearings) {
           const caseRec = caseMap.get(h.caseId);
-          // If linked case is restricted and user can't see restricted, skip!
-          if (caseRec && caseRec.restricted && !canSeeRestricted) {
-            continue;
-          }
 
           const purposeMatch = h.purpose.toLowerCase().includes(q);
           const outcomeMatch = h.outcomeNote ? h.outcomeNote.toLowerCase().includes(q) : false;
@@ -140,7 +132,10 @@ export class MockSearchRepository implements ISearchRepository {
     if (!filter?.entity || filter.entity === 'all' || filter.entity === 'task') {
       if (can('tasks.view', currentUser)) {
         let tasks = (store.tasks || []).filter(
-          (t) => t.firmId === firmId && t.deletedAt === null
+          (t) =>
+            t.firmId === firmId &&
+            t.deletedAt === null &&
+            (!t.caseId || visibleCaseIds.has(t.caseId))
         );
         // Staff partitioning: staff advocates only see their own assigned tasks
         if (currentUser.role === 'Staff') {
@@ -149,9 +144,6 @@ export class MockSearchRepository implements ISearchRepository {
 
         for (const t of tasks) {
           const caseRec = t.caseId ? caseMap.get(t.caseId) : undefined;
-          if (caseRec && caseRec.restricted && !canSeeRestricted) {
-            continue;
-          }
 
           const titleMatch = t.title.toLowerCase().includes(q);
           const descMatch = t.description ? t.description.toLowerCase().includes(q) : false;
@@ -180,13 +172,13 @@ export class MockSearchRepository implements ISearchRepository {
     if (!filter?.entity || filter.entity === 'all' || filter.entity === 'file') {
       if (can('files.view', currentUser)) {
         const files = (store.physicalFiles || []).filter(
-          (f) => f.firmId === firmId && f.deletedAt === null
+          (f) =>
+            f.firmId === firmId &&
+            f.deletedAt === null &&
+            (!f.caseId || visibleCaseIds.has(f.caseId))
         );
         for (const f of files) {
           const caseRec = f.caseId ? caseMap.get(f.caseId) : undefined;
-          if (caseRec && caseRec.restricted && !canSeeRestricted) {
-            continue;
-          }
 
           const serialMatch = f.serial.toLowerCase().includes(q);
           const titleMatch = f.title.toLowerCase().includes(q);

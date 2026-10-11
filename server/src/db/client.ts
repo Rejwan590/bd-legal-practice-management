@@ -5,6 +5,14 @@ import { eq, and, isNull, desc, or, ilike, ne, sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
+import { canUserSeeCase, buildCaseVisibilitySql } from '../services/visibilityService.js';
+
+export interface VisibilityUserContext {
+  id: string;
+  firmId: string;
+  role: string;
+  permissions?: string[];
+}
 
 export interface ClientLinkedOverview {
   cases: Array<{
@@ -61,14 +69,25 @@ export interface IDatabase {
   ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null }>;
   resetFailedLogin(id: string): Promise<void>;
   insertAudit(entry: schema.AuditLogEntry): Promise<schema.AuditLogEntry>;
-  listAudit(firmId: string, limit?: number, offset?: number, includeRestricted?: boolean): Promise<schema.AuditLogEntry[]>;
+  listAudit(
+    firmId: string,
+    limit?: number,
+    offset?: number,
+    includeRestricted?: boolean,
+    user?: VisibilityUserContext
+  ): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
   listClients(firmId: string, search?: string): Promise<schema.Client[]>;
   getClientById(id: string, firmId: string): Promise<schema.Client | null>;
   insertClient(client: schema.Client): Promise<schema.Client>;
   updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client>;
   countActiveCasesForClient(clientId: string, firmId: string): Promise<number>;
-  getClientLinkedOverview(clientId: string, firmId: string, includeRestricted?: boolean): Promise<ClientLinkedOverview>;
+  getClientLinkedOverview(
+    clientId: string,
+    firmId: string,
+    includeRestricted?: boolean,
+    user?: VisibilityUserContext
+  ): Promise<ClientLinkedOverview>;
   // Cases (Step 3.2)
   listCases(
     firmId: string,
@@ -79,9 +98,11 @@ export interface IDatabase {
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
+      user?: VisibilityUserContext;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<schema.Case[]>;
-  getCaseById(id: string, firmId: string): Promise<schema.Case | null>;
+  getCaseById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Case | null>;
   insertCase(c: schema.Case): Promise<schema.Case>;
   updateCase(id: string, firmId: string, updates: Partial<schema.Case>): Promise<schema.Case>;
   checkDuplicateCase(
@@ -89,9 +110,19 @@ export interface IDatabase {
     caseNumber: string,
     court: string,
     excludeId?: string,
-    includeRestricted?: boolean
+    includeRestricted?: boolean,
+    user?: VisibilityUserContext
   ): Promise<boolean>;
   getCaseLinkedCounts(caseId: string, firmId: string): Promise<CaseLinkedCounts>;
+  // Case Shares
+  listCaseShares(caseId: string, firmId: string): Promise<schema.CaseShare[]>;
+  listFirmCaseShares(firmId: string): Promise<schema.CaseShare[]>;
+  insertCaseShare(share: schema.NewCaseShare): Promise<schema.CaseShare>;
+  deleteCaseShare(id: string, firmId: string): Promise<void>;
+  // Hearings
+  listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]>;
+  insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing>;
+  updateHearing(id: string, firmId: string, updates: Partial<schema.Hearing>): Promise<schema.Hearing>;
   // Platform Admins & Admin Audit (Super Admin for software owner)
   getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null>;
   getPlatformAdminById(id: string): Promise<schema.PlatformAdmin | null>;
@@ -133,6 +164,8 @@ class MemoryDatabase implements IDatabase {
   public users: schema.User[] = [];
   public clients: schema.Client[] = [];
   public cases: schema.Case[] = [];
+  public hearings: schema.Hearing[] = [];
+  public caseShares: schema.CaseShare[] = [];
   public auditLogs: schema.AuditLogEntry[] = [];
   public platformAdmins: schema.PlatformAdmin[] = [];
   public adminAudits: schema.AdminAuditEntry[] = [];
@@ -203,6 +236,7 @@ class MemoryDatabase implements IDatabase {
       maxDevices: firm.maxDevices ?? 5,
       devicePolicy: firm.devicePolicy ?? 'auto-approve',
       allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
+      visibilityMode: firm.visibilityMode ?? 'team',
       planId: firm.planId ?? null,
       licenseStartsAt: firm.licenseStartsAt ?? new Date(),
       licenseExpiresAt: firm.licenseExpiresAt,
@@ -295,6 +329,9 @@ class MemoryDatabase implements IDatabase {
       email: user.email,
       passwordHash: user.passwordHash,
       role: user.role,
+      jobType: user.jobType ?? (user.role === 'Owner' ? 'lawyer_senior' : 'other'),
+      jobTitleLabel: user.jobTitleLabel ?? null,
+      reportsToUserId: user.reportsToUserId ?? null,
       permissions: user.permissions,
       language: user.language ?? 'en',
       active: user.active ?? true,
@@ -355,39 +392,60 @@ class MemoryDatabase implements IDatabase {
     return { ...entry };
   }
 
+  private getVisibleCaseSetForMemory(
+    firmId: string,
+    user?: VisibilityUserContext,
+    includeRestricted = true,
+    includeDeleted = false
+  ): Set<string> {
+    const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+    const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+    const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+    return new Set(
+      this.cases
+        .filter((c) => {
+          if (c.firmId !== firmId) return false;
+          if (!includeDeleted && c.deletedAt) return false;
+          if (!includeRestricted && c.restricted) return false;
+          if (user) {
+            return canUserSeeCase(user, c, firm, firmUsers, firmShares, includeDeleted);
+          }
+          return true;
+        })
+        .map((c) => c.id)
+    );
+  }
+
   public async listAudit(
     firmId: string,
     limit = 100,
     offset = 0,
-    includeRestricted = true
+    includeRestricted = true,
+    user?: VisibilityUserContext
   ): Promise<schema.AuditLogEntry[]> {
     await this.init();
     let entries = this.auditLogs.filter((a) => a.firmId === firmId);
-    if (!includeRestricted) {
-      const restrictedCaseIds = new Set(
-        this.cases
-          .filter((c) => c.firmId === firmId && c.restricted)
-          .map((c) => c.id)
-      );
-      entries = entries.filter((a) => {
-        if (a.entity === 'Case' && restrictedCaseIds.has(a.entityId)) return false;
-        if (
-          a.oldValue &&
-          ((a.oldValue as any).restricted === true ||
-            ((a.oldValue as any).caseId && restrictedCaseIds.has(String((a.oldValue as any).caseId))))
-        ) {
-          return false;
-        }
-        if (
-          a.newValue &&
-          ((a.newValue as any).restricted === true ||
-            ((a.newValue as any).caseId && restrictedCaseIds.has(String((a.newValue as any).caseId))))
-        ) {
-          return false;
-        }
-        return true;
-      });
-    }
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, includeRestricted, true);
+    const allFirmCaseIds = new Set(this.cases.filter((c) => c.firmId === firmId).map((c) => c.id));
+
+    entries = entries.filter((a) => {
+      if (a.entity === 'Case') {
+        if (allFirmCaseIds.has(a.entityId) && !visibleCaseIds.has(a.entityId)) return false;
+      }
+      if (!includeRestricted) {
+        if (a.oldValue && (a.oldValue as any).restricted === true) return false;
+        if (a.newValue && (a.newValue as any).restricted === true) return false;
+      }
+      const oldCaseId = a.oldValue ? (a.oldValue as any).caseId : undefined;
+      if (oldCaseId && allFirmCaseIds.has(String(oldCaseId)) && !visibleCaseIds.has(String(oldCaseId))) {
+        return false;
+      }
+      const newCaseId = a.newValue ? (a.newValue as any).caseId : undefined;
+      if (newCaseId && allFirmCaseIds.has(String(newCaseId)) && !visibleCaseIds.has(String(newCaseId))) {
+        return false;
+      }
+      return true;
+    });
     return entries.slice(offset, offset + limit).map((a) => ({ ...a }));
   }
 
@@ -442,10 +500,16 @@ class MemoryDatabase implements IDatabase {
     ).length;
   }
 
-  public async getClientLinkedOverview(clientId: string, firmId: string, includeRestricted = true): Promise<ClientLinkedOverview> {
+  public async getClientLinkedOverview(
+    clientId: string,
+    firmId: string,
+    includeRestricted = true,
+    user?: VisibilityUserContext
+  ): Promise<ClientLinkedOverview> {
     await this.init();
+    const visibleIds = this.getVisibleCaseSetForMemory(firmId, user, includeRestricted);
     const clientCases = this.cases.filter(
-      (c) => c.clientId === clientId && c.firmId === firmId && !c.deletedAt && (includeRestricted || !c.restricted)
+      (c) => c.clientId === clientId && visibleIds.has(c.id)
     );
 
     return {
@@ -471,13 +535,32 @@ class MemoryDatabase implements IDatabase {
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
+      user?: VisibilityUserContext;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<schema.Case[]> {
     await this.init();
-    let res = this.cases.filter((c) => c.firmId === firmId && !c.deletedAt);
+    const visibleIds = this.getVisibleCaseSetForMemory(
+      firmId,
+      filter?.user,
+      filter?.includeRestricted ?? true
+    );
+    let res = this.cases.filter((c) => visibleIds.has(c.id));
 
-    if (!filter?.includeRestricted) {
-      res = res.filter((c) => !c.restricted);
+    if (filter?.user && filter?.scope) {
+      const uid = filter.user.id;
+      if (filter.scope === 'my') {
+        res = res.filter((c) => c.responsibleLawyerId === uid || c.createdBy === uid);
+      } else if (filter.scope === 'team') {
+        const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+        const me = firmUsers.find((u) => u.id === uid);
+        const teamIds = new Set<string>([uid]);
+        if (me?.reportsToUserId) teamIds.add(me.reportsToUserId);
+        for (const u of firmUsers) {
+          if (u.reportsToUserId === uid) teamIds.add(u.id);
+        }
+        res = res.filter((c) => c.responsibleLawyerId && teamIds.has(c.responsibleLawyerId));
+      }
     }
 
     if (filter?.clientId) {
@@ -516,10 +599,23 @@ class MemoryDatabase implements IDatabase {
     );
   }
 
-  public async getCaseById(id: string, firmId: string): Promise<schema.Case | null> {
+  public async getCaseById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.Case | null> {
     await this.init();
     const c = this.cases.find((x) => x.id === id && x.firmId === firmId && !x.deletedAt);
-    return c ? { ...c } : null;
+    if (!c) return null;
+    if (user) {
+      const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+      const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+      if (!canUserSeeCase(user, c, firm, firmUsers, firmShares)) {
+        return null;
+      }
+    }
+    return { ...c };
   }
 
   public async insertCase(c: schema.Case): Promise<schema.Case> {
@@ -546,18 +642,18 @@ class MemoryDatabase implements IDatabase {
     caseNumber: string,
     court: string,
     excludeId?: string,
-    includeRestricted = true
+    includeRestricted = true,
+    user?: VisibilityUserContext
   ): Promise<boolean> {
     await this.init();
     const cleanNum = caseNumber.trim().toLowerCase();
     const cleanCourt = court.trim().toLowerCase();
+    const visibleIds = this.getVisibleCaseSetForMemory(firmId, user, includeRestricted);
 
     return this.cases.some(
       (c) =>
-        c.firmId === firmId &&
-        !c.deletedAt &&
+        visibleIds.has(c.id) &&
         c.id !== excludeId &&
-        (includeRestricted || !c.restricted) &&
         c.caseNumber.trim().toLowerCase() === cleanNum &&
         c.court.trim().toLowerCase() === cleanCourt
     );
@@ -565,12 +661,101 @@ class MemoryDatabase implements IDatabase {
 
   public async getCaseLinkedCounts(caseId: string, firmId: string): Promise<CaseLinkedCounts> {
     await this.init();
+    const hearingsCount = this.hearings.filter(
+      (h) => h.caseId === caseId && h.firmId === firmId && !h.deletedAt
+    ).length;
     return {
-      hearingsCount: 0,
+      hearingsCount,
       tasksCount: 0,
       filesCount: 0,
       remindersCount: 0,
     };
+  }
+
+  public async listCaseShares(caseId: string, firmId: string): Promise<schema.CaseShare[]> {
+    await this.init();
+    return this.caseShares
+      .filter((s) => s.caseId === caseId && s.firmId === firmId && !s.deletedAt)
+      .map((s) => ({ ...s }));
+  }
+
+  public async listFirmCaseShares(firmId: string): Promise<schema.CaseShare[]> {
+    await this.init();
+    return this.caseShares
+      .filter((s) => s.firmId === firmId && !s.deletedAt)
+      .map((s) => ({ ...s }));
+  }
+
+  public async insertCaseShare(share: schema.NewCaseShare): Promise<schema.CaseShare> {
+    await this.init();
+    const existingIdx = this.caseShares.findIndex(
+      (s) => s.caseId === share.caseId && s.userId === share.userId && s.firmId === share.firmId && !s.deletedAt
+    );
+    if (existingIdx !== -1) {
+      return { ...this.caseShares[existingIdx] };
+    }
+    const created: schema.CaseShare = {
+      id: share.id || `share-${crypto.randomUUID()}`,
+      firmId: share.firmId,
+      caseId: share.caseId,
+      userId: share.userId,
+      createdBy: share.createdBy,
+      createdAt: share.createdAt || new Date(),
+      deletedAt: null,
+    };
+    this.caseShares.push(created);
+    return { ...created };
+  }
+
+  public async deleteCaseShare(id: string, firmId: string): Promise<void> {
+    await this.init();
+    const idx = this.caseShares.findIndex((s) => s.id === id && s.firmId === firmId && !s.deletedAt);
+    if (idx !== -1) {
+      this.caseShares[idx].deletedAt = new Date();
+    }
+  }
+
+  public async listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+    return this.hearings
+      .filter((h) => h.firmId === firmId && !h.deletedAt && visibleCaseIds.has(h.caseId))
+      .map((h) => ({ ...h }));
+  }
+
+  public async insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing> {
+    await this.init();
+    const created: schema.Hearing = {
+      id: hearing.id || `hearing-${crypto.randomUUID()}`,
+      firmId: hearing.firmId,
+      caseId: hearing.caseId,
+      appearingLawyerId: hearing.appearingLawyerId ?? null,
+      scheduledAt: hearing.scheduledAt,
+      court: hearing.court ?? null,
+      purpose: hearing.purpose ?? null,
+      status: hearing.status ?? 'scheduled',
+      outcomeNote: hearing.outcomeNote ?? null,
+      createdAt: hearing.createdAt || new Date(),
+      updatedAt: hearing.updatedAt || new Date(),
+      deletedAt: null,
+      createdBy: hearing.createdBy ?? null,
+      updatedBy: hearing.updatedBy ?? null,
+    };
+    this.hearings.push(created);
+    return { ...created };
+  }
+
+  public async updateHearing(id: string, firmId: string, updates: Partial<schema.Hearing>): Promise<schema.Hearing> {
+    await this.init();
+    const idx = this.hearings.findIndex((h) => h.id === id && h.firmId === firmId && !h.deletedAt);
+    if (idx === -1) throw new Error(`Hearing not found: ${id}`);
+    const updated = {
+      ...this.hearings[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.hearings[idx] = updated;
+    return { ...updated };
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
@@ -1065,16 +1250,43 @@ class PostgresDatabase implements IDatabase {
     return rows[0];
   }
 
+  private async buildPostgresCaseCondition(
+    firmId: string,
+    user?: VisibilityUserContext,
+    includeRestricted = true,
+    includeDeleted = false
+  ) {
+    if (user) {
+      const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = await this.listUsers(firmId);
+      const visSql = buildCaseVisibilitySql(user, firm, firmUsers, includeDeleted);
+      if (!includeRestricted) {
+        return and(visSql, eq(schema.cases.restricted, false))!;
+      }
+      return visSql;
+    }
+    const base = [eq(schema.cases.firmId, firmId)];
+    if (!includeDeleted) {
+      base.push(isNull(schema.cases.deletedAt));
+    }
+    if (!includeRestricted) {
+      base.push(eq(schema.cases.restricted, false));
+    }
+    return and(...base)!;
+  }
+
   public async listAudit(
     firmId: string,
     limit = 100,
     offset = 0,
-    includeRestricted = true
+    includeRestricted = true,
+    user?: VisibilityUserContext
   ): Promise<schema.AuditLogEntry[]> {
     const conditions = [eq(schema.auditLog.firmId, firmId)];
-    if (!includeRestricted) {
+    if (user || !includeRestricted) {
+      const caseCond = await this.buildPostgresCaseCondition(firmId, user, includeRestricted, true);
       conditions.push(
-        sql`(${schema.auditLog.entity} != 'Case' OR ${schema.auditLog.entityId} NOT IN (SELECT id FROM cases WHERE firm_id = ${firmId} AND restricted = true))`
+        sql`(${schema.auditLog.entity} != 'Case' OR ${schema.auditLog.entityId} IN (SELECT id FROM ${schema.cases} WHERE ${caseCond}))`
       );
     }
     return this.db
@@ -1148,15 +1360,17 @@ class PostgresDatabase implements IDatabase {
     return rows.length;
   }
 
-  public async getClientLinkedOverview(clientId: string, firmId: string, includeRestricted = true): Promise<ClientLinkedOverview> {
+  public async getClientLinkedOverview(
+    clientId: string,
+    firmId: string,
+    includeRestricted = true,
+    user?: VisibilityUserContext
+  ): Promise<ClientLinkedOverview> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, includeRestricted);
     const conditions = [
       eq(schema.cases.clientId, clientId),
-      eq(schema.cases.firmId, firmId),
-      isNull(schema.cases.deletedAt),
+      visCond,
     ];
-    if (!includeRestricted) {
-      conditions.push(eq(schema.cases.restricted, false));
-    }
 
     const clientCases = await this.db
       .select()
@@ -1186,15 +1400,37 @@ class PostgresDatabase implements IDatabase {
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
+      user?: VisibilityUserContext;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<schema.Case[]> {
-    const conditions = [
-      eq(schema.cases.firmId, firmId),
-      isNull(schema.cases.deletedAt),
-    ];
+    const visCond = await this.buildPostgresCaseCondition(
+      firmId,
+      filter?.user,
+      filter?.includeRestricted ?? true
+    );
+    const conditions = [visCond];
 
-    if (!filter?.includeRestricted) {
-      conditions.push(eq(schema.cases.restricted, false));
+    if (filter?.user && filter?.scope) {
+      const uid = filter.user.id;
+      if (filter.scope === 'my') {
+        conditions.push(or(eq(schema.cases.responsibleLawyerId, uid), eq(schema.cases.createdBy, uid))!);
+      } else if (filter.scope === 'team') {
+        const firmUsers = await this.listUsers(firmId);
+        const me = firmUsers.find((u) => u.id === uid);
+        const teamIds = new Set<string>([uid]);
+        if (me?.reportsToUserId) teamIds.add(me.reportsToUserId);
+        for (const u of firmUsers) {
+          if (u.reportsToUserId === uid) teamIds.add(u.id);
+        }
+        const teamArr = Array.from(teamIds);
+        conditions.push(
+          sql`${schema.cases.responsibleLawyerId} IN (${sql.join(
+            teamArr.map((id) => sql`${id}`),
+            sql`, `
+          )})`
+        );
+      }
     }
 
     if (filter?.clientId) {
@@ -1236,11 +1472,16 @@ class PostgresDatabase implements IDatabase {
       .orderBy(desc(schema.cases.createdAt));
   }
 
-  public async getCaseById(id: string, firmId: string): Promise<schema.Case | null> {
+  public async getCaseById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.Case | null> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
     const rows = await this.db
       .select()
       .from(schema.cases)
-      .where(and(eq(schema.cases.id, id), eq(schema.cases.firmId, firmId), isNull(schema.cases.deletedAt)))
+      .where(and(eq(schema.cases.id, id), visCond))
       .limit(1);
     return rows[0] || null;
   }
@@ -1265,19 +1506,17 @@ class PostgresDatabase implements IDatabase {
     caseNumber: string,
     court: string,
     excludeId?: string,
-    includeRestricted = true
+    includeRestricted = true,
+    user?: VisibilityUserContext
   ): Promise<boolean> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, includeRestricted);
     const conditions = [
-      eq(schema.cases.firmId, firmId),
-      isNull(schema.cases.deletedAt),
+      visCond,
       ilike(schema.cases.caseNumber, caseNumber.trim()),
       ilike(schema.cases.court, court.trim()),
     ];
     if (excludeId) {
       conditions.push(ne(schema.cases.id, excludeId));
-    }
-    if (!includeRestricted) {
-      conditions.push(eq(schema.cases.restricted, false));
     }
     const rows = await this.db
       .select({ id: schema.cases.id })
@@ -1288,12 +1527,108 @@ class PostgresDatabase implements IDatabase {
   }
 
   public async getCaseLinkedCounts(caseId: string, firmId: string): Promise<CaseLinkedCounts> {
+    const hearingsRows = await this.db
+      .select({ id: schema.hearings.id })
+      .from(schema.hearings)
+      .where(
+        and(
+          eq(schema.hearings.caseId, caseId),
+          eq(schema.hearings.firmId, firmId),
+          isNull(schema.hearings.deletedAt)
+        )
+      );
     return {
-      hearingsCount: 0,
+      hearingsCount: hearingsRows.length,
       tasksCount: 0,
       filesCount: 0,
       remindersCount: 0,
     };
+  }
+
+  public async listCaseShares(caseId: string, firmId: string): Promise<schema.CaseShare[]> {
+    return this.db
+      .select()
+      .from(schema.caseShares)
+      .where(
+        and(
+          eq(schema.caseShares.caseId, caseId),
+          eq(schema.caseShares.firmId, firmId),
+          isNull(schema.caseShares.deletedAt)
+        )
+      );
+  }
+
+  public async listFirmCaseShares(firmId: string): Promise<schema.CaseShare[]> {
+    return this.db
+      .select()
+      .from(schema.caseShares)
+      .where(and(eq(schema.caseShares.firmId, firmId), isNull(schema.caseShares.deletedAt)));
+  }
+
+  public async insertCaseShare(share: schema.NewCaseShare): Promise<schema.CaseShare> {
+    const existing = await this.db
+      .select()
+      .from(schema.caseShares)
+      .where(
+        and(
+          eq(schema.caseShares.caseId, share.caseId),
+          eq(schema.caseShares.userId, share.userId),
+          eq(schema.caseShares.firmId, share.firmId),
+          isNull(schema.caseShares.deletedAt)
+        )
+      )
+      .limit(1);
+    if (existing[0]) return existing[0];
+    const rows = await this.db
+      .insert(schema.caseShares)
+      .values({
+        ...share,
+        id: share.id || `share-${crypto.randomUUID()}`,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  public async deleteCaseShare(id: string, firmId: string): Promise<void> {
+    await this.db
+      .update(schema.caseShares)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(schema.caseShares.id, id), eq(schema.caseShares.firmId, firmId)));
+  }
+
+  public async listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+    return this.db
+      .select()
+      .from(schema.hearings)
+      .where(
+        and(
+          eq(schema.hearings.firmId, firmId),
+          isNull(schema.hearings.deletedAt),
+          sql`${schema.hearings.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond})`
+        )
+      );
+  }
+
+  public async insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing> {
+    const rows = await this.db
+      .insert(schema.hearings)
+      .values({
+        ...hearing,
+        id: hearing.id || `hearing-${crypto.randomUUID()}`,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  public async updateHearing(id: string, firmId: string, updates: Partial<schema.Hearing>): Promise<schema.Hearing> {
+    const rows = await this.db
+      .update(schema.hearings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(schema.hearings.id, id), eq(schema.hearings.firmId, firmId), isNull(schema.hearings.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Hearing not found: ${id}`);
+    return rows[0];
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {

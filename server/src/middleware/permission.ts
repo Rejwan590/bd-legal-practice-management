@@ -42,3 +42,21 @@ export function requireOwner() {
     });
   };
 }
+
+export function requireOwnerOrUsersManage() {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+    }
+
+    if (can('users.manage', req.user)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: 'Forbidden',
+      code: 'OWNER_ONLY',
+      message: 'This operation requires Owner role or users.manage permission.',
+    });
+  };
+}

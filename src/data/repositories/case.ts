@@ -1,8 +1,27 @@
 import { can } from '../../permissions';
+import { isLawyerOrOwner } from '../../rolePresets';
+import { canUserSeeCase, filterVisibleCases } from '../caseVisibility';
 import { IAuditLogRepository, ICaseRepository } from '../interfaces';
 import { localStore } from '../mockStore';
-import { BaseRecord, CaseRecord, SecurityContext } from '../types';
+import { BaseRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../types';
 import { assertNotReadOnly, generateUUID } from './common';
+
+export function getVisibleCaseIdsForContext(context: SecurityContext): Set<string> {
+  const { currentUser } = context;
+  const store = localStore.getData();
+  const firm =
+    store.firm.id === currentUser.firmId
+      ? store.firm
+      : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
+  const visible = filterVisibleCases(
+    currentUser,
+    store.cases || [],
+    firm,
+    store.users || [],
+    store.caseShares || []
+  );
+  return new Set(visible.map((c) => c.id));
+}
 
 export function syncCaseNextHearing(firmId: string, caseId: string) {
   const store = localStore.getData();
@@ -41,6 +60,7 @@ export class MockCaseRepository implements ICaseRepository {
       court?: string;
       matterType?: string;
       clientId?: string;
+      scope?: 'my' | 'team' | 'all';
     }
   ): Promise<CaseRecord[]> {
     if (!can('cases.view', context.currentUser)) {
@@ -49,17 +69,36 @@ export class MockCaseRepository implements ICaseRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
-    const canSeeRestricted = can('restricted.view', currentUser);
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
 
-    let cases = (store.cases || []).filter((c) => {
-      // Firm isolation
-      if (c.firmId !== currentUser.firmId) return false;
-      // Soft-delete exclusion
-      if (c.deletedAt !== null) return false;
-      // Confidentiality/Restricted isolation
-      if (c.restricted && !canSeeRestricted) return false;
-      return true;
-    });
+    let cases = filterVisibleCases(
+      currentUser,
+      store.cases || [],
+      firm,
+      store.users || [],
+      store.caseShares || []
+    );
+
+    if (filter?.scope) {
+      const uid = currentUser.id;
+      if (filter.scope === 'my') {
+        cases = cases.filter((c) => c.responsibleLawyerId === uid || c.createdBy === uid);
+      } else if (filter.scope === 'team') {
+        const firmUsers = (store.users || []).filter(
+          (u) => u.firmId === currentUser.firmId && !u.deletedAt
+        );
+        const me = firmUsers.find((u) => u.id === uid);
+        const teamIds = new Set<string>([uid]);
+        if (me?.reportsToUserId) teamIds.add(me.reportsToUserId);
+        for (const u of firmUsers) {
+          if (u.reportsToUserId === uid) teamIds.add(u.id);
+        }
+        cases = cases.filter((c) => c.responsibleLawyerId && teamIds.has(c.responsibleLawyerId));
+      }
+    }
 
     if (filter?.clientId) {
       cases = cases.filter((c) => c.clientId === filter.clientId);
@@ -117,6 +156,22 @@ export class MockCaseRepository implements ICaseRepository {
       throw new Error('Permission denied: restricted.view required to view this confidential case');
     }
 
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
+    if (
+      !canUserSeeCase(
+        currentUser,
+        found,
+        firm,
+        store.users || [],
+        store.caseShares || []
+      )
+    ) {
+      return null;
+    }
+
     return found;
   }
 
@@ -130,18 +185,13 @@ export class MockCaseRepository implements ICaseRepository {
     court: string,
     excludeId?: string
   ): Promise<boolean> {
-    const { currentUser } = context;
-    const canSeeRestricted = can('restricted.view', currentUser);
-    const store = localStore.getData();
+    const visibleCases = await this.list(context);
     const cleanNum = caseNumber.trim().toLowerCase();
     const cleanCourt = court.trim().toLowerCase();
 
-    return (store.cases || []).some(
+    return visibleCases.some(
       (c) =>
-        c.firmId === currentUser.firmId &&
-        c.deletedAt === null &&
         c.id !== excludeId &&
-        (canSeeRestricted || !c.restricted) &&
         c.caseNumber.trim().toLowerCase() === cleanNum &&
         c.court.trim().toLowerCase() === cleanCourt
     );
@@ -162,6 +212,15 @@ export class MockCaseRepository implements ICaseRepository {
       throw new Error('Permission denied: restricted.view required to create confidential cases');
     }
 
+    let resolvedRespLawyerId: string | null = data.responsibleLawyerId ?? null;
+    if (!resolvedRespLawyerId) {
+      if (isLawyerOrOwner(currentUser.role, currentUser.jobType)) {
+        resolvedRespLawyerId = currentUser.id;
+      } else if (currentUser.reportsToUserId) {
+        resolvedRespLawyerId = currentUser.reportsToUserId;
+      }
+    }
+
     const now = new Date().toISOString();
     const newCase: CaseRecord = {
       id: generateUUID(),
@@ -177,6 +236,7 @@ export class MockCaseRepository implements ICaseRepository {
       ourRole: data.ourRole,
       plaintiffLawyer: data.plaintiffLawyer.trim(),
       defendantLawyer: data.defendantLawyer.trim(),
+      responsibleLawyerId: resolvedRespLawyerId,
       status: data.status,
       restricted: Boolean(data.restricted),
       nextHearingAt: null,
@@ -203,6 +263,7 @@ export class MockCaseRepository implements ICaseRepository {
         clientId: newCase.clientId,
         plaintiff: newCase.plaintiff,
         defendant: newCase.defendant,
+        responsibleLawyerId: newCase.responsibleLawyerId,
         restricted: newCase.restricted,
       },
     });
@@ -237,6 +298,22 @@ export class MockCaseRepository implements ICaseRepository {
       throw new Error('Permission denied: restricted.view required to edit confidential cases');
     }
 
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
+    if (
+      !canUserSeeCase(
+        currentUser,
+        existing,
+        firm,
+        store.users || [],
+        store.caseShares || []
+      )
+    ) {
+      throw new Error('Case not found');
+    }
+
     const oldSnapshot = { ...existing };
     const now = new Date().toISOString();
     let updated: CaseRecord | null = null;
@@ -269,6 +346,90 @@ export class MockCaseRepository implements ICaseRepository {
     return updated;
   }
 
+  async listShares(context: SecurityContext, caseId: string): Promise<CaseShareRecord[]> {
+    const c = await this.getById(context, caseId);
+    if (!c) throw new Error('Case not found');
+    const store = localStore.getData();
+    return (store.caseShares || []).filter(
+      (s) => s.caseId === caseId && s.firmId === context.currentUser.firmId && !s.deletedAt
+    );
+  }
+
+  async shareCase(
+    context: SecurityContext,
+    caseId: string,
+    userId: string
+  ): Promise<CaseShareRecord> {
+    if (!can('cases.edit', context.currentUser)) {
+      throw new Error('Permission denied: cases.edit required to share case');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+    const c = await this.getById(context, caseId);
+    if (!c) throw new Error('Case not found');
+
+    const store = localStore.getData();
+    const existing = (store.caseShares || []).find(
+      (s) =>
+        s.caseId === caseId &&
+        s.userId === userId &&
+        s.firmId === context.currentUser.firmId &&
+        !s.deletedAt
+    );
+    if (existing) return existing;
+
+    const share: CaseShareRecord = {
+      id: `share-${generateUUID()}`,
+      firmId: context.currentUser.firmId,
+      caseId,
+      userId,
+      createdBy: context.currentUser.id,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
+    };
+
+    localStore.mutate((s) => {
+      if (!s.caseShares) s.caseShares = [];
+      s.caseShares.push(share);
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'Case',
+      entityId: caseId,
+      action: 'UPDATE',
+      oldValue: null,
+      newValue: { sharedWithUserId: userId, shareId: share.id },
+    });
+
+    return share;
+  }
+
+  async unshareCase(
+    context: SecurityContext,
+    caseId: string,
+    shareIdOrUserId: string
+  ): Promise<void> {
+    if (!can('cases.edit', context.currentUser)) {
+      throw new Error('Permission denied: cases.edit required to remove case share');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+    const c = await this.getById(context, caseId);
+    if (!c) throw new Error('Case not found');
+
+    const now = new Date().toISOString();
+    localStore.mutate((s) => {
+      const target = (s.caseShares || []).find(
+        (sh) =>
+          sh.caseId === caseId &&
+          sh.firmId === context.currentUser.firmId &&
+          !sh.deletedAt &&
+          (sh.id === shareIdOrUserId || sh.userId === shareIdOrUserId)
+      );
+      if (target) {
+        target.deletedAt = now;
+      }
+    });
+  }
+
   async getLinkedCounts(
     context: SecurityContext,
     caseId: string
@@ -278,6 +439,16 @@ export class MockCaseRepository implements ICaseRepository {
     filesCount: number;
     remindersCount: number;
   }> {
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
+    if (!visibleCaseIds.has(caseId)) {
+      return {
+        hearingsCount: 0,
+        tasksCount: 0,
+        filesCount: 0,
+        remindersCount: 0,
+      };
+    }
+
     const { currentUser } = context;
     const store = localStore.getData();
     const firmId = currentUser.firmId;

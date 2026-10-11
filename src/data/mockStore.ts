@@ -2,6 +2,7 @@ import { ALL_PERMISSIONS, DEFAULT_STAFF_PERMISSIONS } from '../permissions';
 import {
   AuditLogRecord,
   CaseRecord,
+  CaseShareRecord,
   ClientRecord,
   FileMovementRecord,
   FirmRecord,
@@ -27,6 +28,7 @@ export const INITIAL_FIRM: FirmRecord = {
   planId: 'annual-standard',
   licenseExpiresAt: '2027-12-31T23:59:59.000Z',
   status: 'active',
+  visibilityMode: 'open',
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
   deletedAt: null,
@@ -266,15 +268,15 @@ export const INITIAL_HEARING_DATE_HISTORY: HearingDateHistoryRecord[] = [
 ];
 
 export const INITIAL_USERS: UserRecord[] = [
-
-
-
   {
     id: 'user-owner-001',
     firmId: DEFAULT_FIRM_ID,
     name: 'Adv. Mahbubur Rahman',
     email: 'owner@firm.bd',
     role: 'Owner',
+    jobType: 'lawyer_senior',
+    jobTitleLabel: 'Senior Advocate & Head of Chamber',
+    reportsToUserId: null,
     permissions: ALL_PERMISSIONS,
     language: 'en',
     active: true,
@@ -290,6 +292,9 @@ export const INITIAL_USERS: UserRecord[] = [
     name: 'Adv. Nusrat Jahan',
     email: 'staff@firm.bd',
     role: 'Staff',
+    jobType: 'other',
+    jobTitleLabel: 'Associate',
+    reportsToUserId: null,
     permissions: DEFAULT_STAFF_PERMISSIONS,
     language: 'en',
     active: true,
@@ -595,6 +600,7 @@ export interface AppStoreData {
   users: UserRecord[];
   clients: ClientRecord[];
   cases: CaseRecord[];
+  caseShares: CaseShareRecord[];
   hearings: HearingRecord[];
   hearingDateHistory: HearingDateHistoryRecord[];
   tasks: TaskRecord[];
@@ -627,11 +633,30 @@ class LocalStoreManager {
       }
       const parsed = JSON.parse(serialized);
       // Ensure collections exist even if storage had earlier stage format
+      if (!parsed.firm || typeof parsed.firm !== 'object') {
+        parsed.firm = { ...INITIAL_FIRM };
+      } else if (!parsed.firm.visibilityMode) {
+        parsed.firm.visibilityMode = 'open';
+      }
+      if (!parsed.users || !Array.isArray(parsed.users)) {
+        parsed.users = [...INITIAL_USERS];
+      } else {
+        // Ensure every user has jobType
+        parsed.users = parsed.users.map((u: any) => ({
+          ...u,
+          jobType: u.jobType || (u.role === 'Owner' ? 'lawyer_senior' : 'other'),
+          jobTitleLabel: u.jobTitleLabel ?? null,
+          reportsToUserId: u.reportsToUserId ?? null,
+        }));
+      }
       if (!parsed.clients || !Array.isArray(parsed.clients)) {
         parsed.clients = [...INITIAL_CLIENTS];
       }
       if (!parsed.cases || !Array.isArray(parsed.cases)) {
         parsed.cases = [...INITIAL_CASES];
+      }
+      if (!parsed.caseShares || !Array.isArray(parsed.caseShares)) {
+        parsed.caseShares = [];
       }
       if (!parsed.hearings || !Array.isArray(parsed.hearings)) {
         parsed.hearings = [...INITIAL_HEARINGS];
@@ -665,6 +690,7 @@ class LocalStoreManager {
       users: [...INITIAL_USERS],
       clients: [...INITIAL_CLIENTS],
       cases: [...INITIAL_CASES],
+      caseShares: [],
       hearings: [...INITIAL_HEARINGS],
       hearingDateHistory: [...INITIAL_HEARING_DATE_HISTORY],
       tasks: [...INITIAL_TASKS],
@@ -672,9 +698,6 @@ class LocalStoreManager {
       fileMovements: [...INITIAL_FILE_MOVEMENTS],
       reminders: [...INITIAL_REMINDERS],
       auditLogs: [
-
-
-
         {
           id: 'audit-init-001',
           firmId: DEFAULT_FIRM_ID,
