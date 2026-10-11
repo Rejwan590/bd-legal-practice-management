@@ -288,6 +288,10 @@ export class MockHearingRepository implements IHearingRepository {
       newValue: { scheduledAt: newDate, reason: reason.trim() },
     });
 
+    if (this.reminderRepo) {
+      await this.reminderRepo.rescheduleBySourceId(context, hearingId, newDate);
+    }
+
     return { hearing: updatedHearing, history: historyRecord };
   }
 

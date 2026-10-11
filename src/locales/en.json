@@ -718,5 +718,15 @@
     "deviceRevoked": "This device's authorization was revoked.",
     "browserSummary": "Detected Browser",
     "honestNotice": "Note: A 'device' is a specific browser installation identified by a secure random key, not physical hardware. Clearing browser cookies or cache will register as a new device requiring re-authorization."
+  },
+  "hub": {
+    "tabOverview": "Overview",
+    "tabActivity": "Activity",
+    "activitySubtitle": "Audit entries for this case, its hearings, tasks, and physical files.",
+    "changeClient": "Change Client",
+    "reopenTask": "Reopen",
+    "lockedField": "Locked to current context",
+    "moreNav": "More",
+    "quickAdd": "Quick Add"
   }
 }

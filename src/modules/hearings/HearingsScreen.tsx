@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, HearingRecord, HearingStatus } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
@@ -8,10 +9,10 @@ import { HearingDateHistoryModal } from './HearingDateHistoryModal';
 import { RescheduleHearingModal } from './RescheduleHearingModal';
 import { AdjournHearingModal } from './AdjournHearingModal';
 import { HearingFormModal } from './HearingFormModal';
+import { EntityLink } from '../../components/EntityLink';
 import {
   Gavel,
   Calendar,
-  Clock,
   Plus,
   History,
   AlertCircle,
@@ -19,13 +20,16 @@ import {
   Building,
   RotateCcw,
   FastForward,
-  Filter,
   Lock,
+  Edit2,
+  Check,
+  XCircle,
 } from 'lucide-react';
 
 export const HearingsScreen: React.FC = () => {
   const { t } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
+  const { refreshVersion, triggerRefresh } = useNavigation();
   const [hearings, setHearings] = useState<HearingRecord[]>([]);
   const [casesMap, setCasesMap] = useState<Record<string, CaseRecord>>({});
   const [loading, setLoading] = useState(true);
@@ -34,6 +38,7 @@ export const HearingsScreen: React.FC = () => {
 
   // Modals state
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [editingHearing, setEditingHearing] = useState<HearingRecord | null>(null);
   const [historyHearing, setHistoryHearing] = useState<HearingRecord | null>(null);
   const [rescheduleHearing, setRescheduleHearing] = useState<HearingRecord | null>(null);
   const [adjournHearing, setAdjournHearing] = useState<HearingRecord | null>(null);
@@ -79,33 +84,52 @@ export const HearingsScreen: React.FC = () => {
 
   useEffect(() => {
     fetchHearings();
-  }, [currentUser, statusFilter, todayOnly]);
+  }, [currentUser, statusFilter, todayOnly, refreshVersion]);
 
-  const handleCreateHearing = async (data: {
+  const handleSaveHearing = async (data: {
     caseId: string;
     scheduledAt: string;
     purpose: string;
     outcomeNote?: string;
+    status?: HearingStatus;
   }) => {
-    try {
+    if (editingHearing) {
+      await repos.hearing.update({ currentUser }, editingHearing.id, {
+        scheduledAt: data.scheduledAt,
+        purpose: data.purpose,
+        outcomeNote: data.outcomeNote,
+        status: data.status,
+      });
+      setSuccessMsg(t('hearings.hearingSaved'));
+    } else {
       await repos.hearing.create({ currentUser }, data);
       setSuccessMsg(t('hearings.hearingSaved'));
+    }
+    setEditingHearing(null);
+    await fetchHearings();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const handleQuickStatus = async (h: HearingRecord, status: HearingStatus) => {
+    if (isReadOnly || !canUpdate) return;
+    try {
+      await repos.hearing.update({ currentUser }, h.id, { status });
+      setSuccessMsg(t('hearings.hearingSaved'));
       await fetchHearings();
+      triggerRefresh();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err) {
-      throw err;
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to update hearing status');
     }
   };
 
   const handleReschedule = async (hearingId: string, newDate: string, reason: string) => {
-    try {
-      await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason);
-      setSuccessMsg(t('hearings.dateRescheduled'));
-      await fetchHearings();
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err) {
-      throw err;
-    }
+    await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason);
+    setSuccessMsg(t('hearings.dateRescheduled'));
+    await fetchHearings();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   const handleAdjournAndNext = async (
@@ -115,21 +139,18 @@ export const HearingsScreen: React.FC = () => {
     nextPurpose: string,
     reason: string
   ) => {
-    try {
-      await repos.hearing.adjournAndScheduleNext(
-        { currentUser },
-        hearingId,
-        outcomeNote,
-        nextDate,
-        nextPurpose,
-        reason
-      );
-      setSuccessMsg(t('hearings.hearingAdjourned'));
-      await fetchHearings();
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err) {
-      throw err;
-    }
+    await repos.hearing.adjournAndScheduleNext(
+      { currentUser },
+      hearingId,
+      outcomeNote,
+      nextDate,
+      nextPurpose,
+      reason
+    );
+    setSuccessMsg(t('hearings.hearingAdjourned'));
+    await fetchHearings();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   return (
@@ -150,7 +171,10 @@ export const HearingsScreen: React.FC = () => {
           </span>
         ) : canUpdate ? (
           <button
-            onClick={() => setScheduleModalOpen(true)}
+            onClick={() => {
+              setEditingHearing(null);
+              setScheduleModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl shadow-xs transition"
           >
             <Plus className="w-4 h-4" />
@@ -245,13 +269,18 @@ export const HearingsScreen: React.FC = () => {
                 return (
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-slate-900">
-                        {caseRec ? caseRec.caseNumber : 'Case'}
-                      </span>
-                      {caseRec && (
-                        <span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                          {caseRec.fileSerial}
-                        </span>
+                      {caseRec ? (
+                        <EntityLink
+                          type="case"
+                          id={caseRec.id}
+                          caseTab="hearings"
+                          label={caseRec.caseNumber}
+                          subtitle={`(${caseRec.fileSerial})`}
+                          isRestricted={caseRec.restricted}
+                          className="text-sm"
+                        />
+                      ) : (
+                        <span className="font-bold text-sm text-slate-900">Case</span>
                       )}
                     </div>
                     <div className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -267,7 +296,22 @@ export const HearingsScreen: React.FC = () => {
               accessor: (h) => (
                 <div className="space-y-1 max-w-md">
                   <div className="font-semibold text-xs text-slate-900">
-                    {h.purpose}
+                    <EntityLink
+                      type="hearing"
+                      id={h.id}
+                      caseId={h.caseId}
+                      label={h.purpose}
+                      showIcon={false}
+                      onClickOverride={() => {
+                        if (canUpdate && !isReadOnly) {
+                          setEditingHearing(h);
+                          setScheduleModalOpen(true);
+                        } else {
+                          setHistoryHearing(h);
+                        }
+                      }}
+                      className="text-xs text-slate-900"
+                    />
                   </div>
                   {h.outcomeNote && (
                     <div className="text-xs text-slate-500 line-clamp-2" title={h.outcomeNote}>
@@ -324,25 +368,57 @@ export const HearingsScreen: React.FC = () => {
                     <span>{t('hearings.dateHistory')}</span>
                   </button>
 
-                  {canUpdate && h.status === 'scheduled' && (
+                  {canUpdate && !isReadOnly && (
                     <>
                       <button
-                        onClick={() => setRescheduleHearing(h)}
+                        onClick={() => {
+                          setEditingHearing(h);
+                          setScheduleModalOpen(true);
+                        }}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-                        title={t('hearings.rescheduleDate')}
+                        title={t('common.edit')}
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Reschedule</span>
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>{t('common.edit')}</span>
                       </button>
 
-                      <button
-                        onClick={() => setAdjournHearing(h)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-lg transition shadow-2xs"
-                        title={t('hearings.adjournAndNext')}
-                      >
-                        <FastForward className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Adjourn & Next</span>
-                      </button>
+                      {h.status === 'scheduled' && (
+                        <>
+                          <button
+                            onClick={() => setRescheduleHearing(h)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+                            title={t('hearings.rescheduleDate')}
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Reschedule</span>
+                          </button>
+
+                          <button
+                            onClick={() => setAdjournHearing(h)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-lg transition shadow-2xs"
+                            title={t('hearings.adjournAndNext')}
+                          >
+                            <FastForward className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Adjourn & Next</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleQuickStatus(h, 'held')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold rounded-lg transition"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{t('hearings.held')}</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleQuickStatus(h, 'cancelled')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg transition"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>{t('hearings.cancelled')}</span>
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -356,13 +432,18 @@ export const HearingsScreen: React.FC = () => {
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-slate-900">
-                        {caseRec ? caseRec.caseNumber : 'Case'}
-                      </span>
-                      {caseRec && (
-                        <span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                          {caseRec.fileSerial}
-                        </span>
+                      {caseRec ? (
+                        <EntityLink
+                          type="case"
+                          id={caseRec.id}
+                          caseTab="hearings"
+                          label={caseRec.caseNumber}
+                          subtitle={`(${caseRec.fileSerial})`}
+                          isRestricted={caseRec.restricted}
+                          className="text-sm"
+                        />
+                      ) : (
+                        <span className="font-bold text-sm text-slate-900">Case</span>
                       )}
                     </div>
                     <div className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -388,7 +469,23 @@ export const HearingsScreen: React.FC = () => {
 
                 <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 text-xs space-y-1">
                   <div className="font-semibold text-slate-900">
-                    Step / Purpose: <span className="font-medium text-slate-700">{h.purpose}</span>
+                    Step / Purpose:{' '}
+                    <EntityLink
+                      type="hearing"
+                      id={h.id}
+                      caseId={h.caseId}
+                      label={h.purpose}
+                      showIcon={false}
+                      onClickOverride={() => {
+                        if (canUpdate && !isReadOnly) {
+                          setEditingHearing(h);
+                          setScheduleModalOpen(true);
+                        } else {
+                          setHistoryHearing(h);
+                        }
+                      }}
+                      className="text-xs text-slate-700"
+                    />
                   </div>
                   {h.outcomeNote && (
                     <div className="text-slate-600 pt-1 border-t border-slate-200/50">
@@ -416,23 +513,38 @@ export const HearingsScreen: React.FC = () => {
                     <span>{t('hearings.dateHistory')}</span>
                   </button>
 
-                  {canUpdate && h.status === 'scheduled' && (
+                  {canUpdate && !isReadOnly && (
                     <>
                       <button
-                        onClick={() => setRescheduleHearing(h)}
+                        onClick={() => {
+                          setEditingHearing(h);
+                          setScheduleModalOpen(true);
+                        }}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
                       >
-                        <RotateCcw className="w-4 h-4" />
-                        <span>Reschedule</span>
+                        <Edit2 className="w-4 h-4" />
+                        <span>{t('common.edit')}</span>
                       </button>
 
-                      <button
-                        onClick={() => setAdjournHearing(h)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl transition"
-                      >
-                        <FastForward className="w-4 h-4 text-amber-700" />
-                        <span>Adjourn & Next</span>
-                      </button>
+                      {h.status === 'scheduled' && (
+                        <>
+                          <button
+                            onClick={() => setRescheduleHearing(h)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Reschedule</span>
+                          </button>
+
+                          <button
+                            onClick={() => setAdjournHearing(h)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl transition"
+                          >
+                            <FastForward className="w-4 h-4 text-amber-700" />
+                            <span>Adjourn & Next</span>
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -465,8 +577,12 @@ export const HearingsScreen: React.FC = () => {
 
       <HearingFormModal
         isOpen={scheduleModalOpen}
-        onClose={() => setScheduleModalOpen(false)}
-        onSave={handleCreateHearing}
+        initialData={editingHearing}
+        onClose={() => {
+          setScheduleModalOpen(false);
+          setEditingHearing(null);
+        }}
+        onSave={handleSaveHearing}
       />
     </div>
   );

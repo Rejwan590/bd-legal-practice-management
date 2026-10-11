@@ -21,6 +21,7 @@ interface CaseFormModalProps {
   onSave: (data: Omit<CaseRecord, 'id' | 'firmId' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'createdBy' | 'updatedBy' | 'nextHearingAt'>) => Promise<void>;
   initialData?: CaseRecord | null;
   defaultClientId?: string;
+  lockClientId?: boolean;
 }
 
 const COMMON_COURTS = [
@@ -53,6 +54,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
   onSave,
   initialData,
   defaultClientId,
+  lockClientId,
 }) => {
   const { t } = useTranslation();
   const { currentUser, can } = useAuth();
@@ -90,7 +92,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
         .list({ currentUser })
         .then((data) => {
           setClients(data);
-          if (!initialData && !clientId && data.length > 0) {
+          if (!initialData && data.length > 0) {
             setClientId(defaultClientId || data[0].id);
           }
         })
@@ -296,14 +298,20 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
           {/* Client, Responsible Lawyer & File Serial */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t('cases.linkedClient')} *
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>{t('cases.linkedClient')} *</span>
+                {lockClientId && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked')}
+                  </span>
+                )}
               </label>
               <select
                 required
+                disabled={Boolean(lockClientId)}
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px] disabled:opacity-65 disabled:cursor-not-allowed"
               >
                 {clients.length === 0 && <option value="">{t('cases.noClientsRegistered')}</option>}
                 {clients.map((c) => (

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, TaskPriority, TaskRecord, UserRecord } from '../../data/types';
-import { CheckSquare, Calendar, AlertCircle, User, Briefcase } from 'lucide-react';
+import { CheckSquare, Calendar, AlertCircle, User, Briefcase, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 
 interface TaskFormModalProps {
@@ -11,6 +11,9 @@ interface TaskFormModalProps {
   initialData?: TaskRecord | null;
   defaultCaseId?: string | null;
   defaultClientId?: string | null;
+  lockCaseAndClient?: boolean;
+  lockClientOnly?: boolean;
+  defaultDueDate?: string;
   onClose: () => void;
   onSave: (data: {
     title: string;
@@ -28,6 +31,9 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   initialData,
   defaultCaseId,
   defaultClientId,
+  lockCaseAndClient,
+  lockClientOnly,
+  defaultDueDate,
   onClose,
   onSave,
 }) => {
@@ -79,14 +85,26 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
             setAssignedTo(staffUser ? staffUser.id : currentUser.id);
             setPriority('high');
 
-            // Default due date: tomorrow at 17:00
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(17, 0, 0, 0);
-            setDueDate(tomorrow.toISOString().slice(0, 16));
+            if (defaultDueDate && defaultDueDate.length >= 10) {
+              setDueDate(`${defaultDueDate.slice(0, 10)}T17:00`);
+            } else {
+              // Default due date: tomorrow at 17:00
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              tomorrow.setHours(17, 0, 0, 0);
+              setDueDate(tomorrow.toISOString().slice(0, 16));
+            }
 
-            setCaseId(defaultCaseId || '');
-            setClientId(defaultClientId || '');
+            const resolvedCaseId = defaultCaseId || '';
+            setCaseId(resolvedCaseId);
+            if (defaultClientId) {
+              setClientId(defaultClientId);
+            } else if (resolvedCaseId) {
+              const matchedCase = caseData.find((c) => c.id === resolvedCaseId);
+              setClientId(matchedCase?.clientId || '');
+            } else {
+              setClientId('');
+            }
           }
         })
         .catch((err) => {
@@ -95,7 +113,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         });
       setErrorMsg(null);
     }
-  }, [isOpen, initialData, defaultCaseId, defaultClientId, currentUser]);
+  }, [isOpen, initialData, defaultCaseId, defaultClientId, defaultDueDate, currentUser]);
 
   // When a case is selected, automatically fill associated clientId if present
   const handleCaseChange = (newCaseId: string) => {
@@ -262,33 +280,51 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 border-t border-slate-100">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-              {t('tasks.linkedCase')}
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                {t('tasks.linkedCase')}
+              </span>
+              {lockCaseAndClient && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                  <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked')}
+                </span>
+              )}
             </label>
             <select
+              disabled={Boolean(lockCaseAndClient)}
               value={caseId}
               onChange={(e) => handleCaseChange(e.target.value)}
-              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               <option value="">{t('tasks.noLinkedCase')}</option>
-              {cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.caseNumber} ({c.fileSerial})
-                </option>
-              ))}
+              {cases
+                .filter((c) => !lockClientOnly || !clientId || c.clientId === clientId)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.caseNumber} ({c.fileSerial})
+                  </option>
+                ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              {t('tasks.linkedClient')}
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                {t('tasks.linkedClient')}
+              </span>
+              {(lockCaseAndClient || lockClientOnly) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                  <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked')}
+                </span>
+              )}
             </label>
             <select
+              disabled={Boolean(lockCaseAndClient || lockClientOnly)}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               <option value="">{t('tasks.noLinkedClient')}</option>
               {clients.map((cl) => (

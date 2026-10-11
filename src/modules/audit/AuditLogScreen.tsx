@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { AuditAction, AuditLogRecord } from '../../data/types';
-import { ShieldAlert, RefreshCw, FileText, ChevronDown, ChevronRight, User, Clock, Tag } from 'lucide-react';
+import { EntityLink } from '../../components/EntityLink';
+import { ShieldAlert, RefreshCw, FileText, ChevronDown, ChevronRight, User, Clock } from 'lucide-react';
 
 export const AuditLogScreen: React.FC = () => {
   const { t } = useTranslation();
   const { currentUser, can } = useAuth();
+  const { refreshVersion } = useNavigation();
   const [logs, setLogs] = useState<AuditLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [entityFilter, setEntityFilter] = useState<string>('ALL');
@@ -46,7 +49,7 @@ export const AuditLogScreen: React.FC = () => {
     } else {
       setLoading(false);
     }
-  }, [currentUser, entityFilter, actionFilter]);
+  }, [currentUser, entityFilter, actionFilter, refreshVersion]);
 
   if (!can('settings.manage')) {
     return (
@@ -68,6 +71,51 @@ export const AuditLogScreen: React.FC = () => {
   }
 
   const uniqueEntities = Array.from(new Set(logs.map((l) => l.entity)));
+
+  const renderAuditEntityLink = (log: AuditLogRecord) => {
+    const payload = (log.newValue || log.oldValue || {}) as Record<string, unknown>;
+    if (log.entity === 'Case') {
+      const label = (payload.caseNumber as string) || `Case (${log.entityId})`;
+      return (
+        <EntityLink
+          type="case"
+          id={log.entityId}
+          label={label}
+          isRestricted={Boolean(payload.isRestricted)}
+          className="text-xs"
+        />
+      );
+    }
+    if (log.entity === 'Client') {
+      const label = (payload.name as string) || `Client (${log.entityId})`;
+      return <EntityLink type="client" id={log.entityId} label={label} className="text-xs" />;
+    }
+    if (log.entity === 'Hearing') {
+      const label = (payload.purpose as string) || `Hearing (${log.entityId})`;
+      return (
+        <EntityLink
+          type="hearing"
+          id={log.entityId}
+          caseId={(payload.caseId as string) || undefined}
+          label={label}
+          className="text-xs"
+        />
+      );
+    }
+    if (log.entity === 'Task') {
+      const label = (payload.title as string) || `Task (${log.entityId})`;
+      return <EntityLink type="task" id={log.entityId} label={label} className="text-xs" />;
+    }
+    if (log.entity === 'PhysicalFile') {
+      const label = (payload.title as string) || (payload.serial as string) || `File (${log.entityId})`;
+      return <EntityLink type="file" id={log.entityId} label={label} className="text-xs" />;
+    }
+    return (
+      <span className="text-xs text-slate-400 font-mono break-all sm:break-normal">
+        ID: {log.entityId}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full pb-12">
@@ -163,7 +211,7 @@ export const AuditLogScreen: React.FC = () => {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                           <span className="font-semibold text-sm text-slate-900">
                             {log.entity}
                           </span>
@@ -180,9 +228,7 @@ export const AuditLogScreen: React.FC = () => {
                           >
                             {log.action}
                           </span>
-                          <span className="text-xs text-slate-400 font-mono break-all sm:break-normal">
-                            ID: {log.entityId}
-                          </span>
+                          {renderAuditEntityLink(log)}
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-slate-500 mt-1 flex-wrap">

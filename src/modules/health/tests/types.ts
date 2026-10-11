@@ -17,7 +17,8 @@ export interface TestResult {
     | 'Calendar & Reminders'
     | 'Dashboard & Search'
     | 'Backup & Restore'
-    | 'Subscription & Read-Only';
+    | 'Subscription & Read-Only'
+    | 'Hub & Navigation';
   passed: boolean;
   message: string;
   details?: string;

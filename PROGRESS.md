@@ -3,7 +3,35 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Team Hierarchy & Visibility for Firm Users completed and verified. Reviewer Hardening (Batches 1-4) and Super Admin (Steps A, B, D) completed and verified.
+Case Dossier Hub, Client Profile Hub, and URL Navigation completed and verified. Team Hierarchy & Visibility for Firm Users, Reviewer Hardening (Batches 1-4), and Super Admin (Steps A, B, D) completed and verified.
+
+## Case Dossier Hub, Client Profile Hub & URL Navigation (Frontend)
+- **Dependency-Light URL Router (`src/modules/foundation/NavigationContext.tsx` & `vercel.json`)**:
+  - Full URL routing (`pushState`, `replaceState`, `popstate`) supporting `/`, `/cases`, `/cases/:id/(overview|hearings|tasks|files|activity)`, `/clients`, `/clients/:id`, `/clients/:id/(tasks|files)`, `/calendar`, `/tasks`, `/files`, `/search`, `/hearings`, `/auditLog`, `/backup`, `/settings`, and `/health`.
+  - Browser Back button and page refresh keep the exact screen, entity ID, and active tab. Added `vercel.json` SPA rewrite (`/(.*)` -> `/index.html`).
+  - Central reactive refresh counter (`refreshVersion` + `triggerRefresh()`) synchronizes Case Dossier, Client Profile, Calendar, Dashboard, Reminders, Global Search, and Audit Log after any repository mutation.
+- **Shared Navigation & Entity Linking (`src/components/EntityLink.tsx`, `src/components/Breadcrumbs.tsx`, `src/modules/foundation/AppShell.tsx`)**:
+  - `EntityLink`: Unified link component used across Dashboard, Calendar, Cases, Clients, Hearings, Tasks, Files, Global Search, and Audit Log. Respects `restricted.view` and supports both page navigation and direct edit modal launching (`openEntityModalById`).
+  - `Breadcrumbs`: Detail-page breadcrumb trail + Back button (`goBack`).
+  - Context-aware `+` action button (`data-testid="context-plus-button"`): inside a case offers Add Hearing / Task / File prefilled & locked to `caseId` + `clientId`; inside a client profile offers Add Case / Task / File prefilled & locked to `clientId`; on Calendar offers Add Hearing / Task prefilled to `selectedCalendarDate`; elsewhere offers that screen's primary create action.
+  - Mobile 5-item bottom navigation (`Dashboard`, `Cases`, `Calendar`, `Tasks`, `More` drawer), desktop sidebar, and global search reachable from every screen.
+- **Case Dossier Working Hub (`src/modules/cases/CaseDetailsView.tsx`)**:
+  - Single `Edit` action for the case in the header (removed the duplicate `Edit Details` button from inside the body).
+  - 5 tabs (`Overview`, `Hearings`, `Tasks`, `Files`, `Activity`):
+    - `Overview`: Case metadata, responsible lawyer & case sharing controls, linked Client card with `Open Profile` and inline `Change Client`, and quick summary metrics.
+    - `Hearings`: Add hearing (`caseId` locked), Edit, Reschedule (`RescheduleHearingModal` preserving `hearing_date_history` + reason), Adjourn (`AdjournHearingModal`), Mark Held / Cancelled, inline Outcome Note editor, and Date History (`HearingDateHistoryModal`).
+    - `Tasks`: Add task (`caseId` & `clientId` locked), Edit (`TaskFormModal`), Reassign (`TaskReassignModal`), Complete (`TaskCompleteModal`), and Reopen.
+    - `Files`: Add file (`caseId` & `clientId` locked), Check Out (`FileCheckOutModal` creating a `file_return` reminder), Check In (`FileCheckInModal` clearing the reminder), Edit (`FileFormModal`), and Movement History (`FileHistoryModal`).
+    - `Activity`: Case-scoped audit trail via `repos.auditLog.listByCaseId(context, caseId)` enforcing `cases.view`, central case visibility, and `restricted.view`.
+- **Client Profile Working Hub (`src/modules/clients/ClientProfileView.tsx`)**:
+  - Single header `Edit` and `Archive` actions with 3 tabs (`Cases`, `Tasks`, `Files`) and in-place Add/Edit/Reassign/Complete/Reopen/Checkout/Checkin actions prefilled & locked to `clientId`.
+- **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm run build`: PASS
+  - `npm run test:health`: PASS (87/87 passed, 0 failed — including 6 new Hub & Navigation chain checks)
+  - `npm run test:responsive`: PASS (64/64 Playwright tests passed across 360px, 768px, and 1280px viewports covering all routes, Case Dossier tabs, Client Profile tabs, Dossier modals, deep links, refresh persistence, and Browser Back)
+  - `npm test --prefix server`: PASS (381 assertions passed, 0 failed)
+  - `npm run build --prefix admin-app`: PASS
 
 ## Team Hierarchy & Visibility (Firm Users)
 - **Schema & Safe Migration (`0004_team_hierarchy_and_visibility.sql`)**:
@@ -236,11 +264,11 @@ Team Hierarchy & Visibility for Firm Users completed and verified. Reviewer Hard
 | Foundation/auth/permissions | [x] PASS | [x] PASS | [x] PASS | [ ] |
 | Clients | [x] PASS | [x] PASS | [x] PASS | [ ] |
 | Cases | [x] PASS | [x] PASS | [x] PASS | [ ] |
-| Hearings + history | [x] PASS | [ ] | [ ] | [ ] |
-| Tasks | [x] PASS | [ ] | [ ] | [ ] |
-| Physical files | [x] PASS | [ ] | [ ] | [ ] |
-| Calendar + reminders | [x] PASS | [ ] | [ ] | [ ] |
-| Dashboard + search | [x] PASS | [ ] | [ ] | [ ] |
+| Hearings + history | [x] PASS | [x] PASS | [ ] | [ ] |
+| Tasks | [x] PASS | [x] PASS | [ ] | [ ] |
+| Physical files | [x] PASS | [x] PASS | [ ] | [ ] |
+| Calendar + reminders | [x] PASS | [x] PASS | [ ] | [ ] |
+| Dashboard + search | [x] PASS | [x] PASS | [ ] | [ ] |
 | Backup/restore | [x] PASS | [ ] | [ ] | [ ] |
 | Subscription/read-only | [x] PASS | [ ] | [ ] | [ ] |
 | Admin page (firms, payments) | [x] PASS | [ ] | [ ] | [ ] |

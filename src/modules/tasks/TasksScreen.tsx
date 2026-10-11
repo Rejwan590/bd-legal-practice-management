@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, TaskPriority, TaskRecord, TaskStatus, UserRecord } from '../../data/types';
 import { TaskFormModal } from './TaskFormModal';
@@ -8,6 +9,7 @@ import { TaskReassignModal } from './TaskReassignModal';
 import { TaskCompleteModal } from './TaskCompleteModal';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
+import { EntityLink } from '../../components/EntityLink';
 import {
   CheckSquare,
   Plus,
@@ -15,9 +17,7 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   User,
-  Briefcase,
   AlertCircle,
   ArrowRightLeft,
   Edit2,
@@ -25,11 +25,13 @@ import {
   Lock,
   Flame,
   Check,
+  RotateCcw,
 } from 'lucide-react';
 
 export const TasksScreen: React.FC = () => {
   const { t } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
+  const { refreshVersion, triggerRefresh } = useNavigation();
   const repos = getRepositories();
 
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
@@ -104,7 +106,7 @@ export const TasksScreen: React.FC = () => {
 
   useEffect(() => {
     fetchTasksAndRelations();
-  }, [currentUser, scope, assigneeFilter]);
+  }, [currentUser, scope, assigneeFilter, refreshVersion]);
 
   // Handle Save
   const handleSaveTask = async (data: {
@@ -116,44 +118,49 @@ export const TasksScreen: React.FC = () => {
     caseId?: string | null;
     clientId?: string | null;
   }) => {
-    try {
-      if (editingTask) {
-        await repos.task.update({ currentUser }, editingTask.id, data);
-        setSuccessMsg(t('tasks.taskUpdated'));
-      } else {
-        await repos.task.create({ currentUser }, data);
-        setSuccessMsg(t('tasks.taskSaved'));
-      }
-      setEditingTask(null);
-      await fetchTasksAndRelations();
-      setTimeout(() => setSuccessMsg(null), 3500);
-    } catch (err) {
-      throw err;
+    if (editingTask) {
+      await repos.task.update({ currentUser }, editingTask.id, data);
+      setSuccessMsg(t('tasks.taskUpdated'));
+    } else {
+      await repos.task.create({ currentUser }, data);
+      setSuccessMsg(t('tasks.taskSaved'));
     }
+    setEditingTask(null);
+    await fetchTasksAndRelations();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3500);
   };
 
   // Handle Complete
   const handleCompleteTask = async (taskId: string, note?: string) => {
+    await repos.task.complete({ currentUser }, taskId, note);
+    setSuccessMsg(t('tasks.taskCompleted'));
+    await fetchTasksAndRelations();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3500);
+  };
+
+  // Handle Reopen
+  const handleReopenTask = async (task: TaskRecord) => {
+    if (isReadOnly || !canComplete) return;
     try {
-      await repos.task.complete({ currentUser }, taskId, note);
-      setSuccessMsg(t('tasks.taskCompleted'));
+      await repos.task.update({ currentUser }, task.id, { status: 'pending' });
+      setSuccessMsg(t('tasks.taskUpdated'));
       await fetchTasksAndRelations();
+      triggerRefresh();
       setTimeout(() => setSuccessMsg(null), 3500);
-    } catch (err) {
-      throw err;
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to reopen task');
     }
   };
 
   // Handle Reassign
   const handleReassignTask = async (taskId: string, newAssignedTo: string, reason?: string) => {
-    try {
-      await repos.task.reassign({ currentUser }, taskId, newAssignedTo, reason);
-      setSuccessMsg(t('tasks.taskReassigned'));
-      await fetchTasksAndRelations();
-      setTimeout(() => setSuccessMsg(null), 3500);
-    } catch (err) {
-      throw err;
-    }
+    await repos.task.reassign({ currentUser }, taskId, newAssignedTo, reason);
+    setSuccessMsg(t('tasks.taskReassigned'));
+    await fetchTasksAndRelations();
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3500);
   };
 
   // Handle Soft Delete
@@ -164,6 +171,7 @@ export const TasksScreen: React.FC = () => {
       setSuccessMsg(t('tasks.taskDeleted'));
       setDeletingTask(null);
       await fetchTasksAndRelations();
+      triggerRefresh();
       setTimeout(() => setSuccessMsg(null), 3500);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to delete task');
@@ -440,11 +448,13 @@ export const TasksScreen: React.FC = () => {
                 const isDone = task.status === 'completed';
                 return (
                   <div className="flex items-start gap-3">
-                    {canComplete ? (
+                    {canComplete && !isReadOnly ? (
                       <button
                         onClick={() => {
                           if (!isDone) {
                             setCompletingTask(task);
+                          } else {
+                            handleReopenTask(task);
                           }
                         }}
                         className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border transition ${
@@ -452,7 +462,7 @@ export const TasksScreen: React.FC = () => {
                             ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
                             : 'border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 text-transparent'
                         }`}
-                        title={isDone ? t('tasks.completed') : t('tasks.markCompleted')}
+                        title={isDone ? t('hub.reopenTask', 'Reopen') : t('tasks.markCompleted')}
                       >
                         <Check className="w-4 h-4 stroke-[3]" />
                       </button>
@@ -469,13 +479,23 @@ export const TasksScreen: React.FC = () => {
                     )}
                     <div className="space-y-1 max-w-md">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className={`font-bold text-sm text-slate-900 ${
-                            isDone ? 'line-through text-slate-500' : ''
+                        <EntityLink
+                          type="task"
+                          id={task.id}
+                          label={task.title}
+                          showIcon={false}
+                          onClickOverride={() => {
+                            if (canAssign && !isReadOnly) {
+                              setEditingTask(task);
+                              setFormModalOpen(true);
+                            } else if (!isDone && canComplete && !isReadOnly) {
+                              setCompletingTask(task);
+                            }
+                          }}
+                          className={`font-bold text-sm ${
+                            isDone ? 'line-through text-slate-500' : 'text-slate-900'
                           }`}
-                        >
-                          {task.title}
-                        </span>
+                        />
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
                             task.status === 'completed'
@@ -513,16 +533,26 @@ export const TasksScreen: React.FC = () => {
                     </span>
                     {linkedCase && (
                       <div className="flex items-center gap-1 text-slate-600">
-                        <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="font-medium">{linkedCase.caseNumber}</span>
-                        <span className="text-[10px] font-mono text-slate-400">
-                          ({linkedCase.fileSerial})
-                        </span>
+                        <EntityLink
+                          type="case"
+                          id={linkedCase.id}
+                          label={linkedCase.caseNumber}
+                          subtitle={`(${linkedCase.fileSerial})`}
+                          isRestricted={linkedCase.restricted}
+                          className="text-xs"
+                        />
                       </div>
                     )}
                     {linkedClient && (
-                      <div className="text-[11px] text-slate-500 truncate max-w-xs">
-                        Client: <strong className="text-slate-700">{linkedClient.name}</strong>
+                      <div className="text-[11px] text-slate-500 truncate max-w-xs flex items-center gap-1">
+                        <span>Client:</span>
+                        <EntityLink
+                          type="client"
+                          id={linkedClient.id}
+                          label={linkedClient.name}
+                          showIcon={false}
+                          className="text-[11px] text-slate-700"
+                        />
                       </div>
                     )}
                   </div>
@@ -591,7 +621,7 @@ export const TasksScreen: React.FC = () => {
                 const isDone = task.status === 'completed';
                 return (
                   <div className="flex items-center justify-end gap-1 flex-wrap">
-                    {!isDone && canComplete && (
+                    {!isDone && canComplete && !isReadOnly && (
                       <button
                         onClick={() => setCompletingTask(task)}
                         className="px-2.5 py-1.5 min-h-[36px] text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition"
@@ -601,7 +631,18 @@ export const TasksScreen: React.FC = () => {
                       </button>
                     )}
 
-                    {canAssign && (
+                    {isDone && canComplete && !isReadOnly && (
+                      <button
+                        onClick={() => handleReopenTask(task)}
+                        className="px-2.5 py-1.5 min-h-[36px] text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition inline-flex items-center gap-1"
+                        title={t('hub.reopenTask', 'Reopen')}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>{t('hub.reopenTask', 'Reopen')}</span>
+                      </button>
+                    )}
+
+                    {canAssign && !isReadOnly && (
                       <>
                         <button
                           onClick={() => setReassigningTask(task)}
@@ -654,11 +695,13 @@ export const TasksScreen: React.FC = () => {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {canComplete ? (
+                  {canComplete && !isReadOnly ? (
                     <button
                       onClick={() => {
                         if (!isDone) {
                           setCompletingTask(task);
+                        } else {
+                          handleReopenTask(task);
                         }
                       }}
                       className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border transition ${
@@ -666,7 +709,7 @@ export const TasksScreen: React.FC = () => {
                           ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
                           : 'border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 text-transparent'
                       }`}
-                      title={isDone ? t('tasks.completed') : t('tasks.markCompleted')}
+                      title={isDone ? t('hub.reopenTask', 'Reopen') : t('tasks.markCompleted')}
                     >
                       <Check className="w-4 h-4 stroke-[3]" />
                     </button>
@@ -684,13 +727,23 @@ export const TasksScreen: React.FC = () => {
 
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`font-bold text-sm text-slate-900 ${
-                          isDone ? 'line-through text-slate-500' : ''
+                      <EntityLink
+                        type="task"
+                        id={task.id}
+                        label={task.title}
+                        showIcon={false}
+                        onClickOverride={() => {
+                          if (canAssign && !isReadOnly) {
+                            setEditingTask(task);
+                            setFormModalOpen(true);
+                          } else if (!isDone && canComplete && !isReadOnly) {
+                            setCompletingTask(task);
+                          }
+                        }}
+                        className={`font-bold text-sm ${
+                          isDone ? 'line-through text-slate-500' : 'text-slate-900'
                         }`}
-                      >
-                        {task.title}
-                      </span>
+                      />
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -760,23 +813,33 @@ export const TasksScreen: React.FC = () => {
 
                   {linkedCase && (
                     <div className="flex items-center gap-1 text-slate-600">
-                      <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="font-medium">{linkedCase.caseNumber}</span>
-                      <span className="text-[10px] font-mono text-slate-400">
-                        ({linkedCase.fileSerial})
-                      </span>
+                      <EntityLink
+                        type="case"
+                        id={linkedCase.id}
+                        label={linkedCase.caseNumber}
+                        subtitle={`(${linkedCase.fileSerial})`}
+                        isRestricted={linkedCase.restricted}
+                        className="text-xs"
+                      />
                     </div>
                   )}
 
                   {linkedClient && (
-                    <div className="text-[11px] text-slate-500">
-                      Client: <strong className="text-slate-700">{linkedClient.name}</strong>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <span>Client:</span>
+                      <EntityLink
+                        type="client"
+                        id={linkedClient.id}
+                        label={linkedClient.name}
+                        showIcon={false}
+                        className="text-[11px] text-slate-700"
+                      />
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap">
-                  {!isDone && canComplete && (
+                  {!isDone && canComplete && !isReadOnly && (
                     <button
                       onClick={() => setCompletingTask(task)}
                       className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 min-h-[44px] text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition"
@@ -786,7 +849,17 @@ export const TasksScreen: React.FC = () => {
                     </button>
                   )}
 
-                  {canAssign && (
+                  {isDone && canComplete && !isReadOnly && (
+                    <button
+                      onClick={() => handleReopenTask(task)}
+                      className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 min-h-[44px] text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>{t('hub.reopenTask', 'Reopen')}</span>
+                    </button>
+                  )}
+
+                  {canAssign && !isReadOnly && (
                     <>
                       <button
                         onClick={() => setReassigningTask(task)}

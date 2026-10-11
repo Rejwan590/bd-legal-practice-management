@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import {
   CaseRecord,
@@ -21,7 +22,6 @@ import {
   Trash2,
   MapPin,
   Clock,
-  Briefcase,
   User,
   AlertTriangle,
   CheckCircle2,
@@ -36,10 +36,12 @@ import { FileCourtDispatchModal } from './FileCourtDispatchModal';
 import { FileHistoryModal } from './FileHistoryModal';
 import { ResponsiveTable, ColumnDef } from '../../components/responsive/ResponsiveTable';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
+import { EntityLink } from '../../components/EntityLink';
 
 export const FilesScreen: React.FC = () => {
   const { t } = useTranslation();
   const { currentUser, isReadOnly } = useAuth();
+  const { refreshVersion, triggerRefresh } = useNavigation();
   const repos = getRepositories();
 
   const [files, setFiles] = useState<PhysicalFileRecord[]>([]);
@@ -101,7 +103,7 @@ export const FilesScreen: React.FC = () => {
 
   useEffect(() => {
     loadAllData();
-  }, [currentUser]);
+  }, [currentUser, refreshVersion]);
 
   // Distinct shelves for filter dropdown
   const uniqueShelves = useMemo(() => {
@@ -209,6 +211,7 @@ export const FilesScreen: React.FC = () => {
       showNotification('success', t('files.fileSaved'));
     }
     await loadAllData();
+    triggerRefresh();
   };
 
   // Handler: Check Out
@@ -221,6 +224,7 @@ export const FilesScreen: React.FC = () => {
     await repos.physicalFile.checkOut({ currentUser }, fileId, holderId, dueBackAt, note);
     showNotification('success', t('files.fileCheckedOut'));
     await loadAllData();
+    triggerRefresh();
   };
 
   // Handler: Check In
@@ -228,6 +232,7 @@ export const FilesScreen: React.FC = () => {
     await repos.physicalFile.checkIn({ currentUser }, fileId, shelfLocation, note);
     showNotification('success', t('files.fileCheckedIn'));
     await loadAllData();
+    triggerRefresh();
   };
 
   // Handler: Dispatch to Court
@@ -248,6 +253,7 @@ export const FilesScreen: React.FC = () => {
     );
     showNotification('success', t('files.fileDispatched'));
     await loadAllData();
+    triggerRefresh();
   };
 
   // Handler: Archive (Soft-delete)
@@ -258,6 +264,7 @@ export const FilesScreen: React.FC = () => {
       showNotification('success', t('files.fileDeleted'));
       setDeleteConfirmFile(null);
       await loadAllData();
+      triggerRefresh();
     } catch (err: unknown) {
       showNotification('error', err instanceof Error ? err.message : 'Failed to archive file');
     }
@@ -279,7 +286,23 @@ export const FilesScreen: React.FC = () => {
               {file.shelfLocation || 'Chamber Rack'}
             </span>
           </div>
-          <div className="font-bold text-sm text-slate-900">{file.title}</div>
+          <div className="font-bold text-sm text-slate-900">
+            <EntityLink
+              type="file"
+              id={file.id}
+              label={file.title}
+              showIcon={false}
+              onClickOverride={() => {
+                if (canManage && !isReadOnly) {
+                  setEditingFile(file);
+                  setFormModalOpen(true);
+                } else {
+                  setHistoryModalFile(file);
+                }
+              }}
+              className="text-sm text-slate-900"
+            />
+          </div>
           {file.notes && (
             <p className="text-xs text-slate-500 line-clamp-1 max-w-xs">{file.notes}</p>
           )}
@@ -297,15 +320,24 @@ export const FilesScreen: React.FC = () => {
         return (
           <div className="space-y-1">
             {linkedCase && (
-              <div className="inline-flex items-center gap-1 text-[11px] text-indigo-800 bg-indigo-50/80 border border-indigo-200 px-2 py-0.5 rounded-md font-mono">
-                <Briefcase className="w-3 h-3 text-indigo-600 shrink-0" />
-                <span>{linkedCase.caseNumber}</span>
+              <div>
+                <EntityLink
+                  type="case"
+                  id={linkedCase.id}
+                  label={linkedCase.caseNumber}
+                  isRestricted={linkedCase.restricted}
+                  className="text-xs font-mono text-indigo-800"
+                />
               </div>
             )}
             {linkedClient && (
               <div className="flex items-center gap-1 text-xs text-slate-700">
-                <User className="w-3 h-3 text-slate-400 shrink-0" />
-                <span>{linkedClient.name}</span>
+                <EntityLink
+                  type="client"
+                  id={linkedClient.id}
+                  label={linkedClient.name}
+                  className="text-xs text-slate-700"
+                />
               </div>
             )}
           </div>
@@ -386,7 +418,7 @@ export const FilesScreen: React.FC = () => {
       headerClassName: 'text-right',
       accessor: (file) => (
         <div className="flex items-center justify-end gap-1 flex-wrap">
-          {canManage && file.status === 'in_chamber' && (
+          {canManage && !isReadOnly && file.status === 'in_chamber' && (
             <>
               <button
                 type="button"
@@ -415,7 +447,7 @@ export const FilesScreen: React.FC = () => {
             </>
           )}
 
-          {canManage && (file.status === 'checked_out' || file.status === 'in_court') && (
+          {canManage && !isReadOnly && (file.status === 'checked_out' || file.status === 'in_court') && (
             <button
               type="button"
               onClick={(e) => {
@@ -442,7 +474,7 @@ export const FilesScreen: React.FC = () => {
             <History className="w-3.5 h-3.5 text-slate-500" />
           </button>
 
-          {canManage && (
+          {canManage && !isReadOnly && (
             <>
               <button
                 type="button"
@@ -527,16 +559,25 @@ export const FilesScreen: React.FC = () => {
             {/* Linked Case Tag */}
             {linkedCase && (
               <span className="inline-flex items-center gap-1 text-[11px] text-indigo-800 bg-indigo-50/80 border border-indigo-200 px-2 py-0.5 rounded-lg font-mono">
-                <Briefcase className="w-3 h-3 text-indigo-600" />
-                {linkedCase.caseNumber}
+                <EntityLink
+                  type="case"
+                  id={linkedCase.id}
+                  label={linkedCase.caseNumber}
+                  isRestricted={linkedCase.restricted}
+                  className="text-[11px]"
+                />
               </span>
             )}
 
             {/* Linked Client Tag */}
             {linkedClient && (
               <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg">
-                <User className="w-3 h-3 text-slate-400" />
-                {linkedClient.name}
+                <EntityLink
+                  type="client"
+                  id={linkedClient.id}
+                  label={linkedClient.name}
+                  className="text-[11px] text-slate-700"
+                />
               </span>
             )}
 
@@ -549,7 +590,23 @@ export const FilesScreen: React.FC = () => {
             )}
           </div>
 
-          <h3 className="font-bold text-sm text-slate-900 break-words">{file.title}</h3>
+          <h3 className="font-bold text-sm text-slate-900 break-words">
+            <EntityLink
+              type="file"
+              id={file.id}
+              label={file.title}
+              showIcon={false}
+              onClickOverride={() => {
+                if (canManage && !isReadOnly) {
+                  setEditingFile(file);
+                  setFormModalOpen(true);
+                } else {
+                  setHistoryModalFile(file);
+                }
+              }}
+              className="text-sm text-slate-900"
+            />
+          </h3>
 
           {file.notes && (
             <p className="text-xs text-slate-500 line-clamp-2">{file.notes}</p>

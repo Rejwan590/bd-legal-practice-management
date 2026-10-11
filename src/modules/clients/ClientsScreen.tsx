@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { ClientRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { EntityLink } from '../../components/EntityLink';
 import { ClientFormModal } from './ClientFormModal';
 import { ClientProfileView } from './ClientProfileView';
 import {
@@ -14,11 +16,9 @@ import {
   MapPin,
   ChevronRight,
   ShieldAlert,
-  FileText,
   AlertCircle,
   CheckCircle2,
   Edit2,
-  Trash2,
   Lock,
 } from 'lucide-react';
 
@@ -30,14 +30,20 @@ interface ClientsScreenProps {
 export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedClientId }) => {
   const { t } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
+  const {
+    route,
+    openClientProfile,
+    navigateToScreen,
+    refreshVersion,
+    triggerRefresh,
+  } = useNavigation();
+
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Profile view & Modal state
-  const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRecord | null>(null);
 
@@ -45,7 +51,9 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
   const canView = can('clients.view');
   const canEdit = can('clients.edit');
 
-  const fetchClients = async () => {
+  const activeClientId = route.clientId || initialSelectedClientId || null;
+
+  const fetchClients = useCallback(async () => {
     if (!canView) {
       setLoading(false);
       return;
@@ -60,20 +68,11 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
     } finally {
       setLoading(false);
     }
-  };
+  }, [canView, currentUser, searchQuery, repos]);
 
   useEffect(() => {
     fetchClients();
-  }, [currentUser, searchQuery, canView]);
-
-  useEffect(() => {
-    if (initialSelectedClientId && clients.length > 0) {
-      const match = clients.find((c) => c.id === initialSelectedClientId);
-      if (match) {
-        setSelectedClient(match);
-      }
-    }
-  }, [initialSelectedClientId, clients]);
+  }, [fetchClients, refreshVersion]);
 
   const handleSaveClient = async (formData: {
     name: string;
@@ -84,27 +83,20 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
     notes: string;
   }) => {
     if (!canEdit) {
-      setErrorMsg('Permission denied: clients.edit required');
+      setErrorMsg('Permission denied: clients.manage required');
       return;
     }
 
-    try {
-      if (editingClient) {
-        const updated = await repos.client.update({ currentUser }, editingClient.id, formData);
-        setSuccessMsg(t('clients.clientSaved'));
-        if (selectedClient && selectedClient.id === updated.id) {
-          setSelectedClient(updated);
-        }
-      } else {
-        await repos.client.create({ currentUser }, formData);
-        setSuccessMsg(t('clients.clientSaved'));
-      }
-      setEditingClient(null);
-      await fetchClients();
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: unknown) {
-      throw err;
+    if (editingClient) {
+      await repos.client.update({ currentUser }, editingClient.id, formData);
+      setSuccessMsg(t('clients.clientSaved'));
+    } else {
+      await repos.client.create({ currentUser }, formData);
+      setSuccessMsg(t('clients.clientSaved'));
     }
+    setEditingClient(null);
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   if (!canView) {
@@ -121,26 +113,34 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
     );
   }
 
-  // If a client is selected, show profile dossier view
-  if (selectedClient) {
+  // If a client is selected via URL route, render the 3-tab Client Profile Hub
+  if (activeClientId) {
     return (
-      <ClientProfileView
-        client={selectedClient}
-        onBack={() => {
-          setSelectedClient(null);
-          fetchClients();
-        }}
-        onEdit={(c) => {
-          setEditingClient(c);
-          setModalOpen(true);
-        }}
-        onDeleted={() => {
-          setSelectedClient(null);
-          setSuccessMsg(t('clients.clientDeleted'));
-          fetchClients();
-          setTimeout(() => setSuccessMsg(null), 3000);
-        }}
-      />
+      <div className="max-w-7xl mx-auto w-full space-y-4">
+        <ClientProfileView
+          clientId={activeClientId}
+          initialClient={clients.find((c) => c.id === activeClientId) || null}
+          onBack={() => navigateToScreen('clients')}
+          onEdit={(c) => {
+            setEditingClient(c);
+            setModalOpen(true);
+          }}
+          onDeleted={() => {
+            navigateToScreen('clients');
+            setSuccessMsg(t('clients.clientDeleted'));
+            setTimeout(() => setSuccessMsg(null), 3000);
+          }}
+        />
+        <ClientFormModal
+          isOpen={modalOpen}
+          initialData={editingClient}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingClient(null);
+          }}
+          onSave={handleSaveClient}
+        />
+      </div>
     );
   }
 
@@ -218,7 +218,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center space-y-3">
           <Users className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm text-slate-500">{t('clients.noClientsFound')}</p>
-          {canEdit && (
+          {canEdit && !isReadOnly && (
             <button
               onClick={() => {
                 setEditingClient(null);
@@ -235,7 +235,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
         <ResponsiveTable<ClientRecord>
           data={clients}
           keyExtractor={(client) => client.id}
-          onRowClick={(client) => setSelectedClient(client)}
+          onRowClick={(client) => openClientProfile(client.id, 'cases')}
           columns={[
             {
               header: 'Client',
@@ -246,7 +246,12 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-slate-900">{client.name}</span>
+                      <EntityLink
+                        type="client"
+                        id={client.id}
+                        label={client.name}
+                        className="font-bold text-sm"
+                      />
                       {client.archived && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
                           Archived
@@ -263,15 +268,15 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               ),
             },
             {
-              header: 'Contact',
+              header: 'Phone / Email',
               accessor: (client) => (
-                <div className="space-y-0.5 text-xs text-slate-600">
-                  <div className="flex items-center gap-1.5 font-medium">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span>{client.phone}</span>
                   </div>
                   {client.email && (
-                    <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                    <div className="text-xs text-slate-500 truncate max-w-[180px]">
                       {client.email}
                     </div>
                   )}
@@ -280,23 +285,11 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
             },
             {
               header: 'Address',
-              accessor: (client) =>
-                client.address ? (
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600 max-w-xs">
-                    <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <span className="truncate">{client.address}</span>
-                  </div>
-                ) : (
-                  <span className="text-xs text-slate-400">—</span>
-                ),
-            },
-            {
-              header: 'Registered',
-              className: 'whitespace-nowrap',
               accessor: (client) => (
-                <span className="text-xs text-slate-500 font-mono">
-                  {new Date(client.createdAt).toLocaleDateString()}
-                </span>
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 max-w-xs">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="line-clamp-2">{client.address || '—'}</span>
+                </div>
               ),
             },
             {
@@ -307,7 +300,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                   className="flex items-center justify-end gap-1.5"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {canEdit && (
+                  {canEdit && !isReadOnly && (
                     <button
                       onClick={() => {
                         setEditingClient(client);
@@ -321,7 +314,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                     </button>
                   )}
                   <button
-                    onClick={() => setSelectedClient(client)}
+                    onClick={() => openClientProfile(client.id, 'cases')}
                     className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition"
                   >
                     <span>{t('clients.viewProfile')}</span>
@@ -334,21 +327,19 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
           renderMobileCard={(client) => (
             <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0 border border-slate-200">
                     {client.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-sm text-slate-900">{client.name}</span>
-                      {client.archived && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
-                          Archived
-                        </span>
-                      )}
-                    </div>
+                    <EntityLink
+                      type="client"
+                      id={client.id}
+                      label={client.name}
+                      className="font-bold text-sm"
+                    />
                     {client.nameBn && (
-                      <span className="text-xs text-slate-500 font-sans block mt-0.5">
+                      <span className="text-xs text-slate-500 font-sans block">
                         {client.nameBn}
                       </span>
                     )}
@@ -356,14 +347,14 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-xs text-slate-600 pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-1.5 font-medium">
-                  <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span>{client.phone}</span>
                 </div>
                 {client.address && (
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{client.address}</span>
                   </div>
                 )}
@@ -373,21 +364,8 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                 className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100"
                 onClick={(e) => e.stopPropagation()}
               >
-                {canEdit && (
-                  <button
-                    onClick={() => {
-                      setEditingClient(client);
-                      setModalOpen(true);
-                    }}
-                    className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition border border-slate-200"
-                    title={t('common.edit')}
-                    aria-label={t('common.edit')}
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                )}
                 <button
-                  onClick={() => setSelectedClient(client)}
+                  onClick={() => openClientProfile(client.id, 'cases')}
                   className="min-h-[44px] flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition border border-indigo-200/60"
                 >
                   <span>{t('clients.viewProfile')}</span>

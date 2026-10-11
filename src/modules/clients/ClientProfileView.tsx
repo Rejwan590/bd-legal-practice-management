@@ -1,570 +1,711 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation, ClientProfileTab } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
-import { ClientRecord } from '../../data/types';
-import { ClientLinkedOverview } from '../../data/interfaces';
-import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import {
-  ArrowLeft,
-  Briefcase,
-  CheckSquare,
-  FolderArchive,
+  CaseRecord,
+  ClientRecord,
+  PhysicalFileRecord,
+  TaskRecord,
+} from '../../data/types';
+import { EntityLink } from '../../components/EntityLink';
+import { Breadcrumbs } from '../../components/Breadcrumbs';
+import {
+  User,
   Phone,
   Mail,
   MapPin,
   FileText,
-  Calendar,
+  Briefcase,
+  CheckSquare,
+  FolderArchive,
   Edit2,
-  Trash2,
-  AlertTriangle,
-  Clock,
-  ShieldAlert,
   Archive,
+  AlertTriangle,
+  Plus,
+  UserPlus,
   CheckCircle2,
+  RotateCcw,
+  LogOut,
+  LogIn,
+  History,
+  Lock,
+  X,
 } from 'lucide-react';
 
 interface ClientProfileViewProps {
-  client: ClientRecord;
+  clientId: string;
+  initialClient?: ClientRecord | null;
   onBack: () => void;
   onEdit: (client: ClientRecord) => void;
   onDeleted: () => void;
 }
 
 export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
-  client: initialClient,
+  clientId,
+  initialClient,
   onBack,
   onEdit,
   onDeleted,
 }) => {
   const { t } = useTranslation();
-  const { currentUser, can } = useAuth();
-  const [client, setClient] = useState<ClientRecord>(initialClient);
-  const [activeTab, setActiveTab] = useState<'cases' | 'tasks' | 'files'>('cases');
-  const [overview, setOverview] = useState<ClientLinkedOverview>({
-    cases: [],
-    tasks: [],
-    files: [],
-  });
+  const { currentUser, can, isReadOnly } = useAuth();
+  const {
+    route,
+    openClientProfile,
+    refreshVersion,
+    triggerRefresh,
+    setActiveClientContext,
+    openCaseForm,
+    openTaskForm,
+    openTaskComplete,
+    openTaskReassign,
+    openFileForm,
+    openFileCheckOut,
+    openFileCheckIn,
+    openFileHistory,
+  } = useNavigation();
+  const repos = getRepositories();
+
+  const activeTab: ClientProfileTab =
+    route.clientId === clientId ? route.clientTab : 'cases';
+
+  const [client, setClient] = useState<ClientRecord | null>(initialClient || null);
+  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [files, setFiles] = useState<PhysicalFileRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const repos = getRepositories();
-  const canEdit = can('clients.edit');
-  const isOwner = currentUser.role === 'Owner';
+  const canManageClient = can('clients.edit');
+  const canCreateCase = can('cases.create');
+  const canEditCase = can('cases.edit');
+  const canAssignTasks = can('tasks.assign');
+  const canCompleteTasks = can('tasks.complete');
+  const canManageFiles = can('files.manage');
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadOverview = async () => {
-      setLoading(true);
-      try {
-        const data = await repos.client.getLinkedOverview({ currentUser }, client.id);
-        if (isMounted) {
-          setOverview(data);
-        }
-      } catch (err: unknown) {
-        console.error('Failed to load client linked overview:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    loadOverview();
-    return () => {
-      isMounted = false;
-    };
-  }, [client.id, currentUser]);
-
-  const activeCasesCount = overview.cases.filter((c) => c.status.toLowerCase() === 'ongoing').length;
-  const activeTasksCount = overview.tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress').length;
-  const activeFilesCount = overview.files.filter((f) => f.status !== 'archived').length;
-  const hasActiveRecords = activeCasesCount > 0 || activeTasksCount > 0 || activeFilesCount > 0;
-
-  const handleConfirmDelete = async () => {
-    if (!canEdit) return;
-    if (hasActiveRecords) {
-      setErrorMsg(
-        `Cannot delete client: Client has ${activeCasesCount} active case(s), ${activeTasksCount} active task(s), and ${activeFilesCount} active physical file(s). All cases, tasks, and files must be resolved or closed first.`
-      );
-      return;
-    }
-    setDeleting(true);
+  const loadClientHub = useCallback(async () => {
+    setLoading(true);
     setErrorMsg(null);
     try {
-      await repos.client.delete({ currentUser }, client.id);
-      setDeleteModalOpen(false);
-      onDeleted();
+      const [cl, clientCases, clientTasks, clientFiles] = await Promise.all([
+        repos.client.getById({ currentUser }, clientId),
+        repos.case.getByClientId({ currentUser }, clientId).catch(() => []),
+        repos.task.list({ currentUser }, { clientId }).catch(() => []),
+        repos.physicalFile.list({ currentUser }, { clientId }).catch(() => []),
+      ]);
+      setClient(cl);
+      setCases(clientCases);
+      setTasks(clientTasks);
+      setFiles(clientFiles);
+      if (cl) {
+        setActiveClientContext({ clientId: cl.id, clientName: cl.name });
+      } else {
+        setActiveClientContext(null);
+      }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete client');
-      setDeleting(false);
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to load client profile');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [clientId, currentUser, repos, setActiveClientContext]);
 
-  const handleArchiveClient = async () => {
-    if (!isOwner) return;
-    if (activeCasesCount > 0) {
-      setErrorMsg(`Cannot archive client: Client still has ${activeCasesCount} ongoing case(s). All cases must be closed or moved before archiving.`);
-      return;
-    }
+  useEffect(() => {
+    loadClientHub();
+    return () => {
+      setActiveClientContext(null);
+    };
+  }, [loadClientHub, refreshVersion, setActiveClientContext]);
+
+  const handleArchive = async () => {
+    if (!client || !canManageClient || isReadOnly) return;
     setArchiving(true);
     setErrorMsg(null);
     try {
-      const updated = await repos.client.archive({ currentUser }, client.id);
-      setClient(updated);
-      setSuccessMsg(t('clients.clientArchived', 'Client archived successfully.'));
-      setDeleteModalOpen(false);
-      setTimeout(() => setSuccessMsg(null), 4000);
+      await repos.client.archive({ currentUser }, client.id);
+      triggerRefresh();
+      onDeleted();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to archive client');
-    } finally {
       setArchiving(false);
     }
   };
 
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto w-full">
-      {/* Top action bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+  const handleReopenTask = async (task: TaskRecord) => {
+    if ((!canCompleteTasks && !canAssignTasks) || isReadOnly) return;
+    try {
+      await repos.task.update({ currentUser }, task.id, {
+        status: 'pending',
+        completedAt: null,
+      });
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to reopen task');
+    }
+  };
+
+  if (loading && !client) {
+    return (
+      <div className="p-8 text-center text-slate-400 text-sm">
+        {t('common.loading')}
+      </div>
+    );
+  }
+
+  if (!client) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4">
+        <h3 className="text-base font-bold text-slate-900">
+          {errorMsg || 'Client not found'}
+        </h3>
         <button
           onClick={onBack}
-          className="min-h-[44px] inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition shadow-2xs"
+          className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg"
         >
-          <ArrowLeft className="w-4 h-4" />
-          {t('clients.backToList')}
+          {t('common.back')}
         </button>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {canEdit && (
-            <button
-              onClick={() => onEdit(client)}
-              className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition shadow-2xs"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              {t('common.edit')}
-            </button>
-          )}
-
-          {isOwner && !client.archived && (
-            <button
-              onClick={handleArchiveClient}
-              disabled={archiving || activeCasesCount > 0}
-              title={activeCasesCount > 0 ? `Cannot archive: ${activeCasesCount} ongoing case(s)` : 'Archive client'}
-              className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition shadow-2xs disabled:opacity-50"
-            >
-              <Archive className="w-3.5 h-3.5" />
-              {t('clients.archiveClient', 'Archive Client')}
-            </button>
-          )}
-
-          {canEdit && (
-            <button
-              onClick={() => setDeleteModalOpen(true)}
-              className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition shadow-2xs"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              {t('common.delete')}
-            </button>
-          )}
-        </div>
       </div>
+    );
+  }
 
-      {successMsg && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
+  const tabDefinitions: Array<{
+    id: ClientProfileTab;
+    label: string;
+    count: number;
+    icon: React.FC<{ className?: string }>;
+  }> = [
+    {
+      id: 'cases',
+      label: t('clients.linkedCases', 'Cases'),
+      count: cases.length,
+      icon: Briefcase,
+    },
+    {
+      id: 'tasks',
+      label: t('clients.linkedTasks', 'Tasks'),
+      count: tasks.length,
+      icon: CheckSquare,
+    },
+    {
+      id: 'files',
+      label: t('clients.linkedFiles', 'Files'),
+      count: files.length,
+      icon: FolderArchive,
+    },
+  ];
+
+  return (
+    <div className="space-y-5 min-w-0" data-testid="client-profile-hub">
+      <Breadcrumbs
+        fallbackPath="/clients"
+        onBackOverride={onBack}
+        items={[
+          { label: t('nav.clients'), href: '/clients' },
+          { label: client.name, href: `/clients/${encodeURIComponent(client.id)}` },
+          {
+            label:
+              tabDefinitions.find((td) => td.id === activeTab)?.label ||
+              t('clients.linkedCases', 'Cases'),
+          },
+        ]}
+      />
+
+      {isReadOnly && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+          <span>{t('subscription.readOnlyMessage')}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
-          {errorMsg}
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center justify-between gap-2">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="text-rose-500 hover:text-rose-800">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Client Overview Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-700 font-bold text-xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-2xs">
-              {client.name.slice(0, 2).toUpperCase()}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold text-slate-900">{client.name}</h1>
-                {client.nameBn && (
-                  <span className="text-sm font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full font-sans">
-                    {client.nameBn}
-                  </span>
-                )}
-                {client.archived && (
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
-                    {t('clients.archived', 'Archived')}
-                  </span>
-                )}
+      {/* Client Profile Header Card — Single Edit and Single Archive Button */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-4 sm:p-6 bg-slate-900 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                <User className="w-6 h-6 text-amber-400" />
               </div>
-              <span className="text-xs text-slate-400 font-mono mt-1 block">
-                ID: {client.id}
-              </span>
-            </div>
-          </div>
-
-          <div className="text-xs text-slate-500 font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 self-start">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span>
-              {t('clients.registrationDate')}: {new Date(client.createdAt).toLocaleDateString()}
-            </span>
-          </div>
-        </div>
-
-        {/* Contact details grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5 text-sm">
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-            <Phone className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                {t('clients.phone')}
-              </span>
-              <a href={`tel:${client.phone}`} className="font-semibold text-slate-900 hover:underline">
-                {client.phone}
-              </a>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-            <Mail className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
-            <div className="truncate">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                {t('clients.email')}
-              </span>
-              <span className="font-medium text-slate-800 truncate block">
-                {client.email || t('common.none')}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-            <MapPin className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                {t('clients.address')}
-              </span>
-              <span className="font-medium text-slate-800 line-clamp-2">
-                {client.address || t('common.none')}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Chamber Notes */}
-        {client.notes && (
-          <div className="mt-4 p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70 text-xs text-amber-900">
-            <div className="flex items-center gap-1.5 font-semibold text-amber-800 mb-1">
-              <FileText className="w-3.5 h-3.5" />
-              {t('clients.notes')}
-            </div>
-            <p className="whitespace-pre-line leading-relaxed text-amber-950 font-normal">
-              {client.notes}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Linked Records Tabs: Cases, Tasks, Physical Files */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-        {/* Tab Headers */}
-        <div className="flex items-center border-b border-slate-200 bg-slate-50/70 px-4 pt-2 gap-2 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setActiveTab('cases')}
-            className={`min-h-[44px] flex items-center gap-2 pb-2 px-3 text-xs font-bold border-b-2 transition whitespace-nowrap shrink-0 ${
-              activeTab === 'cases'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Briefcase className="w-4 h-4" />
-            {t('clients.linkedCases')}
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                activeTab === 'cases'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : 'bg-slate-200 text-slate-600'
-              }`}
-            >
-              {overview.cases.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('tasks')}
-            className={`min-h-[44px] flex items-center gap-2 pb-2 px-3 text-xs font-bold border-b-2 transition whitespace-nowrap shrink-0 ${
-              activeTab === 'tasks'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <CheckSquare className="w-4 h-4" />
-            {t('clients.linkedTasks')}
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                activeTab === 'tasks'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : 'bg-slate-200 text-slate-600'
-              }`}
-            >
-              {overview.tasks.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('files')}
-            className={`min-h-[44px] flex items-center gap-2 pb-2 px-3 text-xs font-bold border-b-2 transition whitespace-nowrap shrink-0 ${
-              activeTab === 'files'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FolderArchive className="w-4 h-4" />
-            {t('clients.linkedFiles')}
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                activeTab === 'files'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : 'bg-slate-200 text-slate-600'
-              }`}
-            >
-              {overview.files.length}
-            </span>
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        <div className="p-5">
-          {loading ? (
-            <div className="p-8 text-center text-slate-400 text-xs font-medium">
-              {t('common.loading')}
-            </div>
-          ) : (
-            <>
-              {/* Cases Tab */}
-              {activeTab === 'cases' && (
-                <div>
-                  {overview.cases.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      {t('clients.noCases')}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {overview.cases.map((c) => (
-                        <div
-                          key={c.id}
-                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-slate-900">
-                                {c.caseNumber}
-                              </span>
-                              <span className="text-xs px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800">
-                                {c.status}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-600 mt-1">{c.court}</p>
-                            <span className="text-[11px] text-slate-400 block mt-0.5">
-                              Matter: {c.matterType}
-                            </span>
-                          </div>
-                          <span className="text-xs text-indigo-600 font-semibold self-start sm:self-center">
-                            Case Dossier &rarr;
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-lg sm:text-2xl font-bold tracking-tight break-words">
+                    {client.name}
+                  </h1>
+                  {client.archived && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full">
+                      Archived
+                    </span>
                   )}
                 </div>
-              )}
+                {client.nameBn && (
+                  <p className="text-sm text-slate-300 mt-0.5 font-sans">{client.nameBn}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-2">
+                  <span className="inline-flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    {client.phone}
+                  </span>
+                  {client.email && (
+                    <span className="inline-flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-slate-400" />
+                      {client.email}
+                    </span>
+                  )}
+                  {client.address && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      {client.address}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
 
-              {/* Tasks Tab */}
-              {activeTab === 'tasks' && (
-                <div>
-                  {overview.tasks.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      {t('clients.noTasks')}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {overview.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+            {canManageClient && (
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  data-testid="client-header-edit-btn"
+                  disabled={isReadOnly}
+                  onClick={() => onEdit(client)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl transition disabled:opacity-40 min-h-[38px]"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>{t('common.edit')}</span>
+                </button>
+
+                {!client.archived && !confirmArchive && (
+                  <button
+                    type="button"
+                    data-testid="client-header-archive-btn"
+                    disabled={isReadOnly}
+                    onClick={() => setConfirmArchive(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-semibold rounded-xl border border-amber-500/30 transition disabled:opacity-40 min-h-[38px]"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>{t('common.archive', 'Archive')}</span>
+                  </button>
+                )}
+
+                {confirmArchive && (
+                  <div className="flex items-center gap-2 bg-amber-950/90 border border-amber-500/40 px-3 py-1.5 rounded-xl">
+                    <span className="text-xs text-amber-200 font-medium">
+                      {t('clients.confirmDeleteTitle')}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={archiving || isReadOnly}
+                      onClick={handleArchive}
+                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg"
+                    >
+                      {archiving ? '...' : t('common.yes')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmArchive(false)}
+                      className="px-2 py-1 text-slate-300 hover:text-white text-xs"
+                    >
+                      {t('common.no')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {client.notes && (
+            <div className="mt-4 pt-3 border-t border-slate-800 text-xs text-slate-300 flex items-start gap-2">
+              <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+              <span>{client.notes}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Client Profile 3-Tab Bar: Cases, Tasks, Files */}
+        <div
+          role="tablist"
+          aria-label="Client profile tabs"
+          className="flex items-center gap-1 px-3 sm:px-6 bg-slate-50 border-b border-slate-200 overflow-x-auto no-scrollbar"
+        >
+          {tabDefinitions.map((tab) => {
+            const Icon = tab.icon;
+            const isSelected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                type="button"
+                aria-selected={isSelected}
+                data-testid={`client-tab-${tab.id}`}
+                onClick={() => openClientProfile(client.id, tab.id)}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 transition whitespace-nowrap shrink-0 min-h-[44px] ${
+                  isSelected
+                    ? 'border-slate-900 text-slate-900 bg-white/60'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${
+                    isSelected ? 'bg-slate-900 text-white' : 'bg-slate-200/80 text-slate-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* TAB 1: CASES */}
+        {activeTab === 'cases' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="client-panel-cases">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('clients.linkedCases')} ({cases.length})
+                </h3>
+                <p className="text-xs text-slate-500">{t('cases.subtitle')}</p>
+              </div>
+              {canCreateCase && (
+                <button
+                  type="button"
+                  data-testid="client-add-case-btn"
+                  disabled={isReadOnly}
+                  onClick={() =>
+                    openCaseForm({
+                      defaultClientId: client.id,
+                      lockClientId: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 min-h-[38px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('cases.addCase')}</span>
+                </button>
+              )}
+            </div>
+
+            {cases.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('clients.noLinkedRecords')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {cases.map((c) => (
+                  <div
+                    key={c.id}
+                    data-testid={`client-case-row-${c.id}`}
+                    className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <EntityLink
+                          type="case"
+                          id={c.id}
+                          label={c.caseNumber}
+                          restricted={c.restricted}
+                          className="text-sm font-bold"
+                        />
+                        {c.restricted && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            <Lock className="w-3 h-3" /> {t('cases.restrictedBadge')}
+                          </span>
+                        )}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            c.status === 'ongoing'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-slate-900">
-                                {task.title}
-                              </span>
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                  task.priority === 'High'
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {task.priority}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>Due: {new Date(task.dueAt).toLocaleDateString()}</span>
-                            </div>
-                          </div>
+                          {c.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-600">{c.court}</div>
+                      <div className="text-xs text-slate-500">{c.matterType}</div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {canEditCase && (
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => openCaseForm({ initialData: c })}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>{t('common.edit')}</span>
+                        </button>
+                      )}
+                      <EntityLink
+                        type="case"
+                        id={c.id}
+                        label={t('cases.viewDetails')}
+                        restricted={c.restricted}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold min-h-[34px]"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: TASKS */}
+        {activeTab === 'tasks' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="client-panel-tasks">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('clients.linkedTasks')} ({tasks.length})
+                </h3>
+                <p className="text-xs text-slate-500">{t('tasks.subtitle')}</p>
+              </div>
+              {canAssignTasks && (
+                <button
+                  type="button"
+                  data-testid="client-add-task-btn"
+                  disabled={isReadOnly}
+                  onClick={() =>
+                    openTaskForm({
+                      defaultClientId: client.id,
+                      lockClientOnly: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 min-h-[38px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('tasks.addTask')}</span>
+                </button>
+              )}
+            </div>
+
+            {tasks.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('tasks.noTasksFound')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {tasks.map((task) => {
+                  const isCompleted = task.status === 'completed';
+                  return (
+                    <div
+                      key={task.id}
+                      data-testid={`client-task-row-${task.id}`}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span
-                            className={`px-2 py-0.5 rounded text-xs font-semibold self-start sm:self-center ${
-                              task.status === 'Completed'
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              task.priority === 'urgent' || task.priority === 'high'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {t(`tasks.${task.priority}`)}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {new Date(task.dueAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div
+                          className={`text-sm font-semibold break-words ${
+                            isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
+                          }`}
+                        >
+                          {task.title}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {t('tasks.assignedTo')}: {task.assignedToName}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {canAssignTasks && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openTaskForm({ initialData: task })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{t('common.edit')}</span>
+                          </button>
+                        )}
+                        {canAssignTasks && !isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openTaskReassign(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>{t('tasks.reassignTask')}</span>
+                          </button>
+                        )}
+                        {canCompleteTasks && !isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openTaskComplete(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{t('tasks.completeTask')}</span>
+                          </button>
+                        )}
+                        {(canCompleteTasks || canAssignTasks) && isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => handleReopenTask(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{t('hub.reopenTask', 'Reopen')}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: FILES */}
+        {activeTab === 'files' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="client-panel-files">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('clients.linkedFiles')} ({files.length})
+                </h3>
+                <p className="text-xs text-slate-500">{t('files.subtitle')}</p>
+              </div>
+              {canManageFiles && (
+                <button
+                  type="button"
+                  data-testid="client-add-file-btn"
+                  disabled={isReadOnly}
+                  onClick={() =>
+                    openFileForm({
+                      defaultClientId: client.id,
+                      lockClientOnly: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 min-h-[38px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('files.addFile')}</span>
+                </button>
+              )}
+            </div>
+
+            {files.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('files.noFilesFound')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {files.map((file) => {
+                  const isInChamber = file.status === 'in_chamber';
+                  return (
+                    <div
+                      key={file.id}
+                      data-testid={`client-file-row-${file.id}`}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono text-xs font-bold">
+                            {file.serial}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              isInChamber
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-amber-100 text-amber-800'
                             }`}
                           >
-                            {task.status}
+                            {t(`files.${file.status}`)}
                           </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                        <div className="text-sm font-semibold text-slate-900 break-words">
+                          {file.title}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {t('files.shelfLocation')}: {file.shelfLocation || '—'}
+                        </div>
+                      </div>
 
-              {/* Physical Files Tab */}
-              {activeTab === 'files' && (
-                <div>
-                  {overview.files.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      {t('clients.noFiles')}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {overview.files.map((file) => (
-                        <div
-                          key={file.id}
-                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {canManageFiles && isInChamber && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openFileCheckOut(file)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>{t('files.checkOut')}</span>
+                          </button>
+                        )}
+                        {canManageFiles && !isInChamber && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openFileCheckIn(file)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <LogIn className="w-3.5 h-3.5" />
+                            <span>{t('files.checkIn')}</span>
+                          </button>
+                        )}
+                        {canManageFiles && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            onClick={() => openFileForm({ initialData: file })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{t('common.edit')}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => openFileHistory(file)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold min-h-[34px]"
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-sm text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                                {file.serial}
-                              </span>
-                              <span className="text-xs font-medium text-slate-800">
-                                {file.status}
-                              </span>
-                            </div>
-                            <span className="text-xs text-slate-500 block mt-1">
-                              Holder / Custodian: <strong className="text-slate-700">{file.holderName}</strong>
-                            </span>
-                          </div>
-                          <span className="text-xs text-slate-400 font-mono">
-                            Stage 6 Linked
-                          </span>
-                        </div>
-                      ))}
+                          <History className="w-3.5 h-3.5" />
+                          <span>{t('files.movementHistory')}</span>
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Soft-Delete Confirmation Dialog with Linked Record Warning */}
-      <ResponsiveModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        maxWidth="md"
-        title={
-          <div className={`flex items-center gap-2.5 ${hasActiveRecords ? 'text-rose-600' : 'text-amber-600'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${hasActiveRecords ? 'bg-rose-100' : 'bg-amber-100'}`}>
-              {hasActiveRecords ? (
-                <ShieldAlert className="w-4 h-4 text-rose-600" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-              )}
-            </div>
-            <span className="font-bold text-base text-slate-900">
-              {hasActiveRecords ? t('clients.deleteBlockedTitle', 'Delete Blocked: Active Records') : t('clients.softDeleteWarningTitle')}
-            </span>
-          </div>
-        }
-        subtitle={
-          hasActiveRecords
-            ? 'Client has active matters and cannot be deleted'
-            : 'Review linked record implications before soft-deleting'
-        }
-        footer={
-          <div className="flex flex-wrap items-center justify-end gap-2 w-full">
-            <button
-              type="button"
-              onClick={() => setDeleteModalOpen(false)}
-              className="min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
-            >
-              {t('common.cancel')}
-            </button>
-
-            {isOwner && activeCasesCount === 0 && !client.archived && (
-              <button
-                type="button"
-                disabled={archiving}
-                onClick={handleArchiveClient}
-                className="min-h-[44px] px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs transition disabled:opacity-50"
-              >
-                {archiving ? t('common.loading') : t('clients.archiveClient', 'Archive Client')}
-              </button>
-            )}
-
-            {!hasActiveRecords && (
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={handleConfirmDelete}
-                className="min-h-[44px] px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition disabled:opacity-50"
-              >
-                {deleting ? t('common.loading') : t('clients.confirmSoftDelete')}
-              </button>
-            )}
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          {hasActiveRecords ? (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-2">
-              <p className="font-semibold">
-                Cannot delete client: Client has {activeCasesCount} active case(s), {activeTasksCount} active task(s), and {activeFilesCount} active physical file(s).
-              </p>
-              <p className="text-[11px] text-rose-700">
-                All cases, tasks, and files must be resolved or closed first. Once all cases are closed or moved, the chamber Owner can archive this client.
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {t('clients.softDeleteWarningText', {
-                casesCount: overview.cases.length,
-                tasksCount: overview.tasks.length,
-                filesCount: overview.files.length,
-              })}
-            </p>
-          )}
-
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1.5 text-slate-700">
-            <div>
-              <strong>Client:</strong> {client.name}
-            </div>
-            <div>
-              <strong>Linked Cases:</strong> {overview.cases.length} ({activeCasesCount} ongoing) | <strong>Tasks:</strong> {overview.tasks.length} ({activeTasksCount} active) | <strong>Files:</strong> {overview.files.length} ({activeFilesCount} active)
-            </div>
-          </div>
-        </div>
-      </ResponsiveModal>
     </div>
   );
 };

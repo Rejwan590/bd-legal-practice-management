@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { AuthProvider, useAuth } from './modules/foundation/AuthContext';
-import { AppShell, ActiveTab } from './modules/foundation/AppShell';
+import { NavigationProvider, useNavigation } from './modules/foundation/NavigationContext';
+import { AppShell } from './modules/foundation/AppShell';
 import { LoginScreen } from './modules/foundation/LoginScreen';
 import { HealthScreen } from './modules/health/HealthScreen';
 import { AuditLogScreen } from './modules/audit/AuditLogScreen';
@@ -13,70 +14,11 @@ import { FilesScreen } from './modules/files/FilesScreen';
 import { CalendarScreen } from './modules/calendar/CalendarScreen';
 import { DashboardScreen } from './modules/dashboard/DashboardScreen';
 import { BackupScreen } from './modules/backup/BackupScreen';
+import { GlobalSearchModal } from './modules/search/GlobalSearchModal';
 
 function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [currentTab, setCurrentTab] = useState<ActiveTab>(() => {
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace('#', '') as ActiveTab;
-      if (
-        [
-          'dashboard',
-          'clients',
-          'cases',
-          'hearings',
-          'tasks',
-          'files',
-          'calendar',
-          'backup',
-          'auditLog',
-          'settings',
-          'health',
-        ].includes(hash)
-      ) {
-        return hash;
-      }
-      if (window.location.pathname.includes('/health')) {
-        return 'health';
-      }
-    }
-    return 'dashboard';
-  });
-
-  const handleSelectTab = (tab: ActiveTab, id?: string) => {
-    setCurrentTab(tab);
-    setSelectedEntityId(id || null);
-    if (typeof window !== 'undefined') {
-      window.location.hash = tab;
-    }
-  };
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') as ActiveTab;
-      if (
-        [
-          'dashboard',
-          'clients',
-          'cases',
-          'hearings',
-          'tasks',
-          'files',
-          'calendar',
-          'backup',
-          'auditLog',
-          'settings',
-          'health',
-        ].includes(hash)
-      ) {
-        setCurrentTab(hash);
-      }
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  const { route, navigateToScreen } = useNavigation();
 
   if (isLoading) {
     return (
@@ -93,31 +35,28 @@ function MainApp() {
     return <LoginScreen />;
   }
 
+  const currentTab = route.screen;
+
   return (
-    <AppShell currentTab={currentTab} onSelectTab={handleSelectTab}>
+    <AppShell>
       {currentTab === 'health' && <HealthScreen />}
       {currentTab === 'auditLog' && <AuditLogScreen />}
       {currentTab === 'settings' && <SettingsScreen />}
       {currentTab === 'backup' && <BackupScreen />}
-      {currentTab === 'clients' && (
-        <ClientsScreen
-          initialSelectedClientId={selectedEntityId}
-          onNavigateToCase={(caseId) => handleSelectTab('cases', caseId)}
-        />
-      )}
-      {currentTab === 'cases' && (
-        <CasesScreen
-          initialSelectedCaseId={selectedEntityId}
-          onNavigateToClient={(clientId) => handleSelectTab('clients', clientId)}
-        />
-      )}
+      {currentTab === 'clients' && <ClientsScreen />}
+      {currentTab === 'cases' && <CasesScreen />}
       {currentTab === 'hearings' && <HearingsScreen />}
       {currentTab === 'tasks' && <TasksScreen />}
       {currentTab === 'files' && <FilesScreen />}
       {currentTab === 'calendar' && <CalendarScreen />}
-      {currentTab === 'dashboard' && (
-        <DashboardScreen onNavigate={(tab, id) => handleSelectTab(tab as ActiveTab, id)} />
+      {currentTab === 'search' && (
+        <GlobalSearchModal
+          isOpen={true}
+          inlinePage={true}
+          onClose={() => navigateToScreen('dashboard')}
+        />
       )}
+      {currentTab === 'dashboard' && <DashboardScreen />}
     </AppShell>
   );
 }
@@ -125,7 +64,9 @@ function MainApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <NavigationProvider>
+        <MainApp />
+      </NavigationProvider>
     </AuthProvider>
   );
 }

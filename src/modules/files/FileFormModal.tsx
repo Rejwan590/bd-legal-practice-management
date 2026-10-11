@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, PhysicalFileRecord } from '../../data/types';
-import { FolderArchive, Briefcase, User, MapPin, AlertCircle } from 'lucide-react';
+import { FolderArchive, Briefcase, User, MapPin, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 
 interface FileFormModalProps {
@@ -11,6 +11,8 @@ interface FileFormModalProps {
   initialData?: PhysicalFileRecord | null;
   defaultCaseId?: string | null;
   defaultClientId?: string | null;
+  lockCaseAndClient?: boolean;
+  lockClientOnly?: boolean;
   onClose: () => void;
   onSave: (data: {
     title: string;
@@ -26,6 +28,8 @@ export const FileFormModal: React.FC<FileFormModalProps> = ({
   initialData,
   defaultCaseId,
   defaultClientId,
+  lockCaseAndClient,
+  lockClientOnly,
   onClose,
   onSave,
 }) => {
@@ -64,10 +68,13 @@ export const FileFormModal: React.FC<FileFormModalProps> = ({
             setNotes(initialData.notes || '');
             setPreviewSerial(initialData.serial);
           } else {
-            setTitle('');
+            const matchedCase = defaultCaseId
+              ? caseData.find((c) => c.id === defaultCaseId)
+              : undefined;
+            setTitle(matchedCase ? `${matchedCase.caseNumber} - Case File Dossier` : '');
             setShelfLocation('Cabinet A, Shelf 1');
             setCaseId(defaultCaseId || '');
-            setClientId(defaultClientId || '');
+            setClientId(defaultClientId || matchedCase?.clientId || '');
             setNotes('');
             setPreviewSerial(nextSerial);
           }
@@ -187,33 +194,51 @@ export const FileFormModal: React.FC<FileFormModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-              {t('files.linkedCase')}
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                {t('files.linkedCase')}
+              </span>
+              {lockCaseAndClient && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                  <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked')}
+                </span>
+              )}
             </label>
             <select
+              disabled={Boolean(lockCaseAndClient)}
               value={caseId}
               onChange={(e) => handleCaseChange(e.target.value)}
-              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               <option value="">{t('files.noLinkedCase')}</option>
-              {cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.caseNumber} ({c.fileSerial})
-                </option>
-              ))}
+              {cases
+                .filter((c) => !lockClientOnly || !clientId || c.clientId === clientId)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.caseNumber} ({c.fileSerial})
+                  </option>
+                ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              {t('files.linkedClient')}
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                {t('files.linkedClient')}
+              </span>
+              {(lockCaseAndClient || lockClientOnly) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                  <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked')}
+                </span>
+              )}
             </label>
             <select
+              disabled={Boolean(lockCaseAndClient || lockClientOnly)}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              className="w-full px-3 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               <option value="">{t('files.noLinkedClient')}</option>
               {clients.map((cl) => (

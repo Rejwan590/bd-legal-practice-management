@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
+import { useNavigation, ScreenId } from './NavigationContext';
 import { UserSwitchModal } from './UserSwitchModal';
 import { GlobalSearchModal } from '../search/GlobalSearchModal';
 import {
@@ -24,38 +25,60 @@ import {
   Database,
   Lock,
   Clock,
-  CreditCard,
   AlertTriangle,
   PanelLeftClose,
   PanelLeftOpen,
   Mail,
+  Plus,
+  MoreHorizontal,
 } from 'lucide-react';
 
-export type ActiveTab =
-  | 'dashboard'
-  | 'clients'
-  | 'cases'
-  | 'hearings'
-  | 'tasks'
-  | 'files'
-  | 'calendar'
-  | 'backup'
-  | 'auditLog'
-  | 'settings'
-  | 'health';
+export type ActiveTab = ScreenId;
 
 interface AppShellProps {
-  currentTab: ActiveTab;
-  onSelectTab: (tab: ActiveTab, id?: string) => void;
+  currentTab?: ActiveTab;
+  onSelectTab?: (tab: ActiveTab, id?: string) => void;
   children: React.ReactNode;
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, children }) => {
+export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { t, i18n } = useTranslation();
-  const { currentUser, currentFirm, subscription, can, refreshState } = useAuth();
+  const { currentUser, currentFirm, subscription, can, isReadOnly } = useAuth();
+  const {
+    route,
+    navigateToScreen,
+    openCaseDossier,
+    openClientProfile,
+    activeCaseContext,
+    activeClientContext,
+    selectedCalendarDate,
+    openCaseForm,
+    openClientForm,
+    openHearingForm,
+    openTaskForm,
+    openFileForm,
+  } = useNavigation();
+
+  const currentTab = route.screen;
+
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const quickAddRef = useRef<HTMLDivElement>(null);
+
+  // Close quickAdd menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (quickAddRef.current && !quickAddRef.current.contains(e.target as Node)) {
+        setQuickAddOpen(false);
+      }
+    };
+    if (quickAddOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [quickAddOpen]);
 
   // Tablet collapsible sidebar: defaults to collapsed on tablet screens (768-1023px)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -70,10 +93,8 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
     const handleResize = () => {
       const width = window.innerWidth;
       if (width >= 768 && width < 1024) {
-        // On tablet default to compact icon rail
         setSidebarCollapsed(true);
       } else if (width >= 1024) {
-        // On desktop default to expanded sidebar
         setSidebarCollapsed(false);
       }
     };
@@ -87,7 +108,24 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
     i18n.changeLanguage(nextLang);
   };
 
-  const navItems = [
+  const handleSelectNav = (tab: ActiveTab, id?: string) => {
+    if (tab === 'cases' && id) {
+      openCaseDossier(id, 'overview');
+    } else if (tab === 'clients' && id) {
+      openClientProfile(id, 'cases');
+    } else {
+      navigateToScreen(tab);
+    }
+  };
+
+  const navItems: {
+    id: ActiveTab;
+    label: string;
+    icon: React.ElementType;
+    stage: number;
+    hide?: boolean;
+    highlight?: boolean;
+  }[] = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, stage: 1 },
     { id: 'clients', label: t('nav.clients'), icon: Users, stage: 1 },
     { id: 'cases', label: t('nav.cases'), icon: Briefcase, stage: 1 },
@@ -95,6 +133,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
     { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare, stage: 1 },
     { id: 'files', label: t('nav.files'), icon: FolderArchive, stage: 1 },
     { id: 'calendar', label: t('nav.calendar'), icon: Calendar, stage: 1 },
+    { id: 'search', label: t('common.search'), icon: Search, stage: 1 },
     {
       id: 'backup',
       label: t('nav.backup'),
@@ -113,13 +152,253 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
     { id: 'health', label: t('nav.health'), icon: Activity, stage: 1, highlight: true },
   ];
 
-  // Rule 3: 4 most-used screens for mobile bottom navigation
+  // Mobile bottom navigation: Dashboard, Cases, Calendar, Tasks, More
   const bottomNavItems: { id: ActiveTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
     { id: 'cases', label: t('nav.cases'), icon: Briefcase },
     { id: 'calendar', label: t('nav.calendar'), icon: Calendar },
     { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare },
   ];
+
+  const isMoreTabActive = !['dashboard', 'cases', 'calendar', 'tasks'].includes(currentTab);
+
+  // Build context-aware "+" actions
+  type QuickActionItem = {
+    key: string;
+    label: string;
+    icon: React.ElementType;
+    onClick: () => void;
+  };
+
+  const getContextQuickActions = (): QuickActionItem[] => {
+    if (isReadOnly) return [];
+
+    // 1. Inside a Case Dossier: Add Hearing / Add Task / Add File with caseId & clientId prefilled and locked
+    if (route.screen === 'cases' && route.caseId && activeCaseContext) {
+      const targetCaseId = activeCaseContext.caseId || activeCaseContext.id || route.caseId;
+      const items: QuickActionItem[] = [];
+      if (can('hearings.update')) {
+        items.push({
+          key: 'case-hearing',
+          label: `${t('hearings.scheduleHearing')} (${activeCaseContext.caseNumber})`,
+          icon: Gavel,
+          onClick: () =>
+            openHearingForm({
+              defaultCaseId: targetCaseId,
+              lockCaseId: true,
+            }),
+        });
+      }
+      if (can('tasks.assign')) {
+        items.push({
+          key: 'case-task',
+          label: `${t('tasks.addTask')} (${activeCaseContext.caseNumber})`,
+          icon: CheckSquare,
+          onClick: () =>
+            openTaskForm({
+              defaultCaseId: targetCaseId,
+              defaultClientId: activeCaseContext.clientId,
+              lockCaseAndClient: true,
+            }),
+        });
+      }
+      if (can('files.manage')) {
+        items.push({
+          key: 'case-file',
+          label: `${t('files.addFile')} (${activeCaseContext.caseNumber})`,
+          icon: FolderArchive,
+          onClick: () =>
+            openFileForm({
+              defaultCaseId: targetCaseId,
+              defaultClientId: activeCaseContext.clientId,
+              lockCaseAndClient: true,
+            }),
+        });
+      }
+      return items;
+    }
+
+    // 2. Inside a Client Profile: Add Case / Add Task / Add File with clientId prefilled and locked
+    if (route.screen === 'clients' && route.clientId && activeClientContext) {
+      const targetClientId =
+        activeClientContext.clientId || activeClientContext.id || route.clientId;
+      const targetClientName =
+        activeClientContext.clientName || activeClientContext.name || '';
+      const items: QuickActionItem[] = [];
+      if (can('cases.create')) {
+        items.push({
+          key: 'client-case',
+          label: `${t('cases.addCase')} (${targetClientName})`,
+          icon: Briefcase,
+          onClick: () =>
+            openCaseForm({
+              defaultClientId: targetClientId,
+              lockClientId: true,
+            }),
+        });
+      }
+      if (can('tasks.assign')) {
+        items.push({
+          key: 'client-task',
+          label: `${t('tasks.addTask')} (${targetClientName})`,
+          icon: CheckSquare,
+          onClick: () =>
+            openTaskForm({
+              defaultClientId: targetClientId,
+              lockClientOnly: true,
+            }),
+        });
+      }
+      if (can('files.manage')) {
+        items.push({
+          key: 'client-file',
+          label: `${t('files.addFile')} (${targetClientName})`,
+          icon: FolderArchive,
+          onClick: () =>
+            openFileForm({
+              defaultClientId: targetClientId,
+              lockClientOnly: true,
+            }),
+        });
+      }
+      return items;
+    }
+
+    // 3. On Calendar: Add Hearing / Add Task for selected date
+    if (route.screen === 'calendar') {
+      const items: QuickActionItem[] = [];
+      if (can('hearings.update')) {
+        items.push({
+          key: 'cal-hearing',
+          label: `${t('hearings.scheduleHearing')} (${selectedCalendarDate})`,
+          icon: Gavel,
+          onClick: () =>
+            openHearingForm({
+              defaultDate: selectedCalendarDate,
+            }),
+        });
+      }
+      if (can('tasks.assign')) {
+        items.push({
+          key: 'cal-task',
+          label: `${t('tasks.addTask')} (${selectedCalendarDate})`,
+          icon: CheckSquare,
+          onClick: () =>
+            openTaskForm({
+              defaultDueDate: selectedCalendarDate,
+            }),
+        });
+      }
+      return items;
+    }
+
+    // 4. Screen-specific main add action elsewhere
+    if (route.screen === 'cases' && can('cases.create')) {
+      return [
+        {
+          key: 'add-case',
+          label: t('cases.addCase'),
+          icon: Briefcase,
+          onClick: () => openCaseForm(),
+        },
+      ];
+    }
+    if (route.screen === 'clients' && can('clients.edit')) {
+      return [
+        {
+          key: 'add-client',
+          label: t('clients.addClient'),
+          icon: Users,
+          onClick: () => openClientForm(),
+        },
+      ];
+    }
+    if (route.screen === 'hearings' && can('hearings.update')) {
+      return [
+        {
+          key: 'add-hearing',
+          label: t('hearings.scheduleHearing'),
+          icon: Gavel,
+          onClick: () => openHearingForm(),
+        },
+      ];
+    }
+    if (route.screen === 'tasks' && can('tasks.assign')) {
+      return [
+        {
+          key: 'add-task',
+          label: t('tasks.addTask'),
+          icon: CheckSquare,
+          onClick: () => openTaskForm(),
+        },
+      ];
+    }
+    if (route.screen === 'files' && can('files.manage')) {
+      return [
+        {
+          key: 'add-file',
+          label: t('files.addFile'),
+          icon: FolderArchive,
+          onClick: () => openFileForm(),
+        },
+      ];
+    }
+
+    // Dashboard / other screens: offer permitted quick-add actions
+    const fallbackItems: QuickActionItem[] = [];
+    if (can('cases.create')) {
+      fallbackItems.push({
+        key: 'dash-case',
+        label: t('cases.addCase'),
+        icon: Briefcase,
+        onClick: () => openCaseForm(),
+      });
+    }
+    if (can('clients.edit')) {
+      fallbackItems.push({
+        key: 'dash-client',
+        label: t('clients.addClient'),
+        icon: Users,
+        onClick: () => openClientForm(),
+      });
+    }
+    if (can('hearings.update')) {
+      fallbackItems.push({
+        key: 'dash-hearing',
+        label: t('hearings.scheduleHearing'),
+        icon: Gavel,
+        onClick: () => openHearingForm(),
+      });
+    }
+    if (can('tasks.assign')) {
+      fallbackItems.push({
+        key: 'dash-task',
+        label: t('tasks.addTask'),
+        icon: CheckSquare,
+        onClick: () => openTaskForm(),
+      });
+    }
+    if (can('files.manage')) {
+      fallbackItems.push({
+        key: 'dash-file',
+        label: t('files.addFile'),
+        icon: FolderArchive,
+        onClick: () => openFileForm(),
+      });
+    }
+    return fallbackItems;
+  };
+
+  const quickActions = getContextQuickActions();
+
+  const handleContextPlusClick = () => {
+    if (isReadOnly || quickActions.length === 0) return;
+    if (quickActions.length === 1) {
+      quickActions[0].onClick();
+    } else {
+      setQuickAddOpen((prev) => !prev);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh] bg-slate-50 flex flex-col w-full overflow-x-hidden selection:bg-indigo-100 selection:text-indigo-900">
@@ -151,13 +430,16 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
               )}
             </button>
 
-            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div
+              onClick={() => navigateToScreen('dashboard')}
+              className="flex items-center gap-2 sm:gap-2.5 min-w-0 cursor-pointer"
+            >
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-serif font-bold text-base sm:text-lg shadow-xs shrink-0">
                 <Building className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
                 <h1
-                  className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-tight truncate max-w-[130px] sm:max-w-[200px] md:max-w-xs"
+                  className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-tight truncate max-w-[110px] sm:max-w-[200px] md:max-w-xs"
                   title={currentFirm?.name || t('app.chamberName')}
                 >
                   {currentFirm?.name || t('app.chamberName')}
@@ -171,6 +453,77 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Context-Aware "+" Action Button */}
+            {isReadOnly ? (
+              <button
+                type="button"
+                disabled
+                title={t('subscription.readOnlyBannerTitle')}
+                className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 h-11 rounded-xl text-xs font-bold bg-rose-50 text-rose-500 border border-rose-200 cursor-not-allowed opacity-80 shrink-0 min-w-[44px]"
+                data-testid="context-plus-button"
+              >
+                <Lock className="w-4 h-4" />
+                <span className="hidden lg:inline">{t('common.readOnlyMode')}</span>
+              </button>
+            ) : quickActions.length > 0 ? (
+              <div className="relative" ref={quickAddRef}>
+                <button
+                  type="button"
+                  onClick={handleContextPlusClick}
+                  className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 h-11 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition shrink-0 min-w-[44px]"
+                  title={
+                    quickActions.length === 1
+                      ? quickActions[0].label
+                      : t('hub.quickAdd', 'Quick Add')
+                  }
+                  aria-label={t('hub.quickAdd', 'Quick Add')}
+                  data-testid="context-plus-button"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span className="hidden lg:inline">
+                    {quickActions.length === 1
+                      ? quickActions[0].label
+                      : t('hub.quickAdd', 'Quick Add')}
+                  </span>
+                  {quickActions.length > 1 && <ChevronDown className="w-3.5 h-3.5 hidden sm:inline" />}
+                </button>
+
+                {quickAddOpen && quickActions.length > 1 && (
+                  <div
+                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                    data-testid="context-plus-menu"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                      {route.screen === 'cases' && route.caseId && activeCaseContext
+                        ? `${t('cases.caseNumber')}: ${activeCaseContext.caseNumber}`
+                        : route.screen === 'clients' && route.clientId && activeClientContext
+                        ? activeClientContext.clientName || activeClientContext.name
+                        : route.screen === 'calendar'
+                        ? selectedCalendarDate
+                        : t('hub.quickAdd', 'Quick Add')}
+                    </div>
+                    {quickActions.map((act) => {
+                      const ActIcon = act.icon;
+                      return (
+                        <button
+                          key={act.key}
+                          type="button"
+                          onClick={() => {
+                            setQuickAddOpen(false);
+                            act.onClick();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition text-left"
+                        >
+                          <ActIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                          <span className="truncate">{act.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {/* Global Search Header Trigger */}
             <button
               onClick={() => setSearchModalOpen(true)}
@@ -196,7 +549,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
             {/* Language Toggle Button with 44px tap target */}
             <button
               onClick={toggleLanguage}
-              className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 h-11 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 active:bg-slate-200 transition shrink-0 min-w-[44px]"
+              className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 h-11 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 active:bg-slate-200 transition shrink-0 min-w-[44px]"
               title="Toggle language (English / বাংলা)"
               aria-label="Toggle language between English and Bengali"
             >
@@ -213,7 +566,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
             {/* User Session & Role Selector */}
             <button
               onClick={() => setUserModalOpen(true)}
-              className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 h-11 rounded-xl border border-slate-200 hover:border-slate-300 bg-white text-left transition shadow-2xs group shrink-0 active:bg-slate-50"
+              className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 h-11 rounded-xl border border-slate-200 hover:border-slate-300 bg-white text-left transition shadow-2xs group shrink-0 active:bg-slate-50"
               aria-label="Switch User Profile"
             >
               <div
@@ -370,7 +723,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
               return (
                 <button
                   key={item.id}
-                  onClick={() => onSelectTab(item.id as ActiveTab)}
+                  onClick={() => handleSelectNav(item.id)}
                   title={item.label}
                   className={`w-full flex items-center ${
                     sidebarCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3 py-2.5'
@@ -485,7 +838,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
                       <button
                         key={item.id}
                         onClick={() => {
-                          onSelectTab(item.id as ActiveTab);
+                          handleSelectNav(item.id);
                           setMobileMenuOpen(false);
                         }}
                         className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm font-medium transition min-h-[44px] ${
@@ -532,7 +885,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
         </main>
       </div>
 
-      {/* Phone Bottom Navigation Bar (<md: Dashboard, Cases, Calendar, Tasks) */}
+      {/* Phone Bottom Navigation Bar (<md: Dashboard, Cases, Calendar, Tasks, More) */}
       <nav
         aria-label="Mobile Bottom Navigation"
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg pb-safe"
@@ -545,7 +898,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectTab(item.id)}
+                onClick={() => handleSelectNav(item.id)}
                 className={`flex-1 flex flex-col items-center justify-center py-1 min-h-[48px] rounded-lg transition-colors ${
                   isActive ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -563,6 +916,32 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
               </button>
             );
           })}
+
+          {/* 5th item: More */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            className={`flex-1 flex flex-col items-center justify-center py-1 min-h-[48px] rounded-lg transition-colors ${
+              isMoreTabActive || mobileMenuOpen
+                ? 'text-indigo-600 font-bold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+            aria-label={t('hub.moreNav', 'More')}
+          >
+            <div className="relative">
+              <MoreHorizontal
+                className={`w-5 h-5 ${
+                  isMoreTabActive || mobileMenuOpen ? 'stroke-[2.5px]' : 'stroke-[1.75px]'
+                }`}
+              />
+              {isMoreTabActive && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-indigo-600" />
+              )}
+            </div>
+            <span className="text-[10px] font-medium tracking-tight mt-0.5 truncate max-w-full px-1">
+              {t('hub.moreNav', 'More')}
+            </span>
+          </button>
         </div>
       </nav>
 
@@ -573,7 +952,7 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onSelectTab, chi
       <GlobalSearchModal
         isOpen={searchModalOpen}
         onClose={() => setSearchModalOpen(false)}
-        onNavigate={(tab, id) => onSelectTab(tab as ActiveTab, id)}
+        onNavigate={(tab, id) => handleSelectNav(tab as ActiveTab, id)}
       />
     </div>
   );

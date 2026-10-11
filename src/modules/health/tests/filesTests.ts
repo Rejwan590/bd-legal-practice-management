@@ -248,6 +248,7 @@ export async function runFilesTests(ctx: DiagnosticContext): Promise<TestResult[
   if (createdFileId) {
     localStore.mutate((s) => {
       s.physicalFiles = (s.physicalFiles || []).filter((f) => f.id !== createdFileId);
+      s.reminders = (s.reminders || []).filter((r) => r.sourceId !== createdFileId);
     });
   }
 

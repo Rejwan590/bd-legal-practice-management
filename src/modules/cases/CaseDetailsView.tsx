@@ -1,763 +1,1431 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation, CaseDossierTab } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import {
+  AuditLogRecord,
   CaseRecord,
   CaseShareRecord,
   ClientRecord,
   HearingRecord,
+  HearingStatus,
   PhysicalFileRecord,
   TaskRecord,
   UserRecord,
 } from '../../data/types';
-import { CaseHearingsOverview } from '../../data/interfaces';
-import { HearingDateHistoryModal } from '../hearings/HearingDateHistoryModal';
-import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
+import { isLawyerOrOwner } from '../../rolePresets';
+import { EntityLink } from '../../components/EntityLink';
+import { Breadcrumbs } from '../../components/Breadcrumbs';
 import {
-  ArrowLeft,
   Briefcase,
   Building,
-  Scale,
-  Calendar,
   User,
-  Phone,
-  FileText,
+  Calendar,
+  CheckSquare,
+  FolderArchive,
+  Bell,
   Lock,
   Edit2,
   Trash2,
-  AlertTriangle,
+  Scale,
+  FileText,
   Clock,
-  Shield,
-  Gavel,
-  History,
-  CheckCircle,
-  CheckSquare,
-  FolderArchive,
-  MapPin,
   Share2,
   UserPlus,
   X,
+  Plus,
+  History,
+  CalendarClock,
+  ArrowRightCircle,
+  CheckCircle2,
+  RotateCcw,
+  LogOut,
+  LogIn,
+  Activity,
+  AlertTriangle,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 
 interface CaseDetailsViewProps {
-  caseRecord: CaseRecord;
+  caseId: string;
   onBack: () => void;
-  onEdit: (c: CaseRecord) => void;
-  onDeleted: () => void;
-  onNavigateToClient?: (clientId: string) => void;
+  onEdit: (caseRecord: CaseRecord) => void;
+  onDeleteSuccess: () => void;
 }
 
 export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
-  caseRecord,
+  caseId,
   onBack,
   onEdit,
-  onDeleted,
-  onNavigateToClient,
+  onDeleteSuccess,
 }) => {
   const { t } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
-  const [client, setClient] = useState<ClientRecord | null>(null);
-  const [users, setUsers] = useState<UserRecord[]>([]);
-  const [shares, setShares] = useState<CaseShareRecord[]>([]);
-  const [shareUserId, setShareUserId] = useState<string>('');
-  const [sharing, setSharing] = useState(false);
-  const [hearingsOverview, setHearingsOverview] = useState<CaseHearingsOverview | null>(null);
-  const [historyModalHearing, setHistoryModalHearing] = useState<HearingRecord | null>(null);
-  const [caseTasks, setCaseTasks] = useState<TaskRecord[]>([]);
-  const [caseFile, setCaseFile] = useState<PhysicalFileRecord | null>(null);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [linkedCounts, setLinkedCounts] = useState<{
-    hearingsCount: number;
-    tasksCount: number;
-    filesCount: number;
-    remindersCount: number;
-  } | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
+  const {
+    route,
+    openCaseDossier,
+    refreshVersion,
+    triggerRefresh,
+    setActiveCaseContext,
+    openHearingForm,
+    openRescheduleHearing,
+    openAdjournHearing,
+    openHearingHistory,
+    openTaskForm,
+    openTaskComplete,
+    openTaskReassign,
+    openFileForm,
+    openFileCheckOut,
+    openFileCheckIn,
+    openFileHistory,
+  } = useNavigation();
   const repos = getRepositories();
-  const canEdit = can('cases.edit');
-  const canDelete = can('cases.delete');
-  const isOwner = currentUser.role === 'Owner';
 
-  const handleOpenDeleteModal = async () => {
+  const activeTab: CaseDossierTab = route.caseId === caseId ? route.caseTab : 'overview';
+
+  const [caseData, setCaseData] = useState<CaseRecord | null>(null);
+  const [client, setClient] = useState<ClientRecord | null>(null);
+  const [allClients, setAllClients] = useState<ClientRecord[]>([]);
+  const [hearings, setHearings] = useState<HearingRecord[]>([]);
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [files, setFiles] = useState<PhysicalFileRecord[]>([]);
+  const [activityLogs, setActivityLogs] = useState<AuditLogRecord[]>([]);
+  const [counts, setCounts] = useState({
+    hearingsCount: 0,
+    tasksCount: 0,
+    filesCount: 0,
+    remindersCount: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [shares, setShares] = useState<CaseShareRecord[]>([]);
+  const [firmLawyers, setFirmLawyers] = useState<UserRecord[]>([]);
+  const [allUsers, setAllUsers] = useState<UserRecord[]>([]);
+  const [selectedShareUserId, setSelectedShareUserId] = useState<string>('');
+  const [sharingBusy, setSharingBusy] = useState(false);
+
+  // Client change state
+  const [changingClient, setChangingClient] = useState(false);
+  const [selectedNewClientId, setSelectedNewClientId] = useState('');
+  const [savingClientChange, setSavingClientChange] = useState(false);
+
+  // Outcome note inline edit state
+  const [editingOutcomeHearingId, setEditingOutcomeHearingId] = useState<string | null>(null);
+  const [outcomeDraft, setOutcomeDraft] = useState('');
+  const [savingOutcome, setSavingOutcome] = useState(false);
+
+  const canEditCase = can('cases.edit');
+  const canDeleteCase = can('cases.delete');
+  const canUpdateHearings = can('hearings.update');
+  const canAssignTasks = can('tasks.assign');
+  const canCompleteTasks = can('tasks.complete');
+  const canManageFiles = can('files.manage');
+
+  const canManageShares =
+    Boolean(caseData) &&
+    !isReadOnly &&
+    (currentUser.role === 'Owner' ||
+      can('settings.manage') ||
+      caseData?.responsibleLawyerId === currentUser.id);
+
+  const loadCaseDetails = useCallback(async () => {
+    setLoading(true);
     setErrorMsg(null);
-    setDeleteModalOpen(true);
     try {
-      const counts = await repos.case.getLinkedCounts({ currentUser }, caseRecord.id);
-      setLinkedCounts(counts);
+      const c = await repos.case.getById({ currentUser }, caseId);
+      setCaseData(c);
+      if (c) {
+        setActiveCaseContext({
+          caseId: c.id,
+          clientId: c.clientId,
+          caseNumber: c.caseNumber,
+        });
+        setSelectedNewClientId(c.clientId);
+
+        const [
+          linkedCounts,
+          cl,
+          clientsList,
+          usersList,
+          caseHearings,
+          caseTasks,
+          caseFiles,
+          caseAudit,
+        ] = await Promise.all([
+          repos.case.getLinkedCounts({ currentUser }, caseId),
+          repos.client.getById({ currentUser }, c.clientId).catch(() => null),
+          repos.client.list({ currentUser }).catch(() => []),
+          repos.user.list({ currentUser }).catch(() => []),
+          repos.hearing.list({ currentUser }, { caseId }).catch(() => []),
+          repos.task.list({ currentUser }, { caseId }).catch(() => []),
+          repos.physicalFile.list({ currentUser }, { caseId }).catch(() => []),
+          repos.auditLog.listByCaseId
+            ? repos.auditLog.listByCaseId({ currentUser }, caseId).catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        setCounts(linkedCounts);
+        setClient(cl);
+        setAllClients(clientsList);
+        setAllUsers(usersList);
+        setHearings(caseHearings);
+        setTasks(caseTasks);
+        setFiles(caseFiles);
+        setActivityLogs(caseAudit);
+        setFirmLawyers(
+          usersList.filter(
+            (u: UserRecord) => (u.status ?? 'active') === 'active' && isLawyerOrOwner(u)
+          )
+        );
+
+        if (repos.case.listShares) {
+          try {
+            const shareList = await repos.case.listShares({ currentUser }, caseId);
+            setShares(shareList);
+          } catch {
+            setShares([]);
+          }
+        }
+      } else {
+        setActiveCaseContext(null);
+      }
     } catch (err: unknown) {
-      console.error('Failed to get linked counts:', err);
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to load case details');
+      setCaseData(null);
+      setActiveCaseContext(null);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [caseId, currentUser, repos, setActiveCaseContext]);
 
   useEffect(() => {
-    repos.client
-      .getById({ currentUser }, caseRecord.clientId)
-      .then(setClient)
-      .catch(console.error);
+    loadCaseDetails();
+    return () => {
+      setActiveCaseContext(null);
+    };
+  }, [loadCaseDetails, refreshVersion, setActiveCaseContext]);
 
-    repos.user
-      .list({ currentUser })
-      .then(setUsers)
-      .catch(console.error);
-
-    if (repos.case.listShares) {
-      repos.case
-        .listShares({ currentUser }, caseRecord.id)
-        .then(setShares)
-        .catch(console.error);
-    }
-
-    repos.hearing
-      .getCaseHearingsOverview({ currentUser }, caseRecord.id)
-      .then(setHearingsOverview)
-      .catch(console.error);
-
-    repos.task
-      .getByCaseId({ currentUser }, caseRecord.id)
-      .then(setCaseTasks)
-      .catch(console.error);
-
-    repos.physicalFile
-      .getByCaseId({ currentUser }, caseRecord.id)
-      .then(setCaseFile)
-      .catch(console.error);
-  }, [caseRecord.id, caseRecord.clientId, currentUser]);
+  const handleTabSelect = (tab: CaseDossierTab) => {
+    openCaseDossier(caseId, tab);
+  };
 
   const handleShareCase = async () => {
-    if (!shareUserId || !repos.case.shareCase || isReadOnly) return;
-    setSharing(true);
-    setErrorMsg(null);
+    if (!selectedShareUserId || !repos.case.shareCase || isReadOnly) return;
+    setSharingBusy(true);
     try {
-      const newShare = await repos.case.shareCase({ currentUser }, caseRecord.id, shareUserId);
-      setShares((prev) => [...prev.filter((s) => s.userId !== shareUserId), newShare]);
-      setShareUserId('');
+      await repos.case.shareCase({ currentUser }, caseId, selectedShareUserId);
+      setSelectedShareUserId('');
+      triggerRefresh();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to share case');
     } finally {
-      setSharing(false);
+      setSharingBusy(false);
     }
   };
 
   const handleUnshareCase = async (shareIdOrUserId: string) => {
     if (!repos.case.unshareCase || isReadOnly) return;
-    setErrorMsg(null);
+    setSharingBusy(true);
     try {
-      await repos.case.unshareCase({ currentUser }, caseRecord.id, shareIdOrUserId);
-      setShares((prev) =>
-        prev.filter((s) => s.id !== shareIdOrUserId && s.userId !== shareIdOrUserId)
-      );
+      await repos.case.unshareCase({ currentUser }, caseId, shareIdOrUserId);
+      triggerRefresh();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to remove share access');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to remove share');
+    } finally {
+      setSharingBusy(false);
     }
   };
 
-  const responsibleLawyer = caseRecord.responsibleLawyerId
-    ? users.find((u) => u.id === caseRecord.responsibleLawyerId)
-    : null;
-
-
-  const handleConfirmDelete = async () => {
-    if (!canDelete) return;
+  const handleDelete = async () => {
+    if (!canDeleteCase || isReadOnly) return;
     setDeleting(true);
-    setErrorMsg(null);
     try {
-      await repos.case.delete({ currentUser }, caseRecord.id);
-      setDeleteModalOpen(false);
-      onDeleted();
+      await repos.case.delete({ currentUser }, caseId);
+      triggerRefresh();
+      onDeleteSuccess();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete case');
+      setErrorMsg(err instanceof Error ? err.message : 'Delete failed');
       setDeleting(false);
     }
   };
 
-  return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Top action bar */}
-      <div className="flex items-center justify-between gap-4">
+  const handleSaveClientChange = async () => {
+    if (!caseData || !canEditCase || isReadOnly || !selectedNewClientId) return;
+    setSavingClientChange(true);
+    setErrorMsg(null);
+    try {
+      await repos.case.update({ currentUser }, caseData.id, { clientId: selectedNewClientId });
+      setChangingClient(false);
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to change linked client');
+    } finally {
+      setSavingClientChange(false);
+    }
+  };
+
+  const handleHearingStatusChange = async (hearing: HearingRecord, newStatus: HearingStatus) => {
+    if (!canUpdateHearings || isReadOnly) return;
+    try {
+      await repos.hearing.update({ currentUser }, hearing.id, { status: newStatus });
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to update hearing status');
+    }
+  };
+
+  const handleSaveOutcomeNote = async (hearingId: string) => {
+    if (!canUpdateHearings || isReadOnly) return;
+    setSavingOutcome(true);
+    try {
+      await repos.hearing.update({ currentUser }, hearingId, {
+        outcomeNote: outcomeDraft.trim(),
+      });
+      setEditingOutcomeHearingId(null);
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save outcome note');
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
+
+  const handleReopenTask = async (task: TaskRecord) => {
+    if ((!canCompleteTasks && !canAssignTasks) || isReadOnly) return;
+    try {
+      await repos.task.update({ currentUser }, task.id, {
+        status: 'pending',
+        completedAt: null,
+      });
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to reopen task');
+    }
+  };
+
+  if (loading && !caseData) {
+    return (
+      <div className="p-8 text-center text-slate-400 text-sm">
+        {t('common.loading')}
+      </div>
+    );
+  }
+
+  if (errorMsg && !caseData) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4">
+        <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900">
+          {errorMsg || 'Case not found'}
+        </h3>
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition shadow-2xs min-h-[44px]"
+          className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg"
         >
-          <ArrowLeft className="w-4 h-4" />
-          {t('cases.backToList')}
+          {t('common.back')}
         </button>
-
-        <div className="flex items-center gap-2">
-          {canEdit && (
-            <button
-              onClick={() => onEdit(caseRecord)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition shadow-2xs min-h-[44px]"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              {t('common.edit')}
-            </button>
-          )}
-
-          {canDelete && (
-            <button
-              onClick={handleOpenDeleteModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition shadow-2xs min-h-[44px]"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              {t('common.delete')}
-            </button>
-          )}
-        </div>
       </div>
+    );
+  }
 
-      {errorMsg && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
-          {errorMsg}
+  if (!caseData) return null;
+
+  const responsibleLawyer = allUsers.find((u) => u.id === caseData.responsibleLawyerId);
+
+  const tabDefinitions: Array<{
+    id: CaseDossierTab;
+    label: string;
+    count?: number;
+    icon: React.FC<{ className?: string }>;
+  }> = [
+    { id: 'overview', label: t('hub.tabOverview', 'Overview'), icon: Briefcase },
+    {
+      id: 'hearings',
+      label: t('cases.linkedHearings', 'Hearings'),
+      count: hearings.length,
+      icon: Calendar,
+    },
+    {
+      id: 'tasks',
+      label: t('cases.linkedTasks', 'Tasks'),
+      count: tasks.length,
+      icon: CheckSquare,
+    },
+    {
+      id: 'files',
+      label: t('cases.linkedFiles', 'Files'),
+      count: files.length,
+      icon: FolderArchive,
+    },
+    {
+      id: 'activity',
+      label: t('hub.tabActivity', 'Activity'),
+      count: activityLogs.length,
+      icon: Activity,
+    },
+  ];
+
+  return (
+    <div className="space-y-5 min-w-0" data-testid="case-dossier-hub">
+      {/* Breadcrumbs & Back Button */}
+      <Breadcrumbs
+        fallbackPath="/cases"
+        onBackOverride={onBack}
+        items={[
+          { label: t('nav.cases'), href: '/cases' },
+          {
+            label: caseData.caseNumber,
+            href: `/cases/${encodeURIComponent(caseData.id)}/overview`,
+          },
+          {
+            label:
+              tabDefinitions.find((td) => td.id === activeTab)?.label ||
+              t('hub.tabOverview', 'Overview'),
+          },
+        ]}
+      />
+
+      {/* Read-Only Subscription Banner inside Hub if expired */}
+      {isReadOnly && (
+        <div
+          data-testid="hub-readonly-banner"
+          className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+          <span>{t('subscription.readOnlyMessage')}</span>
         </div>
       )}
 
-      {/* Main Dossier Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
-        {/* Header with Case Number & Badges */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {caseRecord.fileSerial}
-              </span>
-              <span
-                className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
-                  caseRecord.status === 'ongoing'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {caseRecord.status === 'ongoing' ? t('cases.ongoing') : t('cases.closed')}
-              </span>
-              {caseRecord.restricted && (
-                <span className="flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                  <Lock className="w-3 h-3 text-amber-700" />
-                  {t('cases.restricted')}
+      {errorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center justify-between gap-2">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="text-rose-500 hover:text-rose-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Case Header Card — ONE clear Edit button for the case itself */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-4 sm:p-6 bg-slate-900 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono text-xs border border-slate-700">
+                  {caseData.fileSerial}
                 </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    caseData.status === 'ongoing'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  {caseData.status === 'ongoing'
+                    ? t('cases.statusOngoing')
+                    : t('cases.statusClosed')}
+                </span>
+                {caseData.restricted && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    <Lock className="w-3 h-3" />
+                    {t('cases.restrictedBadge')}
+                  </span>
+                )}
+              </div>
+              <h1 className="text-lg sm:text-2xl font-bold tracking-tight break-words">
+                {caseData.caseNumber}
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 text-xs sm:text-sm">
+                <span className="inline-flex items-center gap-1.5">
+                  <Building className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span className="break-words">{caseData.court}</span>
+                </span>
+                {client && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-slate-400 shrink-0" />
+                    <EntityLink
+                      type="client"
+                      id={client.id}
+                      label={client.name}
+                      className="text-amber-300 hover:text-amber-200 font-semibold"
+                    />
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Single Case Edit + Delete Actions in Header */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {canEditCase && (
+                <button
+                  type="button"
+                  data-testid="case-header-edit-btn"
+                  disabled={isReadOnly}
+                  title={isReadOnly ? t('subscription.readOnlyMessage') : t('cases.editCase')}
+                  onClick={() => {
+                    if (!isReadOnly && canEditCase) onEdit(caseData);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>{t('common.edit')}</span>
+                </button>
               )}
-              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                <User className="w-3 h-3 text-indigo-600" />
-                {t('cases.responsibleLawyer')}:{' '}
-                <strong>{responsibleLawyer ? responsibleLawyer.name : t('cases.unassignedLawyer')}</strong>
-              </span>
-            </div>
 
-            <h1 className="text-2xl font-bold text-slate-900">{caseRecord.caseNumber}</h1>
-            <p className="text-sm font-medium text-slate-600 flex items-center gap-1.5">
-              <Building className="w-4 h-4 text-slate-400" />
-              {caseRecord.court}
-            </p>
-          </div>
+              {canDeleteCase && !confirmDelete && (
+                <button
+                  type="button"
+                  disabled={isReadOnly}
+                  title={isReadOnly ? t('subscription.readOnlyMessage') : t('common.delete')}
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-semibold rounded-xl border border-rose-500/30 transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{t('common.delete')}</span>
+                </button>
+              )}
 
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 self-start">
-            <span className="text-slate-400 block font-medium uppercase tracking-wider text-[10px]">
-              {t('cases.nextHearing')}
-            </span>
-            <div className="flex items-center gap-1.5 font-bold text-slate-800">
-              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-              <span>
-                {caseRecord.nextHearingAt
-                  ? new Date(caseRecord.nextHearingAt).toLocaleDateString()
-                  : t('cases.notScheduled')}
-              </span>
+              {confirmDelete && (
+                <div className="flex items-center gap-2 bg-rose-950/90 border border-rose-500/40 px-3 py-1.5 rounded-xl">
+                  <span className="text-xs text-rose-200 font-medium">
+                    {t('cases.confirmDeleteTitle')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting || isReadOnly}
+                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg"
+                  >
+                    {deleting ? '...' : t('common.yes')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-2 py-1 text-slate-300 hover:text-white text-xs"
+                  >
+                    {t('common.no')}
+                  </button>
+                </div>
+              )}
             </div>
-            <span className="text-[10px] text-slate-400 block">
-              Stage 4 Hearings connected
-            </span>
           </div>
         </div>
 
-        {/* Represented Client Card */}
-        {client && (
-          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                <User className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">
-                  {t('cases.linkedClient')}
-                </span>
-                <span className="font-bold text-sm text-slate-900">
-                  {client.name} {client.nameBn ? `(${client.nameBn})` : ''}
-                </span>
-                <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                  <Phone className="w-3 h-3 text-emerald-600" />
-                  {client.phone}
-                </span>
+        {/* Dossier 5-Tab Bar */}
+        <div
+          role="tablist"
+          aria-label="Case dossier tabs"
+          className="flex items-center gap-1 px-3 sm:px-6 bg-slate-50 border-b border-slate-200 overflow-x-auto no-scrollbar"
+        >
+          {tabDefinitions.map((tab) => {
+            const Icon = tab.icon;
+            const isSelected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                type="button"
+                aria-selected={isSelected}
+                data-testid={`dossier-tab-${tab.id}`}
+                onClick={() => handleTabSelect(tab.id)}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 transition whitespace-nowrap shrink-0 min-h-[44px] ${
+                  isSelected
+                    ? 'border-slate-900 text-slate-900 bg-white/60'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span
+                    className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${
+                      isSelected
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-200/80 text-slate-600'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* TAB 1: OVERVIEW */}
+        {activeTab === 'overview' && (
+          <div className="p-4 sm:p-6 space-y-6" data-testid="dossier-panel-overview">
+            {/* Summary Metric Cards — Clickable to jump directly to the tab */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <button
+                type="button"
+                onClick={() => handleTabSelect('hearings')}
+                className="p-3.5 rounded-xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200/80 flex items-center gap-3 text-left transition group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-lg font-bold text-slate-900 group-hover:text-indigo-700">
+                    {hearings.length}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {t('cases.linkedHearings')}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTabSelect('tasks')}
+                className="p-3.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200/80 flex items-center gap-3 text-left transition group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckSquare className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-lg font-bold text-slate-900 group-hover:text-emerald-700">
+                    {tasks.length}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {t('cases.linkedTasks')}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTabSelect('files')}
+                className="p-3.5 rounded-xl bg-slate-50 hover:bg-amber-50/50 border border-slate-200/80 flex items-center gap-3 text-left transition group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+                  <FolderArchive className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-lg font-bold text-slate-900 group-hover:text-amber-700">
+                    {files.length}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {t('cases.linkedFiles')}
+                  </div>
+                </div>
+              </button>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-lg font-bold text-slate-900">
+                    {counts.remindersCount}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {t('cases.linkedReminders')}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {onNavigateToClient && (
-              <button
-                onClick={() => onNavigateToClient(client.id)}
-                className="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline self-start sm:self-center"
-              >
-                View Client Dossier &rarr;
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Matter Details & Client Hub Card */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5" />
+                  {t('cases.matterType')} & {t('cases.linkedClient')}
+                </h3>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 space-y-3">
+                  <div>
+                    <div className="text-xs text-slate-500">{t('cases.matterType')}</div>
+                    <div className="text-sm font-semibold text-slate-900 mt-0.5">
+                      {caseData.matterType}
+                    </div>
+                  </div>
+
+                  {/* Linked Client with Open Profile & Change Linked Client */}
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-slate-500">{t('cases.linkedClient')}</div>
+                      {canEditCase && !changingClient && (
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          data-testid="change-linked-client-btn"
+                          onClick={() => {
+                            setSelectedNewClientId(caseData.clientId);
+                            setChangingClient(true);
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-40"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>{t('hub.changeClient', 'Change Client')}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {!changingClient ? (
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                        {client ? (
+                          <div className="min-w-0">
+                            <EntityLink
+                              type="client"
+                              id={client.id}
+                              label={`${client.name}${client.nameBn ? ` (${client.nameBn})` : ''}`}
+                              showIcon
+                              showExternalIcon
+                              className="text-sm"
+                            />
+                            <div className="text-xs text-slate-500 mt-0.5">{client.phone}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">{t('common.none')}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2 bg-white p-2.5 rounded-lg border border-slate-200">
+                        <select
+                          value={selectedNewClientId}
+                          onChange={(e) => setSelectedNewClientId(e.target.value)}
+                          data-testid="change-linked-client-select"
+                          className="w-full min-h-[38px] bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
+                        >
+                          {allClients.map((cl) => (
+                            <option key={cl.id} value={cl.id}>
+                              {cl.name} {cl.nameBn ? `(${cl.nameBn})` : ''} - {cl.phone}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setChangingClient(false)}
+                            className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md"
+                          >
+                            {t('common.cancel')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingClientChange || isReadOnly}
+                            data-testid="save-linked-client-btn"
+                            onClick={handleSaveClientChange}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-slate-900 text-white text-xs font-semibold rounded-md disabled:opacity-50"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>{t('common.save')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div className="text-xs text-slate-500">{t('cases.responsibleLawyer')}</div>
+                    <div className="text-sm font-medium text-slate-800 mt-0.5">
+                      {responsibleLawyer
+                        ? responsibleLawyer.name
+                        : t('cases.unassignedLawyer')}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div className="text-xs text-slate-500 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      {t('cases.nextHearing')}
+                    </div>
+                    <div
+                      data-testid="case-next-hearing-value"
+                      className="text-sm font-semibold text-slate-900 mt-0.5"
+                    >
+                      {caseData.nextHearingAt
+                        ? new Date(caseData.nextHearingAt).toLocaleString()
+                        : t('cases.noUpcomingHearing')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Opposing Parties & Representation */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Scale className="w-3.5 h-3.5" />
+                  {t('cases.partiesSection')}
+                </h3>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500">{t('cases.ourRole')}</span>
+                    <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold">
+                      {caseData.ourRole}
+                    </span>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold text-emerald-700 uppercase">
+                        {t('cases.plaintiff')}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
+                        {caseData.plaintiff}
+                      </div>
+                      {caseData.plaintiffLawyer && (
+                        <div className="text-xs text-slate-500 mt-1">
+                          Adv: {caseData.plaintiffLawyer}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-semibold text-rose-700 uppercase">
+                        {t('cases.defendant')}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
+                        {caseData.defendant}
+                      </div>
+                      {caseData.defendantLawyer && (
+                        <div className="text-xs text-slate-500 mt-1">
+                          Adv: {caseData.defendantLawyer}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Case Summary & Notes */}
+            {caseData.description && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
+                  {t('cases.description')}
+                </h3>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {caseData.description}
+                </div>
+              </div>
+            )}
+
+            {/* Case Sharing Section */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5" />
+                  {t('cases.sharedWith')}
+                </h3>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 space-y-3">
+                {shares.length === 0 ? (
+                  <p className="text-xs text-slate-500">{t('cases.noSharedLawyers')}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {shares.map((sh) => {
+                      const sharedLawyer = firmLawyers.find((u) => u.id === sh.userId);
+                      return (
+                        <span
+                          key={sh.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs font-medium text-slate-700 shadow-2xs"
+                        >
+                          <User className="w-3 h-3 text-slate-400" />
+                          <span>{sharedLawyer ? sharedLawyer.name : sh.userId}</span>
+                          {canManageShares && (
+                            <button
+                              type="button"
+                              onClick={() => handleUnshareCase(sh.userId)}
+                              disabled={sharingBusy}
+                              title={t('cases.unshareAction')}
+                              className="text-slate-400 hover:text-rose-600 ml-1"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {canManageShares && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60">
+                    <select
+                      value={selectedShareUserId}
+                      onChange={(e) => setSelectedShareUserId(e.target.value)}
+                      className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-hidden min-h-[36px]"
+                    >
+                      <option value="">{t('cases.shareWithLawyer')}...</option>
+                      {firmLawyers
+                        .filter(
+                          (lw) =>
+                            lw.id !== caseData.responsibleLawyerId &&
+                            !shares.some((s) => s.userId === lw.id)
+                        )
+                        .map((lw) => (
+                          <option key={lw.id} value={lw.id}>
+                            {lw.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleShareCase}
+                      disabled={!selectedShareUserId || sharingBusy}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg disabled:opacity-50 min-h-[36px]"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>{t('cases.shareAction')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: HEARINGS */}
+        {activeTab === 'hearings' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="dossier-panel-hearings">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('cases.linkedHearings')} ({hearings.length})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {t('hearings.subtitle')}
+                </p>
+              </div>
+              {canUpdateHearings && (
+                <button
+                  type="button"
+                  data-testid="dossier-add-hearing-btn"
+                  disabled={isReadOnly}
+                  title={isReadOnly ? t('subscription.readOnlyMessage') : t('hearings.addHearing')}
+                  onClick={() =>
+                    openHearingForm({
+                      defaultCaseId: caseData.id,
+                      lockCaseId: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('hearings.addHearing')}</span>
+                </button>
+              )}
+            </div>
+
+            {hearings.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('hearings.emptyHearings')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {hearings.map((h) => {
+                  const appearingLawyer = allUsers.find((u) => u.id === h.appearingLawyerId);
+                  const isEditingOutcome = editingOutcomeHearingId === h.id;
+                  return (
+                    <div
+                      key={h.id}
+                      data-testid={`dossier-hearing-row-${h.id}`}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                                h.status === 'scheduled'
+                                  ? 'bg-indigo-100 text-indigo-800'
+                                  : h.status === 'held'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : h.status === 'adjourned'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {t(
+                                `hearings.status${h.status.charAt(0).toUpperCase() + h.status.slice(1)}`
+                              )}
+                            </span>
+                            <span className="text-xs font-bold text-slate-900">
+                              {new Date(h.scheduledAt).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900 break-words">
+                            {h.purpose}
+                          </div>
+                          {appearingLawyer && (
+                            <div className="text-xs text-slate-500">
+                              {t('hearings.appearingLawyer')}: {appearingLawyer.name}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Hearing Per-Row Hub Actions */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {canUpdateHearings && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isReadOnly}
+                                data-testid={`hearing-reschedule-btn-${h.id}`}
+                                onClick={() =>
+                                  openRescheduleHearing(
+                                    h,
+                                    `${caseData.caseNumber} (${caseData.court})`
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                              >
+                                <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>{t('hearings.reschedule')}</span>
+                              </button>
+
+                              {h.status === 'scheduled' && (
+                                <button
+                                  type="button"
+                                  disabled={isReadOnly}
+                                  onClick={() =>
+                                    openAdjournHearing(
+                                      h,
+                                      `${caseData.caseNumber} (${caseData.court})`
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                                >
+                                  <ArrowRightCircle className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>{t('hearings.adjournAndNext')}</span>
+                                </button>
+                              )}
+
+                              {/* Mark Held / Adjourned / Cancelled */}
+                              <select
+                                aria-label="Change hearing status"
+                                disabled={isReadOnly}
+                                data-testid={`hearing-status-select-${h.id}`}
+                                value={h.status}
+                                onChange={(e) =>
+                                  handleHearingStatusChange(h, e.target.value as HearingStatus)
+                                }
+                                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                              >
+                                <option value="scheduled">{t('hearings.statusScheduled')}</option>
+                                <option value="held">{t('hearings.statusHeld')}</option>
+                                <option value="adjourned">{t('hearings.statusAdjourned')}</option>
+                                <option value="cancelled">{t('hearings.statusCancelled')}</option>
+                              </select>
+
+                              <button
+                                type="button"
+                                disabled={isReadOnly}
+                                data-testid={`hearing-edit-outcome-btn-${h.id}`}
+                                onClick={() => {
+                                  setEditingOutcomeHearingId(h.id);
+                                  setOutcomeDraft(h.outcomeNote || '');
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                <span>{t('hearings.outcomeNote')}</span>
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            type="button"
+                            data-testid={`hearing-history-btn-${h.id}`}
+                            onClick={() =>
+                              openHearingHistory(
+                                h,
+                                `${caseData.caseNumber} (${caseData.court})`
+                              )
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold min-h-[34px]"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                            <span>{t('hearings.dateHistory')}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Outcome Note Display or Editor */}
+                      {isEditingOutcome ? (
+                        <div className="pt-2 border-t border-slate-200/70 space-y-2">
+                          <textarea
+                            rows={2}
+                            value={outcomeDraft}
+                            onChange={(e) => setOutcomeDraft(e.target.value)}
+                            placeholder={t('hearings.outcomeNote')}
+                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-lg"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingOutcomeHearingId(null)}
+                              className="px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-200 rounded-md"
+                            >
+                              {t('common.cancel')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingOutcome || isReadOnly}
+                              onClick={() => handleSaveOutcomeNote(h.id)}
+                              className="px-3 py-1 bg-slate-900 text-white text-xs font-semibold rounded-md"
+                            >
+                              {t('common.save')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        h.outcomeNote && (
+                          <div className="pt-2 border-t border-slate-200/60 text-xs text-slate-600">
+                            <span className="font-semibold text-slate-700">
+                              {t('hearings.outcomeNote')}:
+                            </span>{' '}
+                            {h.outcomeNote}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
 
-        {/* Parties Representation Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Plaintiff / Petitioner Box */}
-          <div
-            className={`p-4 rounded-xl border ${
-              ['Plaintiff', 'Petitioner', 'Appellant', 'Applicant'].includes(caseRecord.ourRole)
-                ? 'bg-emerald-50/60 border-emerald-200'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                {t('cases.plaintiff')}
-              </span>
-              {['Plaintiff', 'Petitioner', 'Appellant', 'Applicant'].includes(caseRecord.ourRole) && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
-                  Chamber Client ({caseRecord.ourRole})
-                </span>
-              )}
-            </div>
-            <p className="font-bold text-sm text-slate-900">{caseRecord.plaintiff}</p>
-            <div className="text-xs text-slate-500 mt-2">
-              <strong>Counsel:</strong> {caseRecord.plaintiffLawyer || 'N/A'}
-            </div>
-          </div>
-
-          {/* Defendant / Respondent Box */}
-          <div
-            className={`p-4 rounded-xl border ${
-              ['Defendant', 'Respondent'].includes(caseRecord.ourRole)
-                ? 'bg-emerald-50/60 border-emerald-200'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                {t('cases.defendant')}
-              </span>
-              {['Defendant', 'Respondent'].includes(caseRecord.ourRole) && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
-                  Chamber Client ({caseRecord.ourRole})
-                </span>
-              )}
-            </div>
-            <p className="font-bold text-sm text-slate-900">{caseRecord.defendant}</p>
-            <div className="text-xs text-slate-500 mt-2">
-              <strong>Opposing Counsel:</strong> {caseRecord.defendantLawyer || 'N/A'}
-            </div>
-          </div>
-        </div>
-
-        {/* Matter Classification & Facts */}
-        <div className="space-y-3 pt-2">
-          <div>
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
-              {t('cases.matterType')}
-            </span>
-            <span className="inline-block px-3 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-semibold">
-              {caseRecord.matterType}
-            </span>
-          </div>
-
-          {caseRecord.description && (
-            <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
-                {t('cases.description')}
-              </span>
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 whitespace-pre-line leading-relaxed">
-                {caseRecord.description}
+        {/* TAB 3: TASKS */}
+        {activeTab === 'tasks' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="dossier-panel-tasks">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('cases.linkedTasks')} ({tasks.length})
+                </h3>
+                <p className="text-xs text-slate-500">{t('tasks.subtitle')}</p>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Stage 4 Hearings Overview Card */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <Gavel className="w-4 h-4 text-indigo-600" />
-              Court Hearings Overview (Previous, Current, Next)
-            </h3>
-            <span className="text-xs text-slate-500 font-mono">
-              Total Hearings: {hearingsOverview?.allHearings.length || 0}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Previous Hearing */}
-            <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                {t('hearings.previousHearing')}
-              </span>
-              {hearingsOverview?.previousHearing ? (
-                <>
-                  <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{new Date(hearingsOverview.previousHearing.scheduledAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs text-slate-600 font-medium">
-                    {hearingsOverview.previousHearing.purpose}
-                  </p>
-                  {hearingsOverview.previousHearing.outcomeNote && (
-                    <p className="text-[11px] text-slate-500 italic bg-slate-50 p-2 rounded border border-slate-100">
-                      "{hearingsOverview.previousHearing.outcomeNote}"
-                    </p>
-                  )}
-                  <span
-                    className={`inline-block text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                      hearingsOverview.previousHearing.status === 'held'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {hearingsOverview.previousHearing.status}
-                  </span>
-                </>
-              ) : (
-                <p className="text-xs text-slate-400 italic">No previous hearing recorded</p>
-              )}
-            </div>
-
-            {/* Current / Today's Hearing */}
-            <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                {t('hearings.currentHearing')}
-              </span>
-              {hearingsOverview?.currentHearing ? (
-                <>
-                  <div className="font-bold text-xs text-indigo-700 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Today, {new Date(hearingsOverview.currentHearing.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                  <p className="text-xs text-slate-800 font-semibold">
-                    {hearingsOverview.currentHearing.purpose}
-                  </p>
-                  <span className="inline-block text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800">
-                    Listed Today
-                  </span>
-                </>
-              ) : (
-                <p className="text-xs text-slate-400 italic">No hearing listed for today</p>
-              )}
-            </div>
-
-            {/* Next Hearing */}
-            <div className="p-3.5 bg-white rounded-xl border border-indigo-200 shadow-2xs space-y-1.5 bg-indigo-50/20">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
-                  {t('hearings.nextHearing')}
-                </span>
-                {hearingsOverview?.nextHearing && (
-                  <button
-                    onClick={() => setHistoryModalHearing(hearingsOverview.nextHearing)}
-                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5"
-                    title={t('hearings.dateHistory')}
-                  >
-                    <History className="w-3 h-3" />
-                    History
-                  </button>
-                )}
-              </div>
-              {hearingsOverview?.nextHearing ? (
-                <>
-                  <div className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{new Date(hearingsOverview.nextHearing.scheduledAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs text-slate-800 font-medium">
-                    {hearingsOverview.nextHearing.purpose}
-                  </p>
-                  <span className="inline-block text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800">
-                    Scheduled
-                  </span>
-                </>
-              ) : (
-                <p className="text-xs text-slate-400 italic">Next date not yet fixed</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Stage 5 Tasks Linked to Case */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <CheckSquare className="w-4 h-4 text-indigo-600" />
-              Case Workflow Tasks & Action Items
-            </h3>
-            <span className="text-xs text-slate-500 font-mono">
-              Tasks: {caseTasks.length}
-            </span>
-          </div>
-
-          {caseTasks.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No tasks currently assigned for this case.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {caseTasks.map((tRec) => (
-                <div
-                  key={tRec.id}
-                  className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5"
+              {canAssignTasks && (
+                <button
+                  type="button"
+                  data-testid="dossier-add-task-btn"
+                  disabled={isReadOnly}
+                  title={isReadOnly ? t('subscription.readOnlyMessage') : t('tasks.addTask')}
+                  onClick={() =>
+                    openTaskForm({
+                      defaultCaseId: caseData.id,
+                      defaultClientId: caseData.clientId,
+                      lockCaseAndClient: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                        tRec.priority === 'urgent'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : tRec.priority === 'high'
-                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {tRec.priority}
-                    </span>
-                    <span
-                      className={`text-[9px] px-2 py-0.5 rounded font-semibold ${
-                        tRec.status === 'completed'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-indigo-50 text-indigo-700'
-                      }`}
-                    >
-                      {tRec.status}
-                    </span>
-                  </div>
-                  <p className="font-bold text-xs text-slate-900 line-clamp-1">{tRec.title}</p>
-                  <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100">
-                    <span>Assigned: <strong className="text-slate-700">{tRec.assignedToName || 'Advocate'}</strong></span>
-                    <span>Due: {new Date(tRec.dueAt).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Stage 6 Physical File Linked to Case */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <FolderArchive className="w-4 h-4 text-emerald-600" />
-              Physical Case Bundle & Documents Dossier
-            </h3>
-            {caseFile && (
-              <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {caseFile.serial}
-              </span>
-            )}
-          </div>
-
-          {caseFile ? (
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="font-bold text-xs text-slate-900">{caseFile.title}</h4>
-                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                    <MapPin className="w-3 h-3 text-slate-400" />
-                    Location: <strong className="text-slate-700">{caseFile.shelfLocation}</strong>
-                  </span>
-                </div>
-
-                <div>
-                  {caseFile.status === 'in_chamber' && (
-                    <span className="inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      Available in Chamber
-                    </span>
-                  )}
-                  {caseFile.status === 'checked_out' && (
-                    <span className="inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                      Checked Out to {caseFile.currentHolderName || 'Advocate'}
-                    </span>
-                  )}
-                  {caseFile.status === 'in_court' && (
-                    <span className="inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300">
-                      In Court ({caseFile.currentHolderName || 'Advocate'})
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {caseFile.notes && (
-                <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                  {caseFile.notes}
-                </p>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('tasks.addTask')}</span>
+                </button>
               )}
             </div>
-          ) : (
-            <div className="p-4 bg-white rounded-xl border border-slate-200 text-center py-4">
-              <p className="text-xs text-slate-500 italic">
-                No physical paper file registered for this case yet. Physical files can be registered in the Files tab.
-              </p>
-            </div>
-          )}
-        </div>
 
-        {/* Case Sharing (Share with... / Remove access) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <Share2 className="w-4 h-4 text-indigo-600" />
-              {t('cases.sharedWith')}
-            </h3>
-          </div>
-
-          {shares.length === 0 ? (
-            <p className="text-xs text-slate-500 italic">{t('cases.noSharesYet')}</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {shares.map((sh) => {
-                const targetUser = users.find((u) => u.id === sh.userId);
-                return (
-                  <div
-                    key={sh.id}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 shadow-2xs"
-                  >
-                    <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span className="font-semibold">
-                      {targetUser ? targetUser.name : sh.userId}
-                    </span>
-                    {canEdit && !isReadOnly && (
-                      <button
-                        type="button"
-                        onClick={() => handleUnshareCase(sh.id)}
-                        className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition"
-                      >
-                        <X className="w-3 h-3" />
-                        {t('cases.removeAccess')}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {canEdit && !isReadOnly && (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2">
-              <select
-                value={shareUserId}
-                onChange={(e) => setShareUserId(e.target.value)}
-                className="flex-1 min-h-[44px] bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
-              >
-                <option value="">{t('cases.selectUserToShare')}</option>
-                {users
-                  .filter(
-                    (u) =>
-                      (u.status ?? 'active') === 'active' &&
-                      u.id !== caseRecord.responsibleLawyerId &&
-                      !shares.some((s) => s.userId === u.id)
-                  )
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.email})
-                    </option>
-                  ))}
-              </select>
-              <button
-                type="button"
-                disabled={!shareUserId || sharing}
-                onClick={handleShareCase}
-                className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition disabled:opacity-50"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                {t('cases.shareCase')}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Future Modules Preview */}
-        <div className="pt-4 border-t border-slate-100 grid grid-cols-1 gap-3 text-xs">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600">
-            <span className="font-semibold block text-slate-800 mb-1 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-sky-600" />
-              Stage 7: Calendar & Automated Reminders
-            </span>
-            <span>Integrated chamber schedule and SMS/in-app cause list alerts</span>
-          </div>
-        </div>
-      </div>
-
-      {/* History Modal */}
-      <HearingDateHistoryModal
-        isOpen={Boolean(historyModalHearing)}
-        hearing={historyModalHearing}
-        onClose={() => setHistoryModalHearing(null)}
-      />
-
-      {/* Soft Delete Modal */}
-      <ResponsiveModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        title={t('cases.softDeleteWarningTitle')}
-        icon={AlertTriangle}
-        maxWidth="md"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteModalOpen(false)}
-              className="w-full sm:w-auto px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition min-h-[44px]"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              disabled={deleting || !isOwner}
-              onClick={handleConfirmDelete}
-              className="w-full sm:w-auto px-4 py-2.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl shadow-xs transition disabled:opacity-50 min-h-[44px]"
-            >
-              {deleting ? t('common.loading') : t('cases.confirmSoftDelete')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-600 leading-relaxed">
-            {t('cases.softDeleteWarningText')}
-          </p>
-
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2 text-slate-700">
-            <div>
-              <strong>Case:</strong> {caseRecord.caseNumber} ({caseRecord.court})
-            </div>
-            {linkedCounts ? (
-              <div className="pt-2 border-t border-slate-200 text-[11px] space-y-1 text-slate-600">
-                <div className="font-semibold text-slate-800">Linked Records to be Handled:</div>
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  <span className="p-1.5 bg-white rounded border border-slate-200">
-                    Hearings to soft-delete: <strong>{linkedCounts.hearingsCount}</strong>
-                  </span>
-                  <span className="p-1.5 bg-white rounded border border-slate-200">
-                    Pending reminders to clear: <strong>{linkedCounts.remindersCount}</strong>
-                  </span>
-                  <span className="p-1.5 bg-white rounded border border-slate-200">
-                    Tasks to unlink: <strong>{linkedCounts.tasksCount}</strong>
-                  </span>
-                  <span className="p-1.5 bg-white rounded border border-slate-200">
-                    Files to unlink: <strong>{linkedCounts.filesCount}</strong>
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-500 pt-1">
-                  Unlinked tasks and files will remain visible marked as "[Case archived]" so there are no broken links.
-                </p>
+            {tasks.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('tasks.noTasksFound')}
               </div>
             ) : (
-              <div className="text-[11px] text-slate-400 italic">Calculating linked records...</div>
+              <div className="space-y-3">
+                {tasks.map((task) => {
+                  const isCompleted = task.status === 'completed';
+                  return (
+                    <div
+                      key={task.id}
+                      data-testid={`dossier-task-row-${task.id}`}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              task.priority === 'urgent' || task.priority === 'high'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {t(`tasks.${task.priority}`)}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              isCompleted
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {t(`tasks.${task.status}`)}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {t('tasks.dueDate')}: {new Date(task.dueAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div
+                          className={`text-sm font-semibold break-words ${
+                            isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
+                          }`}
+                        >
+                          {task.title}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {t('tasks.assignedTo')}: <span className="font-medium">{task.assignedToName}</span>
+                        </div>
+                        {task.description && (
+                          <div className="text-xs text-slate-600 bg-white/80 px-2.5 py-1 rounded-md whitespace-pre-line">
+                            {task.description}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Task Per-Row Hub Actions: Edit, Reassign, Complete, Reopen */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {canAssignTasks && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`task-edit-btn-${task.id}`}
+                            onClick={() => openTaskForm({ initialData: task })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{t('common.edit')}</span>
+                          </button>
+                        )}
+
+                        {canAssignTasks && !isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`task-reassign-btn-${task.id}`}
+                            onClick={() => openTaskReassign(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>{t('tasks.reassignTask')}</span>
+                          </button>
+                        )}
+
+                        {canCompleteTasks && !isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`task-complete-btn-${task.id}`}
+                            onClick={() => openTaskComplete(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{t('tasks.completeTask')}</span>
+                          </button>
+                        )}
+
+                        {(canCompleteTasks || canAssignTasks) && isCompleted && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`task-reopen-btn-${task.id}`}
+                            onClick={() => handleReopenTask(task)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{t('hub.reopenTask', 'Reopen')}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
+        )}
 
-          {!isOwner && (
-            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs">
-              {t('cases.ownerOnlyDelete', 'Only the chamber Owner can confirm deletion of court cases.')}
+        {/* TAB 4: FILES */}
+        {activeTab === 'files' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="dossier-panel-files">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {t('cases.linkedFiles')} ({files.length})
+                </h3>
+                <p className="text-xs text-slate-500">{t('files.subtitle')}</p>
+              </div>
+              {canManageFiles && (
+                <button
+                  type="button"
+                  data-testid="dossier-add-file-btn"
+                  disabled={isReadOnly}
+                  title={isReadOnly ? t('subscription.readOnlyMessage') : t('files.addFile')}
+                  onClick={() =>
+                    openFileForm({
+                      defaultCaseId: caseData.id,
+                      defaultClientId: caseData.clientId,
+                      lockCaseAndClient: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('files.addFile')}</span>
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      </ResponsiveModal>
+
+            {files.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('files.noFilesFound')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {files.map((file) => {
+                  const isInChamber = file.status === 'in_chamber';
+                  return (
+                    <div
+                      key={file.id}
+                      data-testid={`dossier-file-row-${file.id}`}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono text-xs font-bold">
+                            {file.serial}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              isInChamber
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {t(`files.${file.status}`)}
+                          </span>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-900 break-words">
+                          {file.title}
+                        </div>
+                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span>
+                            {t('files.shelfLocation')}: {file.shelfLocation || '—'}
+                          </span>
+                          {file.currentHolderName && (
+                            <span>
+                              {t('files.currentHolder')}: <strong>{file.currentHolderName}</strong>
+                            </span>
+                          )}
+                          {file.dueBackAt && (
+                            <span>
+                              {t('files.dueBack')}: {new Date(file.dueBackAt).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* File Per-Row Hub Actions: Check Out, Check In, Edit, History */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {canManageFiles && isInChamber && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`file-checkout-btn-${file.id}`}
+                            onClick={() => openFileCheckOut(file)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>{t('files.checkOut')}</span>
+                          </button>
+                        )}
+
+                        {canManageFiles && !isInChamber && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`file-checkin-btn-${file.id}`}
+                            onClick={() => openFileCheckIn(file)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <LogIn className="w-3.5 h-3.5" />
+                            <span>{t('files.checkIn')}</span>
+                          </button>
+                        )}
+
+                        {canManageFiles && (
+                          <button
+                            type="button"
+                            disabled={isReadOnly}
+                            data-testid={`file-edit-btn-${file.id}`}
+                            onClick={() => openFileForm({ initialData: file })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{t('common.edit')}</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => openFileHistory(file)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold min-h-[34px]"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          <span>{t('files.movementHistory')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 5: ACTIVITY */}
+        {activeTab === 'activity' && (
+          <div className="p-4 sm:p-6 space-y-4" data-testid="dossier-panel-activity">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                {t('hub.tabActivity', 'Case Activity')} ({activityLogs.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                {t('hub.activitySubtitle', 'Audit trail of all changes to this case, its hearings, tasks, and files')}
+              </p>
+            </div>
+
+            {activityLogs.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-slate-500 text-xs">
+                {t('audit.noEntries')}
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {activityLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    data-testid={`dossier-activity-row-${log.id}`}
+                    className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-bold text-[10px]">
+                        {t(`audit.actions.${log.action}`, log.action)}
+                      </span>
+                      <span className="font-semibold text-slate-800">{log.entity}</span>
+                      <span className="text-slate-500">by {log.userName}</span>
+                    </div>
+                    <span className="text-slate-400 font-mono text-[11px]">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

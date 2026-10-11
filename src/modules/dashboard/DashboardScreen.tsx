@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import {
   AuditLogRecord,
   DashboardMetrics,
   DashboardUrgentItems,
   HearingRecord,
-  PhysicalFileRecord,
-  TaskRecord,
   CalendarEventRecord,
 } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { EntityLink } from '../../components/EntityLink';
 import { GlobalSearchModal } from '../search/GlobalSearchModal';
 import { CaseFormModal } from '../cases/CaseFormModal';
 import { ClientFormModal } from '../clients/ClientFormModal';
@@ -31,24 +31,45 @@ import {
   AlertTriangle,
   Clock,
   ArrowRight,
-  Shield,
   MapPin,
   Building,
   CheckCircle2,
   Lock,
-  ChevronRight,
-  FileText,
   Activity,
-  Layers,
+  Edit2,
 } from 'lucide-react';
 
 interface DashboardScreenProps {
-  onNavigate: (tab: string, id?: string) => void;
+  onNavigate?: (tab: string, id?: string) => void;
 }
 
-export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) => {
+export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: onNavigateProp }) => {
   const { t, i18n } = useTranslation();
-  const { currentUser, currentFirm, can } = useAuth();
+  const { currentUser, currentFirm, can, isReadOnly } = useAuth();
+  const {
+    refreshVersion,
+    triggerRefresh,
+    navigateToScreen,
+    openCaseDossier,
+    openClientProfile,
+    openEntityModalById,
+  } = useNavigation();
+  const onNavigate = useCallback(
+    (tab: string, id?: string) => {
+      if (onNavigateProp) {
+        onNavigateProp(tab, id);
+        return;
+      }
+      if (tab === 'cases' && id) {
+        openCaseDossier(id, 'overview');
+      } else if (tab === 'clients' && id) {
+        openClientProfile(id, 'cases');
+      } else {
+        navigateToScreen(tab as Parameters<typeof navigateToScreen>[0]);
+      }
+    },
+    [onNavigateProp, openCaseDossier, openClientProfile, navigateToScreen]
+  );
   const repos = getRepositories();
 
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -60,7 +81,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
     hearings: CalendarEventRecord[];
     firmName: string;
   } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   // Modals state
   const [searchModalOpen, setSearchModalOpen] = useState(false);
@@ -80,7 +101,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
         repos.dashboard.getMetrics(securityContext),
         repos.dashboard.getUrgentItems(securityContext),
         repos.dashboard.getUpcomingHearings(securityContext, 7),
-        repos.auditLog.list(securityContext, { limit: 6 }),
+        can('settings.manage')
+          ? repos.auditLog.list(securityContext, { limit: 6 }).catch(() => [])
+          : Promise.resolve([]),
         repos.calendar.getDayCauseList(securityContext, todayIso),
       ]);
 
@@ -94,11 +117,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, can, repos]);
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData]);
+  }, [loadDashboardData, refreshVersion]);
 
   // Global Ctrl+K / Cmd+K listener
   useEffect(() => {
@@ -115,34 +138,36 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
   const handleCreateCase = async (caseData: Parameters<typeof repos.case.create>[1]) => {
     await repos.case.create(securityContext, caseData);
     setCaseModalOpen(false);
-    loadDashboardData();
+    triggerRefresh();
   };
 
   const handleCreateClient = async (clientData: Parameters<typeof repos.client.create>[1]) => {
     await repos.client.create(securityContext, clientData);
     setClientModalOpen(false);
-    loadDashboardData();
+    triggerRefresh();
   };
 
   const handleCreateTask = async (taskData: Parameters<typeof repos.task.create>[1]) => {
     await repos.task.create(securityContext, taskData);
     setTaskModalOpen(false);
-    loadDashboardData();
+    triggerRefresh();
   };
 
   const handleCompleteTask = async (taskId: string) => {
+    if (isReadOnly) return;
     await repos.task.complete(securityContext, taskId, 'Completed via Chamber Dashboard');
-    loadDashboardData();
+    triggerRefresh();
   };
 
   const handleCheckInFile = async (fileId: string, shelfLocation?: string) => {
+    if (isReadOnly) return;
     await repos.physicalFile.checkIn(
       securityContext,
       fileId,
       shelfLocation || 'Chamber Cabinet',
       'Returned to custody via Dashboard quick action'
     );
-    loadDashboardData();
+    triggerRefresh();
   };
 
   const todayFormatted = new Date().toLocaleDateString(
@@ -504,13 +529,27 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
               <ResponsiveTable
                 data={todayCauseList ? todayCauseList.hearings : []}
                 keyExtractor={(h) => h.id}
-                onRowClick={() => onNavigate('hearings')}
+                onRowClick={(h) => {
+                  if (h.caseId) openCaseDossier(h.caseId, 'hearings');
+                  else openEntityModalById('hearing', h.sourceId);
+                }}
                 columns={[
                   {
                     header: 'Case / Matter',
                     accessor: (h) => (
-                      <div>
-                        <span className="font-bold text-sm text-slate-900 block">{h.caseNumber || h.title}</span>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        {h.caseId ? (
+                          <EntityLink
+                            type="case"
+                            id={h.caseId}
+                            caseTab="hearings"
+                            label={h.caseNumber || h.title}
+                            restricted={h.restricted}
+                            className="font-bold text-sm block"
+                          />
+                        ) : (
+                          <span className="font-bold text-sm text-slate-900 block">{h.caseNumber || h.title}</span>
+                        )}
                         <span className="text-xs text-slate-500 line-clamp-1">{h.title}</span>
                       </div>
                     ),
@@ -557,8 +596,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                 renderMobileCard={(h) => (
                   <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-slate-200 shadow-2xs hover:bg-slate-50/70 transition space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm text-slate-900">{h.caseNumber || h.title}</span>
+                      <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        {h.caseId ? (
+                          <EntityLink
+                            type="case"
+                            id={h.caseId}
+                            caseTab="hearings"
+                            label={h.caseNumber || h.title}
+                            restricted={h.restricted}
+                            className="font-bold text-sm"
+                          />
+                        ) : (
+                          <span className="font-bold text-sm text-slate-900">{h.caseNumber || h.title}</span>
+                        )}
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                           {h.status ? h.status.toUpperCase() : 'SCHEDULED'}
                         </span>
@@ -627,7 +677,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
               <ResponsiveTable<UrgentItem>
                 data={allUrgentItems}
                 keyExtractor={(item) => `${item.kind}-${item.id}`}
-                onRowClick={(item) => onNavigate(item.kind === 'task' ? 'tasks' : 'files')}
+                onRowClick={(item) => openEntityModalById(item.kind, item.id)}
                 columns={[
                   {
                     header: 'Type / Status',
@@ -658,7 +708,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                   {
                     header: 'Title / Subject',
                     accessor: (item) => (
-                      <span className="font-semibold text-xs text-slate-900 line-clamp-1">{item.title}</span>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <EntityLink
+                          type={item.kind}
+                          id={item.id}
+                          mode="modal"
+                          label={item.title}
+                          className="font-semibold text-xs line-clamp-1"
+                        />
+                      </div>
                     ),
                   },
                   {
@@ -689,18 +747,28 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                         className="flex items-center justify-end gap-1.5"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => openEntityModalById(item.kind, item.id)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 transition min-h-[32px] disabled:opacity-40"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
                         {item.kind === 'task' && can('tasks.complete') && (
                           <button
+                            disabled={isReadOnly}
                             onClick={() => handleCompleteTask(item.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs min-h-[32px]"
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs min-h-[32px] disabled:opacity-40"
                           >
                             Mark Done
                           </button>
                         )}
                         {item.kind === 'file' && can('files.manage') && (
                           <button
+                            disabled={isReadOnly}
                             onClick={() => handleCheckInFile(item.id, item.shelfLocation)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white transition shadow-2xs min-h-[32px]"
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white transition shadow-2xs min-h-[32px] disabled:opacity-40"
                           >
                             Check In
                           </button>
@@ -738,7 +806,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                         )}
                       </div>
                     </div>
-                    <h4 className="font-semibold text-sm text-slate-900 line-clamp-2">{item.title}</h4>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <EntityLink
+                        type={item.kind}
+                        id={item.id}
+                        mode="modal"
+                        label={item.title}
+                        className="font-semibold text-sm line-clamp-2"
+                      />
+                    </div>
                     <p className="text-xs text-slate-500">
                       {item.kind === 'task'
                         ? `Assigned to: ${item.assignedToName || 'Advocate'} • Due date: ${new Date(item.dueAt).toLocaleDateString()}`
@@ -750,16 +826,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                     >
                       {item.kind === 'task' && can('tasks.complete') && (
                         <button
+                          disabled={isReadOnly}
                           onClick={() => handleCompleteTask(item.id)}
-                          className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs min-h-[44px]"
+                          className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs min-h-[44px] disabled:opacity-40"
                         >
                           Mark Done
                         </button>
                       )}
                       {item.kind === 'file' && can('files.manage') && (
                         <button
+                          disabled={isReadOnly}
                           onClick={() => handleCheckInFile(item.id, item.shelfLocation)}
-                          className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white transition shadow-2xs min-h-[44px]"
+                          className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white transition shadow-2xs min-h-[44px] disabled:opacity-40"
                         >
                           Check In
                         </button>
@@ -809,26 +887,48 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                   return (
                     <div
                       key={h.id}
-                      onClick={() => onNavigate('hearings')}
-                      className="p-3.5 hover:bg-slate-50 transition cursor-pointer flex items-start gap-3"
+                      data-testid={`dashboard-upcoming-hearing-${h.id}`}
+                      onClick={() => openCaseDossier(h.caseId, 'hearings')}
+                      className="p-3.5 hover:bg-slate-50 transition cursor-pointer flex items-start justify-between gap-3"
                     >
-                      <div className="w-10 text-center shrink-0 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-900">
-                        <span className="text-[10px] font-bold uppercase block leading-none">
-                          {hearingDate.toLocaleDateString('en-GB', { month: 'short' })}
-                        </span>
-                        <span className="text-sm font-extrabold block mt-0.5 leading-none">
-                          {hearingDate.getDate()}
-                        </span>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 text-center shrink-0 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-900">
+                          <span className="text-[10px] font-bold uppercase block leading-none">
+                            {hearingDate.toLocaleDateString('en-GB', { month: 'short' })}
+                          </span>
+                          <span className="text-sm font-extrabold block mt-0.5 leading-none">
+                            {hearingDate.getDate()}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                          <EntityLink
+                            type="hearing"
+                            id={h.id}
+                            caseId={h.caseId}
+                            caseTab="hearings"
+                            label={h.purpose}
+                            className="text-xs font-bold block truncate"
+                          />
+                          <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                            {h.outcomeNote || 'Regular Court Sitting'}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-slate-900 truncate">
-                          {h.purpose}
-                        </h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                          {h.outcomeNote || 'Regular Court Sitting'}
-                        </p>
-                      </div>
+                      {can('hearings.update') && !isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEntityModalById('hearing', h.id);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0"
+                          title={t('common.edit')}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   );
                 })

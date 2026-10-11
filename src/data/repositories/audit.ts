@@ -77,6 +77,70 @@ export class MockAuditLogRepository implements IAuditLogRepository {
     return firmLogs;
   }
 
+  async listByCaseId(context: SecurityContext, caseId: string): Promise<AuditLogRecord[]> {
+    if (!can('cases.view', context.currentUser)) {
+      throw new Error('Permission denied: cases.view required to view case activity');
+    }
+
+    const { currentUser } = context;
+    const store = localStore.getData();
+    const targetCase = (store.cases || []).find(
+      (c) => c.id === caseId && c.firmId === currentUser.firmId && c.deletedAt === null
+    );
+    if (!targetCase) {
+      return [];
+    }
+
+    if (targetCase.restricted && !can('restricted.view', currentUser)) {
+      throw new Error('Permission denied: restricted.view required to view restricted case activity');
+    }
+
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
+    const visibleCases = filterVisibleCases(
+      currentUser,
+      (store.cases || []).map((c) => ({ ...c, deletedAt: null })),
+      firm,
+      store.users || [],
+      store.caseShares || []
+    );
+    const visibleCaseIds = new Set(visibleCases.map((c) => c.id));
+    if (!visibleCaseIds.has(caseId)) {
+      return [];
+    }
+
+    // Collect IDs of hearings, tasks, files belonging to this case
+    const caseHearingIds = new Set(
+      (store.hearings || []).filter((h) => h.caseId === caseId).map((h) => h.id)
+    );
+    const caseTaskIds = new Set(
+      (store.tasks || []).filter((t) => t.caseId === caseId).map((t) => t.id)
+    );
+    const caseFileIds = new Set(
+      (store.physicalFiles || []).filter((f) => f.caseId === caseId).map((f) => f.id)
+    );
+
+    const logs = (store.auditLogs || []).filter((log) => {
+      if (log.firmId !== currentUser.firmId) return false;
+      const entityLower = log.entity.toLowerCase();
+      if (entityLower === 'case' && log.entityId === caseId) return true;
+      if (entityLower === 'hearing' && caseHearingIds.has(log.entityId)) return true;
+      if (entityLower === 'task' && caseTaskIds.has(log.entityId)) return true;
+      if (entityLower === 'physicalfile' && caseFileIds.has(log.entityId)) return true;
+
+      const oldVal = log.oldValue as Record<string, any> | null;
+      const newVal = log.newValue as Record<string, any> | null;
+      if (oldVal?.caseId === caseId || newVal?.caseId === caseId) return true;
+      if (oldVal?.file?.caseId === caseId || newVal?.file?.caseId === caseId) return true;
+      return false;
+    });
+
+    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return logs;
+  }
+
   async record(
     context: SecurityContext,
     params: {

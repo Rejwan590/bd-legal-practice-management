@@ -13,4 +13,14 @@ export class RestAuditLogRepository implements Omit<IAuditLogRepository, 'record
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<AuditLogRecord[]>(`/audit-log${qs}`);
   }
+
+  async listByCaseId(_context: SecurityContext, caseId: string): Promise<AuditLogRecord[]> {
+    const all = await this.list(_context, { limit: 200 });
+    return all.filter(
+      (log) =>
+        (log.entity === 'Case' && log.entityId === caseId) ||
+        log.oldValue?.caseId === caseId ||
+        log.newValue?.caseId === caseId
+    );
+  }
 }

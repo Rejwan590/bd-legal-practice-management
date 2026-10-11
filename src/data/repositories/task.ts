@@ -186,7 +186,14 @@ export class MockTaskRepository implements ITaskRepository {
     id: string,
     updateData: Partial<Omit<TaskRecord, 'id' | 'firmId' | 'createdAt' | 'deletedAt' | 'createdBy'>>
   ): Promise<TaskRecord> {
-    if (!can('tasks.assign', context.currentUser)) {
+    const isReopeningOnly =
+      Object.keys(updateData).every((k) => k === 'status' || k === 'completedAt') &&
+      updateData.status === 'pending';
+    if (isReopeningOnly) {
+      if (!can('tasks.complete', context.currentUser) && !can('tasks.assign', context.currentUser)) {
+        throw new Error('Permission denied: tasks.complete required to reopen task');
+      }
+    } else if (!can('tasks.assign', context.currentUser)) {
       throw new Error('Permission denied: tasks.assign required to update task details');
     }
     assertNotReadOnly(context.currentUser.firmId);

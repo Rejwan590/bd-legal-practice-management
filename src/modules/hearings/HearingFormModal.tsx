@@ -2,21 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, UserRecord } from '../../data/types';
+import { CaseRecord, HearingRecord, HearingStatus, UserRecord } from '../../data/types';
 import { isLawyerOrOwner } from '../../rolePresets';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
-import { Calendar, Save, AlertCircle } from 'lucide-react';
+import { Calendar, Save, AlertCircle, Lock } from 'lucide-react';
 
 interface HearingFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultCaseId?: string;
+  lockCaseId?: boolean;
+  defaultDate?: string;
+  initialData?: HearingRecord | null;
   onSave: (data: {
     caseId: string;
     appearingLawyerId?: string | null;
     scheduledAt: string;
     purpose: string;
     outcomeNote?: string;
+    status?: HearingStatus;
   }) => Promise<void>;
 }
 
@@ -36,6 +40,9 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   isOpen,
   onClose,
   defaultCaseId,
+  lockCaseId,
+  defaultDate,
+  initialData,
   onSave,
 }) => {
   const { t } = useTranslation();
@@ -50,6 +57,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   const [purpose, setPurpose] = useState(COMMON_PURPOSES[0]);
   const [customPurpose, setCustomPurpose] = useState('');
   const [outcomeNote, setOutcomeNote] = useState('');
+  const [status, setStatus] = useState<HearingStatus>('scheduled');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -59,8 +67,12 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         .list({ currentUser })
         .then((data) => {
           setCases(data);
-          if (!caseId && data.length > 0) {
-            setCaseId(defaultCaseId || data[0].id);
+          if (initialData) {
+            setCaseId(initialData.caseId);
+          } else if (defaultCaseId) {
+            setCaseId(defaultCaseId);
+          } else if (data.length > 0) {
+            setCaseId(data[0].id);
           }
         })
         .catch(console.error);
@@ -75,17 +87,40 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         })
         .catch(console.error);
 
-      const d = new Date();
-      d.setDate(d.getDate() + 7);
-      d.setHours(10, 30, 0, 0);
-      setScheduledAt(d.toISOString().slice(0, 16));
-      setAppearingLawyerId('');
-      setPurpose(COMMON_PURPOSES[0]);
-      setCustomPurpose('');
-      setOutcomeNote('');
+      if (initialData) {
+        setCaseId(initialData.caseId);
+        setAppearingLawyerId(initialData.appearingLawyerId || '');
+        setScheduledAt(initialData.scheduledAt.slice(0, 16));
+        if (COMMON_PURPOSES.includes(initialData.purpose)) {
+          setPurpose(initialData.purpose);
+          setCustomPurpose('');
+        } else {
+          setPurpose('CUSTOM');
+          setCustomPurpose(initialData.purpose);
+        }
+        setOutcomeNote(initialData.outcomeNote || '');
+        setStatus(initialData.status);
+      } else {
+        if (defaultDate && defaultDate.length >= 10) {
+          setScheduledAt(`${defaultDate.slice(0, 10)}T10:30`);
+        } else {
+          const d = new Date();
+          d.setDate(d.getDate() + 7);
+          d.setHours(10, 30, 0, 0);
+          setScheduledAt(d.toISOString().slice(0, 16));
+        }
+        if (defaultCaseId) {
+          setCaseId(defaultCaseId);
+        }
+        setAppearingLawyerId('');
+        setPurpose(COMMON_PURPOSES[0]);
+        setCustomPurpose('');
+        setOutcomeNote('');
+        setStatus('scheduled');
+      }
       setErrorMsg(null);
     }
-  }, [isOpen, currentUser, defaultCaseId]);
+  }, [isOpen, currentUser, defaultCaseId, defaultDate, initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +148,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         scheduledAt: new Date(scheduledAt).toISOString(),
         purpose: finalPurpose,
         outcomeNote: outcomeNote.trim() || undefined,
+        status: initialData ? status : undefined,
       });
       onClose();
     } catch (err: unknown) {
@@ -132,10 +168,12 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
           <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
             <Calendar className="w-4 h-4" />
           </div>
-          <span className="truncate">{t('hearings.scheduleHearing')}</span>
+          <span className="truncate">
+            {initialData ? t('common.edit') + ' ' + t('hearings.title') : t('hearings.scheduleHearing')}
+          </span>
         </div>
       }
-      subtitle="Register an upcoming court bench appearance or procedural step"
+      subtitle="Register or update a court bench appearance or procedural step"
       footer={
         <div className="flex items-center justify-end gap-3 w-full">
           <button
@@ -168,14 +206,20 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
 
         <form id="hearing-form-modal" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Select Court Case *
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+              <span>Select Court Case *</span>
+              {(lockCaseId || initialData) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                  <Lock className="w-3 h-3" /> {t('hub.lockedField', 'Locked to context')}
+                </span>
+              )}
             </label>
             <select
               required
+              disabled={Boolean(lockCaseId || initialData)}
               value={caseId}
               onChange={(e) => setCaseId(e.target.value)}
-              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               {cases.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -184,6 +228,24 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
               ))}
             </select>
           </div>
+
+          {initialData && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {t('common.status')}
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as HearingStatus)}
+                className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              >
+                <option value="scheduled">{t('hearings.statusScheduled')}</option>
+                <option value="held">{t('hearings.statusHeld')}</option>
+                <option value="adjourned">{t('hearings.statusAdjourned')}</option>
+                <option value="cancelled">{t('hearings.statusCancelled')}</option>
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">

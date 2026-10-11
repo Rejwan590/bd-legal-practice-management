@@ -42,6 +42,7 @@ import { PermissionKey } from '../permissions';
 
 export interface IAuditLogRepository {
   list(context: SecurityContext, filter?: { entity?: string; action?: AuditAction; limit?: number; offset?: number }): Promise<AuditLogRecord[]>;
+  listByCaseId?(context: SecurityContext, caseId: string): Promise<AuditLogRecord[]>;
   record(
     context: SecurityContext,
     params: {

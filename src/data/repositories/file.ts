@@ -345,6 +345,22 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       } as unknown as Record<string, unknown>,
     });
 
+    if (this.reminderRepo && dueBackAt) {
+      const remindAt = new Date(new Date(dueBackAt).getTime() - 4 * 60 * 60 * 1000).toISOString();
+      const updated = await this.reminderRepo.rescheduleBySourceId(context, id, dueBackAt, remindAt);
+      if (updated.updatedCount === 0) {
+        await this.reminderRepo.create(context, {
+          userId: holderId,
+          sourceType: 'file_return',
+          sourceId: id,
+          title: `File Return Due: ${finalFile.serial} (${finalFile.title})`,
+          description: `Location: ${finalFile.shelfLocation || 'Chamber Rack'}. Current holder: ${finalFile.currentHolderName}`,
+          remindAt,
+          dueAt: dueBackAt,
+        });
+      }
+    }
+
     return { file: finalFile, movement };
   }
 
@@ -506,6 +522,22 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       } as unknown as Record<string, unknown>,
     });
 
+    if (this.reminderRepo && dueBackAt) {
+      const remindAt = new Date(new Date(dueBackAt).getTime() - 4 * 60 * 60 * 1000).toISOString();
+      const updated = await this.reminderRepo.rescheduleBySourceId(context, id, dueBackAt, remindAt);
+      if (updated.updatedCount === 0) {
+        await this.reminderRepo.create(context, {
+          userId: holderId,
+          sourceType: 'file_return',
+          sourceId: id,
+          title: `File Return Due: ${finalFile.serial} (${finalFile.title})`,
+          description: `Dispatched to ${courtName}. Current holder: ${finalFile.currentHolderName}`,
+          remindAt,
+          dueAt: dueBackAt,
+        });
+      }
+    }
+
     return { file: finalFile, movement };
   }
 
@@ -558,6 +590,10 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       oldValue: existing as unknown as Record<string, unknown>,
       newValue: { deletedAt: now, softDeleted: true },
     });
+
+    if (this.reminderRepo) {
+      await this.reminderRepo.clearBySourceId(context, id);
+    }
 
     return { success: true, softDeleted: true };
   }

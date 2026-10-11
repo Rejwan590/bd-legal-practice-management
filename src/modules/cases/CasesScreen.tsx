@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, UserRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { EntityLink } from '../../components/EntityLink';
 import { CaseFormModal } from './CaseFormModal';
 import { CaseDetailsView } from './CaseDetailsView';
 import {
@@ -16,9 +18,6 @@ import {
   ShieldAlert,
   AlertCircle,
   CheckCircle2,
-  Calendar,
-  Filter,
-  Edit2,
   User,
   Scale,
 } from 'lucide-react';
@@ -28,12 +27,17 @@ interface CasesScreenProps {
   onNavigateToClient?: (clientId: string) => void;
 }
 
-export const CasesScreen: React.FC<CasesScreenProps> = ({
-  initialSelectedCaseId,
-  onNavigateToClient,
-}) => {
+export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId }) => {
   const { t } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
+  const {
+    route,
+    openCaseDossier,
+    navigateToScreen,
+    refreshVersion,
+    triggerRefresh,
+  } = useNavigation();
+
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [clientsMap, setClientsMap] = useState<Record<string, ClientRecord>>({});
   const [usersMap, setUsersMap] = useState<Record<string, UserRecord>>({});
@@ -43,8 +47,6 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
   const [courtFilter, setCourtFilter] = useState<string>('ALL');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'my' | 'team'>('all');
 
-  // Selected dossier & modal
-  const [selectedCase, setSelectedCase] = useState<CaseRecord | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<CaseRecord | null>(null);
 
@@ -54,10 +56,10 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
   const repos = getRepositories();
   const canView = can('cases.view');
   const canCreate = can('cases.create');
-  const canEdit = can('cases.edit');
-  const canSeeRestricted = can('restricted.view');
 
-  const fetchCases = async () => {
+  const activeCaseId = route.caseId || initialSelectedCaseId || null;
+
+  const fetchCases = useCallback(async () => {
     if (!canView) {
       setLoading(false);
       return;
@@ -96,39 +98,28 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [canView, currentUser, searchQuery, statusFilter, courtFilter, scopeFilter, repos]);
 
   useEffect(() => {
     fetchCases();
-  }, [currentUser, searchQuery, statusFilter, courtFilter, scopeFilter, canView]);
+  }, [fetchCases, refreshVersion]);
 
-  useEffect(() => {
-    if (initialSelectedCaseId && cases.length > 0) {
-      const match = cases.find((c) => c.id === initialSelectedCaseId);
-      if (match) {
-        setSelectedCase(match);
-      }
+  const handleSaveCase = async (
+    formData: Omit<
+      CaseRecord,
+      'id' | 'firmId' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'createdBy' | 'updatedBy' | 'nextHearingAt'
+    >
+  ) => {
+    if (editingCase) {
+      await repos.case.update({ currentUser }, editingCase.id, formData);
+      setSuccessMsg(t('cases.caseSaved'));
+    } else {
+      await repos.case.create({ currentUser }, formData);
+      setSuccessMsg(t('cases.caseSaved'));
     }
-  }, [initialSelectedCaseId, cases]);
-
-  const handleSaveCase = async (formData: Omit<CaseRecord, 'id' | 'firmId' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'createdBy' | 'updatedBy' | 'nextHearingAt'>) => {
-    try {
-      if (editingCase) {
-        const updated = await repos.case.update({ currentUser }, editingCase.id, formData);
-        setSuccessMsg(t('cases.caseSaved'));
-        if (selectedCase && selectedCase.id === updated.id) {
-          setSelectedCase(updated);
-        }
-      } else {
-        await repos.case.create({ currentUser }, formData);
-        setSuccessMsg(t('cases.caseSaved'));
-      }
-      setEditingCase(null);
-      await fetchCases();
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: unknown) {
-      throw err;
-    }
+    setEditingCase(null);
+    triggerRefresh();
+    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   if (!canView) {
@@ -145,31 +136,36 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
     );
   }
 
-  // If a case is selected, render dossier view
-  if (selectedCase) {
+  // If a case is selected via URL route, render the 5-tab Case Dossier Hub
+  if (activeCaseId) {
     return (
-      <CaseDetailsView
-        caseRecord={selectedCase}
-        onBack={() => {
-          setSelectedCase(null);
-          fetchCases();
-        }}
-        onEdit={(c) => {
-          setEditingCase(c);
-          setModalOpen(true);
-        }}
-        onDeleted={() => {
-          setSelectedCase(null);
-          setSuccessMsg(t('cases.caseDeleted'));
-          fetchCases();
-          setTimeout(() => setSuccessMsg(null), 3000);
-        }}
-        onNavigateToClient={onNavigateToClient}
-      />
+      <div className="max-w-7xl mx-auto w-full space-y-4">
+        <CaseDetailsView
+          caseId={activeCaseId}
+          onBack={() => navigateToScreen('cases')}
+          onEdit={(c) => {
+            setEditingCase(c);
+            setModalOpen(true);
+          }}
+          onDeleteSuccess={() => {
+            navigateToScreen('cases');
+            setSuccessMsg(t('cases.caseDeleted'));
+            setTimeout(() => setSuccessMsg(null), 3000);
+          }}
+        />
+        <CaseFormModal
+          isOpen={modalOpen}
+          initialData={editingCase}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingCase(null);
+          }}
+          onSave={handleSaveCase}
+        />
+      </div>
     );
   }
 
-  // Extract unique courts for filter
   const uniqueCourts = Array.from(new Set(cases.map((c) => c.court)));
 
   return (
@@ -299,7 +295,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center space-y-3">
           <Briefcase className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm text-slate-500">{t('cases.noCasesFound')}</p>
-          {canCreate && (
+          {canCreate && !isReadOnly && (
             <button
               onClick={() => {
                 setEditingCase(null);
@@ -316,7 +312,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
         <ResponsiveTable<CaseRecord>
           data={cases}
           keyExtractor={(c) => c.id}
-          onRowClick={(c) => setSelectedCase(c)}
+          onRowClick={(c) => openCaseDossier(c.id, 'overview')}
           columns={[
             {
               header: 'File / Serial',
@@ -335,7 +331,13 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
               accessor: (c) => (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-sm text-slate-900">{c.caseNumber}</span>
+                    <EntityLink
+                      type="case"
+                      id={c.id}
+                      label={c.caseNumber}
+                      restricted={c.restricted}
+                      className="font-bold text-sm"
+                    />
                     {c.restricted && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
                         <Lock className="w-3 h-3 text-amber-700" />
@@ -382,7 +384,9 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                 const respLawyer = c.responsibleLawyerId ? usersMap[c.responsibleLawyerId] : null;
                 return respLawyer ? (
                   <div className="text-xs">
-                    <span className="font-medium text-indigo-900 block truncate">{respLawyer.name}</span>
+                    <span className="font-medium text-indigo-900 block truncate">
+                      {respLawyer.name}
+                    </span>
                   </div>
                 ) : (
                   <span className="text-xs text-slate-400">{t('cases.unassignedLawyer')}</span>
@@ -394,8 +398,13 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
               accessor: (c) => {
                 const linkedClient = clientsMap[c.clientId];
                 return linkedClient ? (
-                  <div className="text-xs">
-                    <span className="font-medium text-slate-800 block truncate">{linkedClient.name}</span>
+                  <div className="text-xs" onClick={(e) => e.stopPropagation()}>
+                    <EntityLink
+                      type="client"
+                      id={linkedClient.id}
+                      label={linkedClient.name}
+                      className="text-xs font-semibold block truncate"
+                    />
                     <span className="text-[11px] text-slate-500">Role: {c.ourRole}</span>
                   </div>
                 ) : (
@@ -411,21 +420,8 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                   className="flex items-center justify-end gap-1.5"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {canEdit && (
-                    <button
-                      onClick={() => {
-                        setEditingCase(c);
-                        setModalOpen(true);
-                      }}
-                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-                      title={t('common.edit')}
-                      aria-label={t('common.edit')}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  )}
                   <button
-                    onClick={() => setSelectedCase(c)}
+                    onClick={() => openCaseDossier(c.id, 'overview')}
                     className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition"
                   >
                     <span>{t('cases.viewDetails')}</span>
@@ -447,7 +443,13 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm text-slate-900">{c.caseNumber}</span>
+                        <EntityLink
+                          type="case"
+                          id={c.id}
+                          label={c.caseNumber}
+                          restricted={c.restricted}
+                          className="font-bold text-sm"
+                        />
                         {c.restricted && (
                           <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
                             <Lock className="w-3 h-3 text-amber-700" />
@@ -491,11 +493,17 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                     </div>
                   )}
                   {linkedClient && (
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                    <div
+                      className="flex items-center gap-1 text-[11px] text-slate-500"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <User className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">
-                        Client: {linkedClient.name} ({c.ourRole})
-                      </span>
+                      <EntityLink
+                        type="client"
+                        id={linkedClient.id}
+                        label={`${linkedClient.name} (${c.ourRole})`}
+                        className="text-[11px]"
+                      />
                     </div>
                   )}
                 </div>
@@ -504,21 +512,8 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({
                   className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {canEdit && (
-                    <button
-                      onClick={() => {
-                        setEditingCase(c);
-                        setModalOpen(true);
-                      }}
-                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition border border-slate-200"
-                      title={t('common.edit')}
-                      aria-label={t('common.edit')}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  )}
                   <button
-                    onClick={() => setSelectedCase(c)}
+                    onClick={() => openCaseDossier(c.id, 'overview')}
                     className="min-h-[44px] flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition border border-indigo-200/60"
                   >
                     <span>{t('cases.viewDetails')}</span>

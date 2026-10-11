@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { SearchResultEntity, SearchResultItem } from '../../data/types';
+import { EntityLink } from '../../components/EntityLink';
 import {
   Search,
   X,
@@ -11,27 +13,34 @@ import {
   Gavel,
   CheckSquare,
   FolderArchive,
-  ArrowRight,
   Lock,
   CornerDownLeft,
   Filter,
+  Edit2,
 } from 'lucide-react';
 
 interface GlobalSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigate: (tab: string, id?: string) => void;
+  onNavigate?: (tab: string, id?: string) => void;
   initialQuery?: string;
+  inlinePage?: boolean;
 }
 
 export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   isOpen,
   onClose,
-  onNavigate,
   initialQuery = '',
+  inlinePage = false,
 }) => {
   const { t } = useTranslation();
-  const { currentUser } = useAuth();
+  const { currentUser, isReadOnly } = useAuth();
+  const {
+    refreshVersion,
+    openCaseDossier,
+    openClientProfile,
+    openEntityModalById,
+  } = useNavigation();
   const repos = getRepositories();
 
   const [query, setQuery] = useState(initialQuery);
@@ -50,12 +59,12 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 50);
-    } else {
+    } else if (!inlinePage) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
     }
-  }, [isOpen]);
+  }, [isOpen, inlinePage]);
 
   // Execute search query
   useEffect(() => {
@@ -87,7 +96,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [query, activeFilter, currentUser, isOpen, repos.search]);
+  }, [query, activeFilter, currentUser, isOpen, repos.search, refreshVersion]);
 
   // Handle keyboard navigation inside search list
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,8 +134,16 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   }, [selectedIndex]);
 
   const handleSelectItem = (item: SearchResultItem) => {
-    onNavigate(item.targetTab, item.targetId);
-    onClose();
+    if (item.entity === 'case') {
+      openCaseDossier(item.id, 'overview');
+    } else if (item.entity === 'client') {
+      openClientProfile(item.id, 'cases');
+    } else {
+      openEntityModalById(item.entity, item.id);
+    }
+    if (!inlinePage) {
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
@@ -172,11 +189,17 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-2 sm:pt-16 p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
-      onClick={onClose}
+      className={
+        inlinePage
+          ? 'max-w-4xl mx-auto w-full py-2'
+          : 'fixed inset-0 z-50 flex items-start justify-center pt-2 sm:pt-16 p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-150'
+      }
+      onClick={() => {
+        if (!inlinePage) onClose();
+      }}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[80vh] animate-in zoom-in-95 duration-150"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[80vh] animate-in zoom-in-95 duration-150 mx-auto"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
@@ -206,17 +229,19 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           ) : null}
 
           {/* Close / ESC Button */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-2.5 py-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition shrink-0"
-            aria-label="Close search"
-          >
-            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
-              ESC
-            </span>
-            <X className="w-5 h-5 sm:hidden" />
-          </button>
+          {!inlinePage && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2.5 py-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition shrink-0"
+              aria-label="Close search"
+            >
+              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                ESC
+              </span>
+              <X className="w-5 h-5 sm:hidden" />
+            </button>
+          )}
         </div>
 
         {/* Entity Filter Pills */}
@@ -305,8 +330,9 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
               const isSelected = idx === selectedIndex;
               return (
                 <div
-                  key={item.id}
+                  key={`${item.entity}-${item.id}`}
                   data-index={idx}
+                  data-testid={`search-result-${item.entity}-${item.id}`}
                   onClick={() => handleSelectItem(item)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`group px-3 py-2.5 min-h-[52px] rounded-xl cursor-pointer transition flex items-center justify-between gap-3 ${
@@ -323,10 +349,22 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-slate-900 break-words">
-                          {item.title}
-                        </span>
+                      <div
+                        className="flex items-center gap-1.5 sm:gap-2 flex-wrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <EntityLink
+                          type={item.entity}
+                          id={item.id}
+                          caseId={item.entity === 'hearing' ? item.targetId : undefined}
+                          mode={item.entity === 'case' || item.entity === 'client' ? 'page' : 'modal'}
+                          label={item.title}
+                          restricted={item.restricted}
+                          onAfterNavigate={() => {
+                            if (!inlinePage) onClose();
+                          }}
+                          className="font-semibold text-sm break-words"
+                        />
 
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getEntityBg(
@@ -360,9 +398,25 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="shrink-0 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-                    <span className="text-[11px] text-slate-400 hidden sm:inline">Open</span>
-                    <CornerDownLeft className="w-3.5 h-3.5 text-slate-400" />
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {!isReadOnly &&
+                      (item.entity === 'hearing' ||
+                        item.entity === 'task' ||
+                        item.entity === 'file') && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEntityModalById(item.entity, item.id);
+                            if (!inlinePage) onClose();
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900"
+                          title={t('common.edit')}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    <CornerDownLeft className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition" />
                   </div>
                 </div>
               );

@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
+import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import {
   CalendarEventRecord,
   CalendarEventType,
   ReminderRecord,
 } from '../../data/types';
+import { EntityLink } from '../../components/EntityLink';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -15,34 +17,50 @@ import {
   Printer,
   Bell,
   CheckCircle2,
-  AlertTriangle,
-  Gavel,
-  CheckSquare,
-  FolderArchive,
   RefreshCw,
   Building,
   User,
-  Scale,
   MapPin,
   List,
   Grid,
   FileText,
+  Plus,
+  Edit2,
 } from 'lucide-react';
 import { DailyCauseListModal } from './DailyCauseListModal';
 
 export const CalendarScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const { currentUser } = useAuth();
+  const { currentUser, can, isReadOnly } = useAuth();
+  const {
+    refreshVersion,
+    triggerRefresh,
+    selectedCalendarDate,
+    setSelectedCalendarDate,
+    openCaseDossier,
+    openHearingForm,
+    openTaskForm,
+    openEntityModalById,
+  } = useNavigation();
   const repos = getRepositories();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [selectedDateStr, setSelectedDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDateStr, setSelectedDateStrLocal] = useState(
+    () => selectedCalendarDate || new Date().toISOString().slice(0, 10)
+  );
+  const setSelectedDateStr = useCallback(
+    (d: string) => {
+      setSelectedDateStrLocal(d);
+      setSelectedCalendarDate(d);
+    },
+    [setSelectedCalendarDate]
+  );
   const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'causelist'>('month');
   const [typeFilter, setTypeFilter] = useState<CalendarEventType | 'all'>('all');
 
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
   const [dueReminders, setDueReminders] = useState<ReminderRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [firmName, setFirmName] = useState('Rahman & Associates Chambers');
 
@@ -54,7 +72,7 @@ export const CalendarScreen: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [allEvents, remindersData, firmRec] = await Promise.all([
@@ -73,19 +91,19 @@ export const CalendarScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser, repos]);
 
   useEffect(() => {
     loadData();
-  }, [currentUser]);
+  }, [loadData, refreshVersion]);
 
   // Sync reminders
   const handleSyncReminders = async () => {
     try {
       setSyncing(true);
-      const res = await repos.reminder.syncReminders({ currentUser });
+      await repos.reminder.syncReminders({ currentUser });
       showToast(t('reminders.syncSuccess'));
-      await loadData();
+      triggerRefresh();
     } catch (err: unknown) {
       console.error('Failed to sync reminders:', err);
     } finally {
@@ -99,8 +117,23 @@ export const CalendarScreen: React.FC = () => {
       await repos.reminder.dismiss({ currentUser }, id);
       showToast(t('reminders.dismissed'));
       setDueReminders((prev) => prev.filter((r) => r.id !== id));
+      triggerRefresh();
     } catch (err: unknown) {
       console.error('Failed to dismiss reminder:', err);
+    }
+  };
+
+  const handleEventClick = (ev: CalendarEventRecord) => {
+    if (ev.type === 'hearing') {
+      if (ev.caseId) {
+        openCaseDossier(ev.caseId, 'hearings');
+      } else {
+        openEntityModalById('hearing', ev.sourceId);
+      }
+    } else if (ev.type === 'task') {
+      openEntityModalById('task', ev.sourceId);
+    } else if (ev.type === 'file_return') {
+      openEntityModalById('file', ev.sourceId);
     }
   };
 
@@ -517,7 +550,12 @@ export const CalendarScreen: React.FC = () => {
                       {dayEvents.slice(0, 3).map((ev) => (
                         <div
                           key={ev.id}
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate border ${
+                          data-testid={`calendar-grid-event-${ev.sourceId}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEventClick(ev);
+                          }}
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate border cursor-pointer hover:opacity-85 ${
                             ev.type === 'hearing'
                               ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
                               : ev.type === 'task'
@@ -567,16 +605,44 @@ export const CalendarScreen: React.FC = () => {
                 </div>
               </div>
 
-              {selectedDateHearings.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCauseListModalOpen(true)}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[44px] bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>{t('calendar.printCauseList')} ({selectedDateHearings.length})</span>
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {can('hearings.update') && (
+                  <button
+                    type="button"
+                    disabled={isReadOnly}
+                    data-testid="calendar-add-hearing-btn"
+                    onClick={() => openHearingForm({ defaultDate: selectedDateStr })}
+                    className="inline-flex items-center gap-1 px-3 py-2 min-h-[38px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold transition disabled:opacity-40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t('hearings.addHearing')}</span>
+                  </button>
+                )}
+
+                {can('tasks.assign') && (
+                  <button
+                    type="button"
+                    disabled={isReadOnly}
+                    data-testid="calendar-add-task-btn"
+                    onClick={() => openTaskForm({ defaultDueDate: selectedDateStr })}
+                    className="inline-flex items-center gap-1 px-3 py-2 min-h-[38px] bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-semibold transition disabled:opacity-40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t('tasks.addTask')}</span>
+                  </button>
+                )}
+
+                {selectedDateHearings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCauseListModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[38px] bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>{t('calendar.printCauseList')} ({selectedDateHearings.length})</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {selectedDateEvents.length === 0 ? (
@@ -588,12 +654,14 @@ export const CalendarScreen: React.FC = () => {
                 {selectedDateEvents.map((ev) => (
                   <div
                     key={ev.id}
-                    className={`p-3.5 rounded-xl border space-y-2 ${
+                    data-testid={`calendar-event-card-${ev.sourceId}`}
+                    onClick={() => handleEventClick(ev)}
+                    className={`p-3.5 rounded-xl border space-y-2 cursor-pointer transition hover:shadow-xs ${
                       ev.type === 'hearing'
-                        ? 'border-indigo-200 bg-indigo-50/20'
+                        ? 'border-indigo-200 bg-indigo-50/20 hover:border-indigo-300'
                         : ev.type === 'task'
-                        ? 'border-amber-200 bg-amber-50/20'
-                        : 'border-emerald-200 bg-emerald-50/20'
+                        ? 'border-amber-200 bg-amber-50/20 hover:border-amber-300'
+                        : 'border-emerald-200 bg-emerald-50/20 hover:border-emerald-300'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -613,15 +681,67 @@ export const CalendarScreen: React.FC = () => {
                           : t('calendar.physicalFileReturnBadge')}
                       </span>
 
-                      <span className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        {new Date(ev.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {new Date(ev.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openEntityModalById(
+                                ev.type === 'file_return' ? 'file' : ev.type,
+                                ev.sourceId
+                              )
+                            }
+                            className="p-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-slate-900"
+                            title={t('common.edit')}
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <h4 className="font-bold text-xs text-slate-900">{ev.title}</h4>
+                    <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {ev.type === 'hearing' && ev.caseId ? (
+                        <EntityLink
+                          type="hearing"
+                          id={ev.sourceId}
+                          caseId={ev.caseId}
+                          caseTab="hearings"
+                          label={ev.title}
+                          restricted={ev.restricted}
+                          className="font-bold text-xs"
+                        />
+                      ) : (
+                        <EntityLink
+                          type={ev.type === 'file_return' ? 'file' : ev.type}
+                          id={ev.sourceId}
+                          caseId={ev.caseId}
+                          mode="modal"
+                          label={ev.title}
+                          restricted={ev.restricted}
+                          className="font-bold text-xs"
+                        />
+                      )}
+                    </div>
 
                     <div className="text-[11px] text-slate-600 space-y-1">
+                      {ev.caseId && ev.caseNumber && (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <EntityLink
+                            type="case"
+                            id={ev.caseId}
+                            caseTab={ev.type === 'hearing' ? 'hearings' : 'overview'}
+                            label={ev.caseNumber}
+                            restricted={ev.restricted}
+                            showIcon
+                            className="text-[11px]"
+                          />
+                        </div>
+                      )}
                       {ev.court && (
                         <div className="flex items-center gap-1">
                           <Building className="w-3 h-3 text-slate-400" />
@@ -676,10 +796,11 @@ export const CalendarScreen: React.FC = () => {
               {filteredEvents.map((ev) => (
                 <div
                   key={ev.id}
-                  className="py-3 px-2 hover:bg-slate-50/70 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  onClick={() => handleEventClick(ev)}
+                  className="py-3 px-2 hover:bg-slate-50/70 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs cursor-pointer"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                           ev.type === 'hearing'
@@ -695,7 +816,16 @@ export const CalendarScreen: React.FC = () => {
                           ? t('calendar.taskDeadlineBadge')
                           : t('calendar.fileReturnBadge')}
                       </span>
-                      <strong className="text-slate-900">{ev.title}</strong>
+                      <EntityLink
+                        type={ev.type === 'file_return' ? 'file' : ev.type}
+                        id={ev.sourceId}
+                        caseId={ev.caseId}
+                        caseTab={ev.type === 'hearing' ? 'hearings' : 'overview'}
+                        mode={ev.type === 'hearing' && ev.caseId ? 'page' : 'modal'}
+                        label={ev.title}
+                        restricted={ev.restricted}
+                        className="font-bold text-slate-900"
+                      />
                       {ev.restricted && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
                           {t('cases.restricted')}
@@ -771,11 +901,26 @@ export const CalendarScreen: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {selectedDateHearings.map((h, i) => (
-                    <tr key={h.id} className="hover:bg-slate-50">
+                    <tr
+                      key={h.id}
+                      onClick={() => handleEventClick(h)}
+                      className="hover:bg-slate-50 cursor-pointer"
+                    >
                       <td className="p-3 text-center font-mono font-bold text-slate-400">{i + 1}</td>
                       <td className="p-3 font-semibold text-slate-900">{h.court || t('calendar.courtNotFixed')}</td>
-                      <td className="p-3">
-                        <span className="font-mono font-bold text-indigo-700 block">{h.caseNumber || h.title}</span>
+                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                        {h.caseId ? (
+                          <EntityLink
+                            type="case"
+                            id={h.caseId}
+                            caseTab="hearings"
+                            label={h.caseNumber || h.title}
+                            restricted={h.restricted}
+                            className="font-mono font-bold block"
+                          />
+                        ) : (
+                          <span className="font-mono font-bold text-indigo-700 block">{h.caseNumber || h.title}</span>
+                        )}
                         {h.clientName && <span className="text-[11px] text-slate-500">{t('calendar.clientPrefix', { name: h.clientName })}</span>}
                       </td>
                       <td className="p-3">
