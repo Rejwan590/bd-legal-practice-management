@@ -2,6 +2,9 @@ node_modules/
 build/
 dist/
 coverage/
+test-results/
+.liveui.json
+live-ui-editor.babel-plugin.js
 .DS_Store
 *.log
 .env*
