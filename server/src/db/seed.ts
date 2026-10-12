@@ -56,7 +56,7 @@ export const SEED_FIRMS = [
     courtAffiliations: 'Supreme Court of Bangladesh (High Court & Appellate Division), Dhaka District & Sessions Judge Court',
     planId: 'annual-standard',
     contact: '+880 1711-000000',
-    maxDevices: 20,
+    maxDevices: 100,
     devicePolicy: 'auto-approve' as const,
     allowOwnerDeviceRemoval: false,
     visibilityMode: 'open' as const,
@@ -287,10 +287,16 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
 
     for (const firm of SEED_FIRMS) {
       await client.query(
-        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, license_expires_at, status, visibility_mode, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (id) DO NOTHING`,
-        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.licenseExpiresAt, firm.status, firm.visibilityMode, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
+        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, contact, max_devices, device_policy, allow_owner_device_removal, license_starts_at, license_expires_at, status, visibility_mode, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+         ON CONFLICT (id) DO UPDATE SET
+           max_devices = EXCLUDED.max_devices,
+           device_policy = EXCLUDED.device_policy,
+           allow_owner_device_removal = EXCLUDED.allow_owner_device_removal,
+           visibility_mode = EXCLUDED.visibility_mode,
+           license_expires_at = EXCLUDED.license_expires_at,
+           status = EXCLUDED.status`,
+        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.contact, firm.maxDevices, firm.devicePolicy, firm.allowOwnerDeviceRemoval, firm.licenseStartsAt, firm.licenseExpiresAt, firm.status, firm.visibilityMode, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
       );
     }
 
@@ -299,7 +305,12 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
       await client.query(
         `INSERT INTO users (id, firm_id, name, email, password_hash, role, job_type, job_title_label, reports_to_user_id, permissions, language, active, failed_login_attempts, created_at, updated_at, created_by, updated_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (id) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           permissions = EXCLUDED.permissions,
+           active = EXCLUDED.active,
+           failed_login_attempts = 0,
+           locked_until = NULL`,
         [user.id, user.firmId, user.name, user.email, user.passwordHash, user.role, user.jobType, user.jobTitleLabel, user.reportsToUserId, JSON.stringify(user.permissions), user.language, user.active, user.failedLoginAttempts, user.createdAt, user.updatedAt, user.createdBy, user.updatedBy]
       );
     }

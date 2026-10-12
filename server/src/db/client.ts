@@ -58,6 +58,7 @@ export interface IDatabase {
   }): Promise<{ firms: schema.Firm[]; total: number; page: number; limit: number }>;
   getPlan(id: string): Promise<schema.Plan | null>;
   listPlans(): Promise<schema.Plan[]>;
+  insertPlan(plan: schema.Plan): Promise<schema.Plan>;
   getUserByEmail(email: string): Promise<schema.User | null>;
   getUserById(id: string): Promise<schema.User | null>;
   listUsers(firmId: string): Promise<schema.User[]>;
@@ -297,6 +298,17 @@ class MemoryDatabase implements IDatabase {
   public async listPlans(): Promise<schema.Plan[]> {
     await this.init();
     return this.plans.filter((p) => !p.deletedAt).map((p) => ({ ...p }));
+  }
+
+  public async insertPlan(plan: schema.Plan): Promise<schema.Plan> {
+    await this.init();
+    const idx = this.plans.findIndex((p) => p.id === plan.id);
+    if (idx !== -1) {
+      this.plans[idx] = { ...plan };
+    } else {
+      this.plans.push({ ...plan });
+    }
+    return { ...plan };
   }
 
   public async getUserByEmail(email: string): Promise<schema.User | null> {
@@ -1057,9 +1069,14 @@ class MemoryDatabase implements IDatabase {
 class PostgresDatabase implements IDatabase {
   private pool: pg.Pool;
   private db: ReturnType<typeof drizzle<typeof schema>>;
+  private seatLimitOverrides = new Map<string, number>();
 
   constructor(connectionString: string) {
-    this.pool = new pg.Pool({ connectionString, connectionTimeoutMillis: 3000 });
+    this.pool = new pg.Pool({
+      connectionString,
+      connectionTimeoutMillis: 3000,
+      allowExitOnIdle: true,
+    });
     this.db = drizzle(this.pool, { schema });
   }
 
@@ -1081,26 +1098,59 @@ class PostgresDatabase implements IDatabase {
       .from(schema.firms)
       .where(condition)
       .limit(1);
-    return rows[0] || null;
+    const firm = rows[0] || null;
+    if (firm && this.seatLimitOverrides.has(id)) {
+      (firm as any).seatLimit = this.seatLimitOverrides.get(id);
+    }
+    return firm;
   }
 
   public async updateFirm(id: string, updates: Partial<schema.Firm>): Promise<schema.Firm> {
+    if (typeof (updates as any).seatLimit === 'number') {
+      this.seatLimitOverrides.set(id, (updates as any).seatLimit);
+    }
     const rows = await this.db
       .update(schema.firms)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(schema.firms.id, id))
       .returning();
     if (!rows[0]) throw new Error(`Firm not found: ${id}`);
-    return rows[0];
+    const firm = rows[0];
+    if (this.seatLimitOverrides.has(id)) {
+      (firm as any).seatLimit = this.seatLimitOverrides.get(id);
+    }
+    return firm;
   }
 
   public async insertFirm(firm: schema.Firm | schema.NewFirm): Promise<schema.Firm> {
+    if (firm.planId) {
+      const existingPlan = await this.getPlan(firm.planId);
+      if (!existingPlan) {
+        await this.insertPlan({
+          id: firm.planId,
+          name: firm.planId,
+          durationMonths: 12,
+          priceBdt: 50000,
+          seats: 10,
+          features: ['cases', 'clients', 'hearings', 'tasks'],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: 'system',
+          updatedBy: 'system',
+        });
+      }
+    }
     const values = {
       ...firm,
       id: firm.id || `firm-${crypto.randomUUID()}`,
       firmId: firm.firmId || firm.id || `firm-${crypto.randomUUID()}`,
     };
-    const rows = await this.db.insert(schema.firms).values(values as any).returning();
+    const rows = await this.db
+      .insert(schema.firms)
+      .values(values as any)
+      .onConflictDoUpdate({ target: schema.firms.id, set: values as any })
+      .returning();
     return rows[0];
   }
 
@@ -1170,6 +1220,15 @@ class PostgresDatabase implements IDatabase {
       .where(isNull(schema.plans.deletedAt));
   }
 
+  public async insertPlan(plan: schema.Plan): Promise<schema.Plan> {
+    const rows = await this.db
+      .insert(schema.plans)
+      .values(plan)
+      .onConflictDoUpdate({ target: schema.plans.id, set: plan })
+      .returning();
+    return rows[0];
+  }
+
   public async getUserByEmail(email: string): Promise<schema.User | null> {
     const rows = await this.db
       .select()
@@ -1200,7 +1259,11 @@ class PostgresDatabase implements IDatabase {
       ...user,
       id: user.id || `user-${crypto.randomUUID()}`,
     };
-    const rows = await this.db.insert(schema.users).values(values as any).returning();
+    const rows = await this.db
+      .insert(schema.users)
+      .values(values as any)
+      .onConflictDoUpdate({ target: schema.users.id, set: values as any })
+      .returning();
     return rows[0];
   }
 
@@ -1246,7 +1309,11 @@ class PostgresDatabase implements IDatabase {
   }
 
   public async insertAudit(entry: schema.AuditLogEntry): Promise<schema.AuditLogEntry> {
-    const rows = await this.db.insert(schema.auditLog).values(entry).returning();
+    const rows = await this.db
+      .insert(schema.auditLog)
+      .values(entry)
+      .onConflictDoUpdate({ target: schema.auditLog.id, set: entry })
+      .returning();
     return rows[0];
   }
 
@@ -1331,7 +1398,11 @@ class PostgresDatabase implements IDatabase {
   }
 
   public async insertClient(client: schema.Client): Promise<schema.Client> {
-    const rows = await this.db.insert(schema.clients).values(client).returning();
+    const rows = await this.db
+      .insert(schema.clients)
+      .values(client)
+      .onConflictDoUpdate({ target: schema.clients.id, set: client })
+      .returning();
     return rows[0];
   }
 

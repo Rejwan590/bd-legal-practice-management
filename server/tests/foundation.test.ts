@@ -207,7 +207,7 @@ async function runTests() {
           'Content-Type': 'application/json',
           Cookie: `access_token=${ownerToken}`,
         },
-        body: JSON.stringify({ permissions: ['cases.view', 'hearings.update', 'tasks.view'] }),
+        body: JSON.stringify({ permissions: ['cases.view', 'hearings.update', 'clients.view', 'tasks.view', 'tasks.complete', 'files.view'] }),
       });
       assert(ownerSuccessRes.status === 200, 'Owner can update user permissions successfully (HTTP 200)');
     }
