@@ -55,7 +55,8 @@
     "server": {
       "root": "server",
       "framework": "express",
-      "entrypoint": "src/index.ts"
+      "entrypoint": "src/index.ts",
+      "buildCommand": "tsc && node -e \"const fs=require('fs');fs.cpSync('dist','src',{recursive:true})\""
     }
   },
   "rewrites": [

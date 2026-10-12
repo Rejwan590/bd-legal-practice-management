@@ -1,12 +1,28 @@
 import 'dotenv/config';
+import express from 'express';
 import { createApp } from './app.js';
 import { runMigrations } from './db/migrate.js';
 import { validateStartupConfig } from './config.js';
 
 const PORT = process.env.PORT || 4000;
 
-const vercelApp = process.env.VERCEL ? createApp() : undefined;
-export default vercelApp;
+const app = express();
+let initializedApp: express.Express | null = null;
+
+app.use((req, res, next) => {
+  try {
+    if (!initializedApp) {
+      initializedApp = createApp();
+    }
+    return initializedApp(req, res, next);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[BD Legal Server] Initialization error:', message);
+    res.status(500).json({ error: 'InitializationError', message });
+  }
+});
+
+export default app;
 
 async function bootstrap() {
   try {
@@ -19,8 +35,8 @@ async function bootstrap() {
       await runMigrations();
     }
 
-    const app = createApp();
-    app.listen(PORT, () => {
+    const serverApp = createApp();
+    serverApp.listen(PORT, () => {
       console.log(`[BD Legal Server] Step 3.0 Foundation running on port ${PORT}`);
       console.log(`[BD Legal Server] Health check: http://localhost:${PORT}/api/v1/health`);
     });
