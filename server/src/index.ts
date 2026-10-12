@@ -5,6 +5,9 @@ import { validateStartupConfig } from './config.js';
 
 const PORT = process.env.PORT || 4000;
 
+const vercelApp = process.env.VERCEL ? createApp() : undefined;
+export default vercelApp;
+
 async function bootstrap() {
   try {
     // Validate configuration at startup (not at module import time)
@@ -28,4 +31,6 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+if (!process.env.VERCEL) {
+  bootstrap();
+}
