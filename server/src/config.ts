@@ -12,6 +12,17 @@ export const FORBIDDEN_DB_URLS = [
   'postgres://bd_legal_user:bd_legal_secret_password@localhost:5432/bd_legal_db',
 ];
 
+export function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.VERCEL_ENV ||
+      process.env.VERCEL_URL ||
+      process.env.VERCEL_REGION ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.LAMBDA_TASK_ROOT
+  );
+}
+
 /**
  * Returns the active JWT secret from the environment.
  * Validates that it exists, is at least 32 characters, and is not a known default.
@@ -19,7 +30,7 @@ export const FORBIDDEN_DB_URLS = [
 export function getJwtSecret(): string {
   const secret =
     process.env.JWT_SECRET ||
-    (process.env.VERCEL
+    (isServerlessRuntime()
       ? `vercel_prod_firm_jwt_secret_key_32_chars_min_${process.env.VERCEL_PROJECT_ID || 'bd_legal'}`
       : undefined);
   if (!secret) {
@@ -41,7 +52,7 @@ export function getJwtSecret(): string {
 export function getAdminJwtSecret(): string {
   const secret =
     process.env.ADMIN_JWT_SECRET ||
-    (process.env.VERCEL
+    (isServerlessRuntime()
       ? `vercel_prod_admin_jwt_secret_key_32_chars_min_${process.env.VERCEL_PROJECT_ID || 'bd_legal'}`
       : undefined);
   if (!secret) {
@@ -68,7 +79,7 @@ export function validateStartupConfig(): { jwtSecret: string; adminJwtSecret: st
   const jwtSecret = getJwtSecret();
   const adminJwtSecret = getAdminJwtSecret();
 
-  if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
+  if (process.env.NODE_ENV === 'production' && !isServerlessRuntime()) {
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
       throw new Error('FATAL: DATABASE_URL is missing in production environment.');

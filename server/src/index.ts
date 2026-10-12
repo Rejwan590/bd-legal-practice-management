@@ -49,6 +49,21 @@ async function bootstrap() {
   }
 }
 
-if (!process.env.VERCEL) {
+const isServerless = Boolean(
+  process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.VERCEL_URL ||
+    process.env.VERCEL_REGION ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT
+);
+
+const isMainCli = Boolean(
+  !isServerless &&
+    process.argv[1] &&
+    (process.argv[1].endsWith('index.ts') || process.argv[1].endsWith('index.js'))
+);
+
+if (isMainCli) {
   bootstrap();
 }
