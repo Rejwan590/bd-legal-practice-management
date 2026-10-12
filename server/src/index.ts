@@ -1,17 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
-import { createApp } from './app.js';
-import { runMigrations } from './db/migrate.js';
-import { validateStartupConfig } from './config.js';
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 let initializedApp: express.Express | null = null;
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   try {
     if (!initializedApp) {
+      const { createApp } = await import('./app.js');
       initializedApp = createApp();
     }
     return initializedApp(req, res, next);
@@ -26,6 +24,10 @@ export default app;
 
 async function bootstrap() {
   try {
+    const { validateStartupConfig } = await import('./config.js');
+    const { runMigrations } = await import('./db/migrate.js');
+    const { createApp } = await import('./app.js');
+
     // Validate configuration at startup (not at module import time)
     validateStartupConfig();
 
