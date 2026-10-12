@@ -26,7 +26,7 @@ export async function runMigrations(databaseUrl?: string): Promise<void> {
     await client.connect();
     console.log('[Migrations] Running Drizzle versioned migrations on PostgreSQL...');
     const db = drizzle(client);
-    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER, migrationsSchema: 'public' });
     console.log('[Migrations] Drizzle migrations applied successfully with history table updated.');
   } catch (err) {
     console.error('[Migrations] Failed to run migrations:', err);
