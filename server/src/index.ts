@@ -1,18 +1,23 @@
-import 'dotenv/config';
 import express from 'express';
-import { createApp } from './app.js';
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 let initializedApp: express.Express | null = null;
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   try {
     if (!initializedApp) {
-      initializedApp = createApp();
+      let appModule: any;
+      try {
+        appModule = await import('./app.bundle.cjs' as string);
+      } catch {
+        appModule = await import('./app.js');
+      }
+      const createAppFn = appModule.createApp || appModule.default?.createApp;
+      initializedApp = createAppFn();
     }
-    return initializedApp(req, res, next);
+    return initializedApp!(req, res, next);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[BD Legal Server] Initialization error:', message);
@@ -24,6 +29,7 @@ export default app;
 
 async function bootstrap() {
   try {
+    await import('dotenv/config');
     const { validateStartupConfig } = await import('./config.js');
     const { runMigrations } = await import('./db/migrate.js');
     const { createApp: initServerApp } = await import('./app.js');

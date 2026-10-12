@@ -20,7 +20,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "admin:license": "tsx src/scripts/adminLicense.ts",
-    "admin:create": "tsx scripts/createPlatformAdmin.ts"
+    "admin:create": "tsx scripts/createPlatformAdmin.ts",
+    "postinstall": "node --input-type=module -e \"if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){const esbuild=await import('esbuild');await esbuild.build({entryPoints:['src/app.ts'],bundle:true,platform:'node',target:'node20',format:'cjs',outfile:'src/app.bundle.cjs'});}\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

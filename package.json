@@ -14,7 +14,8 @@
     "lint": "tsc --noEmit",
     "test:health": "tsx scripts/runHealth.ts",
     "test:restFetch": "tsx tests/restFetch.test.ts",
-    "test:responsive": "playwright test"
+    "test:responsive": "playwright test",
+    "postinstall": "node --input-type=module -e \"import {execSync} from 'node:child_process';if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){execSync('npm install --prefix server',{stdio:'inherit'});}\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
