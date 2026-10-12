@@ -20,7 +20,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "admin:license": "tsx src/scripts/adminLicense.ts",
-    "admin:create": "tsx scripts/createPlatformAdmin.ts"
+    "admin:create": "tsx scripts/createPlatformAdmin.ts",
+    "postinstall": "node -e \"const {execSync}=require('child_process'),fs=require('fs');if(process.env.VERCEL){execSync('npx tsc',{stdio:'inherit'});fs.cpSync('dist','src',{recursive:true});}\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
