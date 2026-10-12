@@ -55,13 +55,7 @@
     "server": {
       "root": "server",
       "framework": "express",
-      "entrypoint": "src/index.ts",
-      "installCommand": "npm install",
-      "functions": {
-        "src/index.ts": {
-          "includeFiles": "src/**"
-        }
-      }
+      "entrypoint": "src/index.ts"
     }
   },
   "rewrites": [
