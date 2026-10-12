@@ -11,6 +11,13 @@ jobs:
     name: Lint, Build, and Test against PostgreSQL 16
     runs-on: ubuntu-latest
 
+    env:
+      DATABASE_URL: "postgres://bd_legal_test_user:bd_legal_test_password@localhost:5432/bd_legal_test_db"
+      JWT_SECRET: "ci_jwt_secret_key_at_least_32_characters_long_12345"
+      ADMIN_JWT_SECRET: "ci_admin_jwt_secret_key_at_least_32_characters_9876"
+      SEED_OWNER_PASSWORD: "BdLegal_ci_owner_password_123!"
+      SEED_STAFF_PASSWORD: "BdLegal_ci_staff_password_123!"
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -21,7 +28,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U bd_legal_test_user -d bd_legal_test_db"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -66,11 +73,13 @@ jobs:
       - name: Build Server
         run: npm run build --prefix server
 
+      - name: Prepare test database
+        run: |
+          npm run db:migrate --prefix server
+          npm run db:seed --prefix server
+
       - name: Run Full Server Test Suite against Live PostgreSQL 16
         env:
           CI: "true"
-          DATABASE_URL: "postgres://bd_legal_test_user:bd_legal_test_password@localhost:5432/bd_legal_test_db"
-          JWT_SECRET: "ci_jwt_secret_key_at_least_32_characters_long_12345"
-          ADMIN_JWT_SECRET: "ci_admin_jwt_secret_key_at_least_32_characters_9876"
         run: |
           npm test --prefix server
