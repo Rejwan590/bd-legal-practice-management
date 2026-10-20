@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, ClientRecord, CourtRole, UserRecord } from '../../data/types';
+import { CaseCategory, CaseRecord, ClientRecord, CourtRole, UserRecord } from '../../data/types';
 import { isLawyerOrOwner } from '../../rolePresets';
+import {
+  CATEGORY_ROLES,
+  COMMON_COURT_SUGGESTIONS,
+  validateCaseRoles,
+} from '../../data/caseRoles';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import {
   X,
@@ -13,6 +18,8 @@ import {
   AlertCircle,
   Lock,
   Building,
+  Calendar,
+  Shield,
 } from 'lucide-react';
 
 interface CaseFormModalProps {
@@ -24,18 +31,6 @@ interface CaseFormModalProps {
   lockClientId?: boolean;
 }
 
-const COMMON_COURTS = [
-  'Supreme Court of Bangladesh (High Court Division)',
-  'Supreme Court of Bangladesh (Appellate Division)',
-  'Dhaka District & Sessions Judge Court',
-  '1st Joint District Judge Court, Dhaka',
-  '2nd Joint District Judge Court, Dhaka',
-  'Senior Assistant Judge Court, Dhaka Sadar',
-  'Metropolitan Sessions Judge Court, Dhaka',
-  'Administrative Tribunal, Dhaka',
-  'Labour Court, Dhaka',
-];
-
 const COMMON_MATTERS = [
   'Civil / Land Title Partition Suit',
   'Civil Revision (Section 115 CPC)',
@@ -44,8 +39,11 @@ const COMMON_MATTERS = [
   'Company Matter / Winding Up',
   'Commercial Recovery & LC Arbitration',
   'Temporary Injunction (Order 39)',
+  'Criminal GR Case / Police Prosecution',
+  'Criminal CR Case / Complaint Petition',
   'Criminal Revision / Bail Application',
   'Negotiable Instruments Act (Section 138)',
+  'Family Court / Dower & Maintenance',
 ];
 
 export const CaseFormModal: React.FC<CaseFormModalProps> = ({
@@ -66,17 +64,29 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
   const [responsibleLawyerId, setResponsibleLawyerId] = useState<string>('');
   const [fileSerial, setFileSerial] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
-  const [court, setCourt] = useState(COMMON_COURTS[0]);
-  const [customCourt, setCustomCourt] = useState('');
+  const [caseCategory, setCaseCategory] = useState<CaseCategory>('civil');
+  const [caseDate, setCaseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [closedOn, setClosedOn] = useState<string>('');
+  const [court, setCourt] = useState(COMMON_COURT_SUGGESTIONS[3]);
   const [matterType, setMatterType] = useState(COMMON_MATTERS[0]);
   const [customMatter, setCustomMatter] = useState('');
   const [description, setDescription] = useState('');
+
+  // Parties & Roles
+  const [partyARole, setPartyARole] = useState('Plaintiff');
+  const [partyBRole, setPartyBRole] = useState('Defendant');
   const [plaintiff, setPlaintiff] = useState('');
   const [defendant, setDefendant] = useState('');
   const [ourRole, setOurRole] = useState<CourtRole>('Plaintiff');
+
+  // Criminal specifics
+  const [policeStation, setPoliceStation] = useState('');
+  const [sectionsOfLaw, setSectionsOfLaw] = useState('');
+
+  // Representation
   const [plaintiffLawyer, setPlaintiffLawyer] = useState('');
   const [defendantLawyer, setDefendantLawyer] = useState('');
-  const [status, setStatus] = useState<'ongoing' | 'closed'>('ongoing');
+  const [status, setStatus] = useState<'ongoing' | 'pending' | 'closed'>('ongoing');
   const [restricted, setRestricted] = useState(false);
 
   const [isDuplicate, setIsDuplicate] = useState(false);
@@ -119,20 +129,26 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
     }
   }, [isOpen, currentUser, defaultClientId]);
 
+  // Sync category changes to default roles
+  const handleCategoryChange = (newCat: CaseCategory) => {
+    setCaseCategory(newCat);
+    const config = CATEGORY_ROLES[newCat];
+    setPartyARole(config.defaultPartyARole);
+    setPartyBRole(config.defaultPartyBRole);
+    setOurRole(config.ourRoleOptions[0]?.value || 'Plaintiff');
+  };
+
   useEffect(() => {
     if (initialData) {
       setClientId(initialData.clientId);
       setResponsibleLawyerId(initialData.responsibleLawyerId || '');
       setFileSerial(initialData.fileSerial);
       setCaseNumber(initialData.caseNumber);
-
-      if (COMMON_COURTS.includes(initialData.court)) {
-        setCourt(initialData.court);
-        setCustomCourt('');
-      } else {
-        setCourt('CUSTOM');
-        setCustomCourt(initialData.court);
-      }
+      const cat = initialData.caseCategory || 'civil';
+      setCaseCategory(cat);
+      setCaseDate(initialData.caseDate || initialData.createdAt.slice(0, 10));
+      setClosedOn(initialData.closedOn || '');
+      setCourt(initialData.court);
 
       if (COMMON_MATTERS.includes(initialData.matterType)) {
         setMatterType(initialData.matterType);
@@ -145,7 +161,13 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       setDescription(initialData.description);
       setPlaintiff(initialData.plaintiff);
       setDefendant(initialData.defendant);
+      setPartyARole(initialData.partyARole || CATEGORY_ROLES[cat].defaultPartyARole);
+      setPartyBRole(initialData.partyBRole || CATEGORY_ROLES[cat].defaultPartyBRole);
       setOurRole(initialData.ourRole);
+
+      setPoliceStation(initialData.policeStation || '');
+      setSectionsOfLaw(initialData.sectionsOfLaw || '');
+
       setPlaintiffLawyer(initialData.plaintiffLawyer);
       setDefendantLawyer(initialData.defendantLawyer);
       setStatus(initialData.status);
@@ -155,14 +177,20 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       const randomSeq = Math.floor(1000 + Math.random() * 9000);
       setFileSerial(`F-${year}-${randomSeq}`);
       setCaseNumber('');
-      setCourt(COMMON_COURTS[0]);
-      setCustomCourt('');
+      setCaseCategory('civil');
+      setCaseDate(new Date().toISOString().slice(0, 10));
+      setClosedOn('');
+      setCourt(COMMON_COURT_SUGGESTIONS[3]);
       setMatterType(COMMON_MATTERS[0]);
       setCustomMatter('');
       setDescription('');
+      setPartyARole('Plaintiff');
+      setPartyBRole('Defendant');
       setPlaintiff('');
       setDefendant('');
       setOurRole('Plaintiff');
+      setPoliceStation('');
+      setSectionsOfLaw('');
       setPlaintiffLawyer(currentUser.name);
       setDefendantLawyer('');
       setStatus('ongoing');
@@ -177,14 +205,13 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
 
   // Check duplicate case number in same court
   useEffect(() => {
-    const finalCourt = court === 'CUSTOM' ? customCourt : court;
-    if (caseNumber.trim().length > 3 && finalCourt.trim().length > 3) {
+    if (caseNumber.trim().length > 3 && court.trim().length > 3) {
       const timer = setTimeout(async () => {
         try {
           const dup = await repos.case.checkDuplicate(
             { currentUser },
             caseNumber,
-            finalCourt,
+            court,
             initialData?.id
           );
           setIsDuplicate(dup);
@@ -196,30 +223,37 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
     } else {
       setIsDuplicate(false);
     }
-  }, [caseNumber, court, customCourt, initialData, currentUser]);
+  }, [caseNumber, court, initialData, currentUser]);
 
   if (!isOpen) return null;
+
+  const currentRoleConfig = CATEGORY_ROLES[caseCategory] || CATEGORY_ROLES.civil;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) {
-      setErrorMsg(t('cases.validationClientRequired'));
+      setErrorMsg(t('cases.validationClientRequired', 'Please select a linked client'));
       return;
     }
     if (!caseNumber.trim()) {
-      setErrorMsg(t('cases.validationCaseNumberRequired'));
+      setErrorMsg(t('cases.validationCaseNumberRequired', 'Case Number is required'));
       return;
     }
-
-    const finalCourt = (court === 'CUSTOM' ? customCourt : court).trim();
-    if (!finalCourt) {
-      setErrorMsg(t('cases.validationCourtRequired'));
+    if (!court.trim()) {
+      setErrorMsg(t('cases.validationCourtRequired', 'Court name is required'));
       return;
     }
 
     const finalMatter = (matterType === 'CUSTOM' ? customMatter : matterType).trim();
     if (!finalMatter) {
-      setErrorMsg(t('cases.validationMatterRequired'));
+      setErrorMsg(t('cases.validationMatterRequired', 'Matter type is required'));
+      return;
+    }
+
+    // Role validation
+    const roleValidation = validateCaseRoles(caseCategory, ourRole, partyARole, partyBRole);
+    if (!roleValidation.valid) {
+      setErrorMsg(roleValidation.error || 'Invalid role selection');
       return;
     }
 
@@ -232,12 +266,19 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
         responsibleLawyerId: responsibleLawyerId || null,
         fileSerial: fileSerial.trim(),
         caseNumber: caseNumber.trim(),
-        court: finalCourt,
+        court: court.trim(),
         matterType: finalMatter,
         description: description.trim(),
+        caseCategory,
+        caseDate: caseDate || null,
+        closedOn: status === 'closed' ? (closedOn || new Date().toISOString().slice(0, 10)) : null,
+        partyARole: partyARole.trim(),
+        partyBRole: partyBRole.trim(),
         plaintiff: plaintiff.trim(),
         defendant: defendant.trim(),
         ourRole,
+        policeStation: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? policeStation.trim() : null,
+        sectionsOfLaw: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? sectionsOfLaw.trim() : null,
         plaintiffLawyer: plaintiffLawyer.trim(),
         defendantLawyer: defendantLawyer.trim(),
         status,
@@ -257,7 +298,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       onClose={onClose}
       title={initialData ? t('cases.editCase') : t('cases.addCase')}
       icon={Briefcase}
-      maxWidth="2xl"
+      maxWidth="3xl"
       footer={
         <>
           <button
@@ -295,7 +336,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
         )}
 
         <form id="case-form-modal" onSubmit={handleSubmit} className="space-y-4">
-          {/* Client, Responsible Lawyer & File Serial */}
+          {/* Top Row: Client, Responsible Lawyer & File Serial */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
@@ -354,19 +395,35 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
             </div>
           </div>
 
-          {/* Case Number & Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t('cases.caseNumber')} *
+          {/* BD Case Category & Case Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/80">
+            <div>
+              <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5 text-amber-700" />
+                <span>{t('cases.category', 'Case Category')} *</span>
+              </label>
+              <select
+                value={caseCategory}
+                onChange={(e) => handleCategoryChange(e.target.value as CaseCategory)}
+                className="w-full bg-white border border-amber-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-hidden min-h-[44px]"
+              >
+                <option value="civil">{t('cases.categoryCivil', 'Civil (দেওয়ানি)')}</option>
+                <option value="criminal_gr">{t('cases.categoryCriminalGR', 'Criminal GR / Police (জি.আর.)')}</option>
+                <option value="criminal_cr">{t('cases.categoryCriminalCR', 'Criminal CR / Complaint (সি.আর.)')}</option>
+                <option value="other">{t('cases.categoryOther', 'Other / Special (অন্যান্য)')}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                <span>{t('cases.caseDate', 'Filing / Registration Date')}</span>
               </label>
               <input
-                type="text"
-                required
-                value={caseNumber}
-                onChange={(e) => setCaseNumber(e.target.value)}
-                placeholder="e.g. Title Suit No. 45/2023"
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                type="date"
+                value={caseDate}
+                onChange={(e) => setCaseDate(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
               />
             </div>
 
@@ -376,42 +433,73 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
               </label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as 'ongoing' | 'closed')}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden font-medium"
+                onChange={(e) => setStatus(e.target.value as 'ongoing' | 'pending' | 'closed')}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden font-medium min-h-[44px]"
               >
-                <option value="ongoing">{t('cases.ongoing')}</option>
-                <option value="closed">{t('cases.closed')}</option>
+                <option value="ongoing">{t('cases.ongoing', 'Ongoing')}</option>
+                <option value="pending">{t('cases.pending', 'Pending')}</option>
+                <option value="closed">{t('cases.closed', 'Closed')}</option>
               </select>
             </div>
           </div>
 
-          {/* Court Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t('cases.court')} *
-            </label>
-            <select
-              value={court}
-              onChange={(e) => setCourt(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden mb-2"
-            >
-              {COMMON_COURTS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-              <option value="CUSTOM">{t('cases.otherCustomCourt')}</option>
-            </select>
-            {court === 'CUSTOM' && (
+          {/* If Closed, optional Closed On date */}
+          {status === 'closed' && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {t('cases.closedOn', 'Disposal / Closed On Date')}
+              </label>
+              <input
+                type="date"
+                value={closedOn}
+                onChange={(e) => setClosedOn(e.target.value)}
+                className="w-full sm:w-1/2 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+              />
+            </div>
+          )}
+
+          {/* Case Number & Court with Datalist Suggestions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {t('cases.caseNumber')} *
+              </label>
               <input
                 type="text"
                 required
-                value={customCourt}
-                onChange={(e) => setCustomCourt(e.target.value)}
-                placeholder={t('cases.specifyCustomCourt')}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                value={caseNumber}
+                onChange={(e) => setCaseNumber(e.target.value)}
+                placeholder={
+                  caseCategory === 'criminal_gr'
+                    ? 'e.g. GR Case No. 124/2024'
+                    : caseCategory === 'criminal_cr'
+                    ? 'e.g. CR Case No. 89/2024'
+                    : 'e.g. Title Suit No. 45/2023'
+                }
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
               />
-            )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>{t('cases.court')} *</span>
+                <span className="text-[10px] text-slate-400 font-normal">Type or pick from suggestions</span>
+              </label>
+              <input
+                type="text"
+                required
+                list="court-suggestions"
+                value={court}
+                onChange={(e) => setCourt(e.target.value)}
+                placeholder="e.g. Dhaka District & Sessions Judge Court"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
+              />
+              <datalist id="court-suggestions">
+                {COMMON_COURT_SUGGESTIONS.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
           {/* Matter Type */}
@@ -429,7 +517,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
                   {m}
                 </option>
               ))}
-              <option value="CUSTOM">{t('cases.otherMatterType')}</option>
+              <option value="CUSTOM">{t('cases.otherMatterType', 'Custom Matter Type...')}</option>
             </select>
             {matterType === 'CUSTOM' && (
               <input
@@ -437,60 +525,144 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
                 required
                 value={customMatter}
                 onChange={(e) => setCustomMatter(e.target.value)}
-                placeholder={t('cases.specifyMatter')}
+                placeholder={t('cases.specifyMatter', 'Specify custom matter type')}
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
               />
             )}
           </div>
 
-          {/* Parties & Role */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t('cases.plaintiff')} *
-              </label>
-              <input
-                type="text"
-                required
-                value={plaintiff}
-                onChange={(e) => setPlaintiff(e.target.value)}
-                placeholder={t('cases.plaintiffPlaceholder')}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
-              />
+          {/* BD PARTIES STRUCTURE: SIDE A, SIDE B, OUR ROLE */}
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                {t('cases.partiesSection', 'Parties & Representation (পক্ষসমূহ)')}
+              </h4>
+              <span className="text-[11px] font-semibold text-amber-800">
+                {t(`cases.category_${caseCategory}`, caseCategory.replace('_', ' ').toUpperCase())}
+              </span>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t('cases.defendant')} *
-              </label>
-              <input
-                type="text"
-                required
-                value={defendant}
-                onChange={(e) => setDefendant(e.target.value)}
-                placeholder={t('cases.defendantPlaceholder')}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
-              />
+            {/* Side A & Side B Rows */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* SIDE A */}
+              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-emerald-800">
+                    Side A ({partyARole}) *
+                  </label>
+                  <select
+                    value={partyARole}
+                    onChange={(e) => setPartyARole(e.target.value)}
+                    className="text-xs font-semibold bg-slate-50 border border-slate-300 rounded-md px-2 py-1"
+                  >
+                    {currentRoleConfig.partyARoles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={plaintiff}
+                  onChange={(e) => setPlaintiff(e.target.value)}
+                  placeholder={
+                    caseCategory === 'criminal_gr'
+                      ? 'e.g. The State (রাষ্ট্র)'
+                      : caseCategory === 'criminal_cr'
+                      ? 'e.g. Complainant Name (ফরিয়াদি)'
+                      : 'e.g. Haji Mohammad Rafiqul Islam & Others'
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* SIDE B */}
+              <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-rose-800">
+                    Side B ({partyBRole}) *
+                  </label>
+                  <select
+                    value={partyBRole}
+                    onChange={(e) => setPartyBRole(e.target.value)}
+                    className="text-xs font-semibold bg-slate-50 border border-slate-300 rounded-md px-2 py-1"
+                  >
+                    {currentRoleConfig.partyBRoles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={defendant}
+                  onChange={(e) => setDefendant(e.target.value)}
+                  placeholder={
+                    caseCategory.startsWith('criminal')
+                      ? 'e.g. Accused Names (আসামি)'
+                      : 'e.g. Azizur Rahman & 4 Others'
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t('cases.ourRole')} *
+            {/* OUR ROLE SELECTION (Controlled by Category) */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200">
+              <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                <span>{t('cases.ourRole', 'Our Client / Chamber Role')} *</span>
+                <span className="text-[11px] text-amber-700 font-normal">
+                  Which party represents our engagement?
+                </span>
               </label>
               <select
                 value={ourRole}
                 onChange={(e) => setOurRole(e.target.value as CourtRole)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden font-semibold"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden font-bold text-amber-950"
               >
-                <option value="Plaintiff">{t('cases.rolePlaintiff')}</option>
-                <option value="Defendant">{t('cases.roleDefendant')}</option>
-                <option value="Petitioner">{t('cases.rolePetitioner')}</option>
-                <option value="Respondent">{t('cases.roleRespondent')}</option>
-                <option value="Appellant">{t('cases.roleAppellant')}</option>
-                <option value="Applicant">{t('cases.roleApplicant')}</option>
+                {currentRoleConfig.ourRoleOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.labelEn}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
+
+          {/* Optional Criminal Specific Fields */}
+          {(caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-200/70">
+              <div>
+                <label className="block text-xs font-semibold text-indigo-950 mb-1">
+                  {t('cases.policeStation', 'Police Station / Thana (থানা)')}
+                </label>
+                <input
+                  type="text"
+                  value={policeStation}
+                  onChange={(e) => setPoliceStation(e.target.value)}
+                  placeholder="e.g. Motijheel Thana, Dhaka"
+                  className="w-full bg-white border border-indigo-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-indigo-950 mb-1">
+                  {t('cases.sectionsOfLaw', 'Sections of Law (দণ্ডবিধি / আইনের ধারা)')}
+                </label>
+                <input
+                  type="text"
+                  value={sectionsOfLaw}
+                  onChange={(e) => setSectionsOfLaw(e.target.value)}
+                  placeholder="e.g. 302/34 Penal Code, 1860"
+                  className="w-full bg-white border border-indigo-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Lawyers */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -561,7 +733,6 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
               </div>
             </label>
           </div>
-
         </form>
       </div>
     </ResponsiveModal>

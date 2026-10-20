@@ -6,6 +6,8 @@ import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, UserRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { EntityLink } from '../../components/EntityLink';
+import { ClientAvatar } from '../../components/ClientAvatar';
+import { formatCasePartyTitle } from '../../data/caseRoles';
 import { CaseFormModal } from './CaseFormModal';
 import { CaseDetailsView } from './CaseDetailsView';
 import {
@@ -20,6 +22,8 @@ import {
   CheckCircle2,
   User,
   Scale,
+  ArrowUpDown,
+  FileText,
 } from 'lucide-react';
 
 interface CasesScreenProps {
@@ -43,7 +47,9 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
   const [usersMap, setUsersMap] = useState<Record<string, UserRecord>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'pending' | 'closed'>('all');
+  const [statusCounts, setStatusCounts] = useState({ all: 0, ongoing: 0, pending: 0, closed: 0 });
+  const [sortChoice, setSortChoice] = useState<'created_at' | 'case_date_desc' | 'case_date_asc'>('created_at');
   const [courtFilter, setCourtFilter] = useState<string>('ALL');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'my' | 'team'>('all');
 
@@ -67,21 +73,35 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [casesData, clientsData, usersData] = await Promise.all([
+      const [allCasesData, clientsData, usersData] = await Promise.all([
         repos.case.list(
           { currentUser },
           {
             search: searchQuery,
-            status: statusFilter,
+            status: 'all',
             court: courtFilter,
             scope: scopeFilter,
+            sortBy: sortChoice === 'created_at' ? 'created_at' : 'case_date',
+            sortOrder: sortChoice === 'case_date_asc' ? 'asc' : 'desc',
           }
         ),
         repos.client.list({ currentUser }),
         repos.user.list({ currentUser }),
       ]);
 
-      setCases(casesData);
+      const counts = {
+        all: allCasesData.length,
+        ongoing: allCasesData.filter((c) => c.status === 'ongoing').length,
+        pending: allCasesData.filter((c) => c.status === 'pending').length,
+        closed: allCasesData.filter((c) => c.status === 'closed').length,
+      };
+      setStatusCounts(counts);
+
+      const filtered = statusFilter === 'all'
+        ? allCasesData
+        : allCasesData.filter((c) => c.status === statusFilter);
+
+      setCases(filtered);
       const cmap: Record<string, ClientRecord> = {};
       clientsData.forEach((c) => {
         cmap[c.id] = c;
@@ -98,7 +118,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
     } finally {
       setLoading(false);
     }
-  }, [canView, currentUser, searchQuery, statusFilter, courtFilter, scopeFilter, repos]);
+  }, [canView, currentUser, searchQuery, statusFilter, sortChoice, courtFilter, scopeFilter, repos]);
 
   useEffect(() => {
     fetchCases();
@@ -235,6 +255,37 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
           </div>
         </div>
 
+        {/* Status Filter Tabs with Counts */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+          {[
+            { id: 'all', label: t('common.all'), count: statusCounts.all },
+            { id: 'ongoing', label: t('cases.statusOngoing', 'Ongoing'), count: statusCounts.ongoing },
+            { id: 'pending', label: t('cases.statusPending', 'Pending'), count: statusCounts.pending },
+            { id: 'closed', label: t('cases.statusClosed', 'Closed'), count: statusCounts.closed },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              data-testid={`case-status-tab-${tab.id}`}
+              onClick={() => setStatusFilter(tab.id as 'all' | 'ongoing' | 'pending' | 'closed')}
+              className={`min-h-[38px] inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
+                statusFilter === tab.id
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  statusFilter === tab.id ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-1">
@@ -253,16 +304,18 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              {t('cases.filterStatus')}
+              {t('cases.sortBy', 'Sort By')}
             </label>
             <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'ongoing' | 'closed')}
+              value={sortChoice}
+              onChange={(e) =>
+                setSortChoice(e.target.value as 'created_at' | 'case_date_desc' | 'case_date_asc')
+              }
               className="w-full min-h-[44px] bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
             >
-              <option value="all">{t('common.all')}</option>
-              <option value="ongoing">{t('cases.ongoing')}</option>
-              <option value="closed">{t('cases.closed')}</option>
+              <option value="created_at">{t('cases.sortCreatedAt', 'Created Date (Default)')}</option>
+              <option value="case_date_desc">{t('cases.sortCaseDateDesc', 'Case Date (Newest first)')}</option>
+              <option value="case_date_asc">{t('cases.sortCaseDateAsc', 'Case Date (Oldest first)')}</option>
             </select>
           </div>
 
@@ -345,15 +398,32 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                       </span>
                     )}
                   </div>
-                  <span
-                    className={`inline-block text-[10px] px-2 py-0.5 rounded font-semibold ${
-                      c.status === 'ongoing'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {c.status === 'ongoing' ? t('cases.ongoing') : t('cases.closed')}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`inline-block text-[10px] px-2 py-0.5 rounded font-semibold ${
+                        c.status === 'ongoing'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : c.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {c.status === 'ongoing'
+                        ? t('cases.statusOngoing')
+                        : c.status === 'pending'
+                        ? t('cases.statusPending', 'Pending')
+                        : t('cases.statusClosed')}
+                    </span>
+                    {c.caseCategory && (
+                      <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 capitalize">
+                        {c.caseCategory === 'criminal_gr'
+                          ? 'Criminal (GR)'
+                          : c.caseCategory === 'criminal_cr'
+                          ? 'Criminal (CR)'
+                          : c.caseCategory}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ),
             },
@@ -369,12 +439,22 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
             {
               header: 'Parties',
               accessor: (c) => (
-                <div className="flex items-center gap-1 text-xs text-slate-600 max-w-xs">
-                  <Scale className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                  <span className="line-clamp-2">
-                    <strong className="text-slate-800">{c.plaintiff}</strong> vs{' '}
-                    <span className="text-slate-600">{c.defendant}</span>
-                  </span>
+                <div className="space-y-1 max-w-xs">
+                  <div className="flex items-center gap-1 text-xs text-slate-600">
+                    <Scale className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span className="line-clamp-2 font-medium text-slate-800">
+                      {formatCasePartyTitle(c)}
+                    </span>
+                  </div>
+                  {c.latestNote && (
+                    <div className="flex items-start gap-1 text-[11px] text-slate-500 bg-slate-50 p-1 rounded border border-slate-200/80">
+                      <FileText className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                      <span className="line-clamp-1 italic">
+                        <strong className="text-slate-700 not-italic">{c.latestNote.noteDate}: </strong>
+                        {c.latestNote.body}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ),
             },
@@ -398,14 +478,17 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               accessor: (c) => {
                 const linkedClient = clientsMap[c.clientId];
                 return linkedClient ? (
-                  <div className="text-xs" onClick={(e) => e.stopPropagation()}>
-                    <EntityLink
-                      type="client"
-                      id={linkedClient.id}
-                      label={linkedClient.name}
-                      className="text-xs font-semibold block truncate"
-                    />
-                    <span className="text-[11px] text-slate-500">Role: {c.ourRole}</span>
+                  <div className="text-xs flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
+                    <div className="min-w-0">
+                      <EntityLink
+                        type="client"
+                        id={linkedClient.id}
+                        label={linkedClient.name}
+                        className="text-xs font-semibold block truncate"
+                      />
+                      <span className="text-[11px] text-slate-500">Role: {c.ourRole}</span>
+                    </div>
                   </div>
                 ) : (
                   <span className="text-xs text-slate-400">—</span>
@@ -464,26 +547,51 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                     className={`text-[10px] px-2 py-0.5 rounded font-semibold shrink-0 ${
                       c.status === 'ongoing'
                         ? 'bg-emerald-100 text-emerald-800'
+                        : c.status === 'pending'
+                        ? 'bg-amber-100 text-amber-800'
                         : 'bg-slate-200 text-slate-700'
                     }`}
                   >
-                    {c.status === 'ongoing' ? t('cases.ongoing') : t('cases.closed')}
+                    {c.status === 'ongoing'
+                      ? t('cases.statusOngoing')
+                      : c.status === 'pending'
+                      ? t('cases.statusPending', 'Pending')
+                      : t('cases.statusClosed')}
                   </span>
                 </div>
 
-                <div className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                  <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="truncate">{c.court}</span>
+                <div className="flex items-center justify-between text-xs font-medium text-slate-600 gap-2">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{c.court}</span>
+                  </div>
+                  {c.caseCategory && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium shrink-0 capitalize">
+                      {c.caseCategory === 'criminal_gr'
+                        ? 'Criminal (GR)'
+                        : c.caseCategory === 'criminal_cr'
+                        ? 'Criminal (CR)'
+                        : c.caseCategory}
+                    </span>
+                  )}
                 </div>
 
-                <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-100">
+                <div className="space-y-1.5 text-xs text-slate-600 pt-2 border-t border-slate-100">
                   <div className="flex items-center gap-1">
                     <Scale className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    <span className="truncate">
-                      <strong className="text-slate-700">{c.plaintiff}</strong> vs{' '}
-                      <span className="text-slate-600">{c.defendant}</span>
+                    <span className="truncate font-medium text-slate-800">
+                      {formatCasePartyTitle(c)}
                     </span>
                   </div>
+                  {c.latestNote && (
+                    <div className="flex items-start gap-1 text-[11px] text-slate-500 bg-slate-50 p-1 rounded border border-slate-200/80">
+                      <FileText className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                      <span className="line-clamp-1 italic">
+                        <strong className="text-slate-700 not-italic">{c.latestNote.noteDate}: </strong>
+                        {c.latestNote.body}
+                      </span>
+                    </div>
+                  )}
                   {respLawyer && (
                     <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-medium">
                       <User className="w-3 h-3 text-indigo-500 shrink-0" />
@@ -494,10 +602,10 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                   )}
                   {linkedClient && (
                     <div
-                      className="flex items-center gap-1 text-[11px] text-slate-500"
+                      className="flex items-center gap-1.5 text-[11px] text-slate-500"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <User className="w-3 h-3 text-slate-400 shrink-0" />
+                      <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
                       <EntityLink
                         type="client"
                         id={linkedClient.id}

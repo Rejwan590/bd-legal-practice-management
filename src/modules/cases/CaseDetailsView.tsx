@@ -17,6 +17,9 @@ import {
 import { isLawyerOrOwner } from '../../rolePresets';
 import { EntityLink } from '../../components/EntityLink';
 import { Breadcrumbs } from '../../components/Breadcrumbs';
+import { ClientAvatar } from '../../components/ClientAvatar';
+import { formatCasePartyTitle } from '../../data/caseRoles';
+import { CaseNotesTab } from './CaseNotesTab';
 import {
   Briefcase,
   Building,
@@ -46,6 +49,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Check,
+  Shield,
 } from 'lucide-react';
 
 interface CaseDetailsViewProps {
@@ -97,6 +101,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
     tasksCount: 0,
     filesCount: 0,
     remindersCount: 0,
+    notesCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -155,6 +160,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
           caseTasks,
           caseFiles,
           caseAudit,
+          caseNotesRes,
         ] = await Promise.all([
           repos.case.getLinkedCounts({ currentUser }, caseId),
           repos.client.getById({ currentUser }, c.clientId).catch(() => null),
@@ -166,9 +172,15 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
           repos.auditLog.listByCaseId
             ? repos.auditLog.listByCaseId({ currentUser }, caseId).catch(() => [])
             : Promise.resolve([]),
+          repos.case.listNotes
+            ? repos.case.listNotes({ currentUser }, caseId, { limit: 1 }).catch(() => ({ notes: [], total: 0 }))
+            : Promise.resolve({ notes: [], total: 0 }),
         ]);
 
-        setCounts(linkedCounts);
+        setCounts({
+          ...linkedCounts,
+          notesCount: caseNotesRes?.total ?? 0,
+        });
         setClient(cl);
         setAllClients(clientsList);
         setAllUsers(usersList);
@@ -364,6 +376,12 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
       icon: FolderArchive,
     },
     {
+      id: 'notes',
+      label: t('cases.notesTab', 'Notes'),
+      count: counts.notesCount,
+      icon: FileText,
+    },
+    {
       id: 'activity',
       label: t('hub.tabActivity', 'Activity'),
       count: activityLogs.length,
@@ -424,13 +442,26 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                   className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                     caseData.status === 'ongoing'
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : caseData.status === 'pending'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       : 'bg-slate-700 text-slate-300'
                   }`}
                 >
                   {caseData.status === 'ongoing'
                     ? t('cases.statusOngoing')
+                    : caseData.status === 'pending'
+                    ? t('cases.statusPending', 'Pending')
                     : t('cases.statusClosed')}
                 </span>
+                {caseData.caseCategory && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 capitalize">
+                    {caseData.caseCategory === 'criminal_gr'
+                      ? 'Criminal (GR)'
+                      : caseData.caseCategory === 'criminal_cr'
+                      ? 'Criminal (CR)'
+                      : caseData.caseCategory}
+                  </span>
+                )}
                 {caseData.restricted && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     <Lock className="w-3 h-3" />
@@ -441,6 +472,9 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
               <h1 className="text-lg sm:text-2xl font-bold tracking-tight break-words">
                 {caseData.caseNumber}
               </h1>
+              <p className="text-sm font-semibold text-slate-200">
+                {formatCasePartyTitle(caseData)}
+              </p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 text-xs sm:text-sm">
                 <span className="inline-flex items-center gap-1.5">
                   <Building className="w-4 h-4 text-slate-400 shrink-0" />
@@ -448,7 +482,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                 </span>
                 {client && (
                   <span className="inline-flex items-center gap-1.5">
-                    <User className="w-4 h-4 text-slate-400 shrink-0" />
+                    <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
                     <EntityLink
                       type="client"
                       id={client.id}
@@ -457,7 +491,34 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                     />
                   </span>
                 )}
+                {caseData.caseDate && (
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Filed: {caseData.caseDate}</span>
+                  </span>
+                )}
+                {caseData.status === 'closed' && caseData.closedOn && (
+                  <span className="text-slate-400">
+                    Closed: {caseData.closedOn}
+                  </span>
+                )}
               </div>
+              {(caseData.policeStation || caseData.sectionsOfLaw) && (
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 pt-0.5">
+                  {caseData.policeStation && (
+                    <span className="inline-flex items-center gap-1">
+                      <Shield className="w-3.5 h-3.5 text-slate-400" />
+                      <span>PS: {caseData.policeStation}</span>
+                    </span>
+                  )}
+                  {caseData.sectionsOfLaw && (
+                    <span className="inline-flex items-center gap-1">
+                      <Scale className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Sec: {caseData.sectionsOfLaw}</span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Single Case Edit + Delete Actions in Header */}
@@ -768,7 +829,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                   <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <div className="text-[11px] font-semibold text-emerald-700 uppercase">
-                        {t('cases.plaintiff')}
+                        {caseData.partyARole || t('cases.plaintiff')}
                       </div>
                       <div className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
                         {caseData.plaintiff}
@@ -782,7 +843,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
 
                     <div>
                       <div className="text-[11px] font-semibold text-rose-700 uppercase">
-                        {t('cases.defendant')}
+                        {caseData.partyBRole || t('cases.defendant')}
                       </div>
                       <div className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
                         {caseData.defendant}
@@ -1385,7 +1446,14 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
           </div>
         )}
 
-        {/* TAB 5: ACTIVITY */}
+        {/* TAB 5: NOTES */}
+        {activeTab === 'notes' && (
+          <div className="p-4 sm:p-6" data-testid="dossier-panel-notes">
+            <CaseNotesTab caseId={caseId} canEdit={canEditCase} isReadOnly={isReadOnly} />
+          </div>
+        )}
+
+        {/* TAB 6: ACTIVITY */}
         {activeTab === 'activity' && (
           <div className="p-4 sm:p-6 space-y-4" data-testid="dossier-panel-activity">
             <div>
