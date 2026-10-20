@@ -81,13 +81,46 @@ export interface ClientRecord extends BaseRecord {
   archived?: boolean;
 }
 
+export interface ClientPhotoRecord {
+  clientId: string;
+  firmId: string;
+  mime: string;
+  bytes?: string;
+  dataUrl?: string;
+  updatedAt: string;
+}
+
+export interface ClientNoteRecord extends BaseRecord {
+  clientId: string;
+  noteDate: string; // YYYY-MM-DD
+  body: string;
+}
+
+export type CaseCategory = 'civil' | 'criminal_gr' | 'criminal_cr' | 'other';
+
 export type CourtRole =
   | 'Plaintiff'
   | 'Defendant'
   | 'Petitioner'
   | 'Respondent'
   | 'Appellant'
-  | 'Applicant';
+  | 'Applicant'
+  | 'Opposite Party'
+  | 'Revisioner'
+  | 'Prosecution'
+  | 'State'
+  | 'Accused'
+  | 'Complainant'
+  | 'Prosecution counsel'
+  | "Complainant's counsel"
+  | 'Defence counsel'
+  | string;
+
+export interface CaseNoteRecord extends BaseRecord {
+  caseId: string;
+  noteDate: string; // YYYY-MM-DD
+  body: string;
+}
 
 export interface CaseRecord extends BaseRecord {
   clientId: string;
@@ -102,9 +135,17 @@ export interface CaseRecord extends BaseRecord {
   plaintiffLawyer: string;
   defendantLawyer: string;
   responsibleLawyerId?: string | null;
-  status: 'ongoing' | 'closed';
+  status: 'ongoing' | 'pending' | 'closed';
+  caseDate?: string | null;
+  closedOn?: string | null;
+  caseCategory?: CaseCategory;
+  partyARole?: string | null;
+  partyBRole?: string | null;
+  policeStation?: string | null;
+  sectionsOfLaw?: string | null;
   restricted: boolean;
   nextHearingAt: string | null;
+  latestNote?: { noteDate: string; body: string } | null;
 }
 
 export interface CaseShareRecord {
@@ -187,7 +228,44 @@ export interface FileMovementRecord {
   note?: string;
 }
 
-export type ReminderSourceType = 'hearing' | 'task' | 'file_return';
+export type AppointmentType =
+  | 'client_meeting'
+  | 'consultation'
+  | 'phone_call'
+  | 'internal_meeting'
+  | 'court_visit'
+  | 'other';
+
+export type AppointmentMode = 'in_person' | 'phone' | 'video';
+
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+
+export interface AppointmentRecord extends BaseRecord {
+  title: string;
+  type: AppointmentType;
+  startsAt: string; // ISO 8601
+  endsAt: string; // ISO 8601
+  mode: AppointmentMode;
+  location?: string | null;
+  organiserUserId: string;
+  clientId?: string | null;
+  caseId?: string | null;
+  status: AppointmentStatus;
+  notes?: string | null;
+  reminderMinutesBefore: number;
+  attendees?: string[]; // user IDs
+}
+
+export interface AppointmentAttendeeRecord {
+  id: string;
+  appointmentId: string;
+  userId: string;
+  firmId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ReminderSourceType = 'hearing' | 'task' | 'file_return' | 'appointment';
 export type ReminderChannel = 'in_app';
 export type ReminderStatus = 'pending' | 'sent' | 'dismissed';
 
@@ -195,7 +273,7 @@ export interface ReminderRecord extends BaseRecord {
   userId: string; // Target recipient user ID
   userName?: string;
   sourceType: ReminderSourceType;
-  sourceId: string; // hearingId, taskId, or fileId
+  sourceId: string; // hearingId, taskId, fileId, or appointmentId
   title: string;
   description?: string;
   remindAt: string; // ISO 8601 timestamp when notification triggers
@@ -205,7 +283,7 @@ export interface ReminderRecord extends BaseRecord {
   dismissedAt?: string | null;
 }
 
-export type CalendarEventType = 'hearing' | 'task' | 'file_return';
+export type CalendarEventType = 'hearing' | 'task' | 'file_return' | 'appointment';
 
 export interface CalendarEventRecord {
   id: string;
@@ -231,7 +309,7 @@ export interface SecurityContext {
   currentUser: UserRecord;
 }
 
-export type SearchResultEntity = 'case' | 'client' | 'hearing' | 'task' | 'file';
+export type SearchResultEntity = 'case' | 'client' | 'hearing' | 'task' | 'file' | 'appointment';
 
 export interface SearchResultItem {
   id: string;
@@ -246,7 +324,7 @@ export interface SearchResultItem {
   serial?: string;
   status?: string;
   restricted?: boolean;
-  targetTab: 'cases' | 'clients' | 'hearings' | 'tasks' | 'files';
+  targetTab: 'cases' | 'clients' | 'hearings' | 'tasks' | 'files' | 'appointments';
   targetId: string;
 }
 
@@ -254,6 +332,7 @@ export interface DashboardMetrics {
   activeCasesCount: number;
   totalClientsCount: number;
   todayHearingsCount: number;
+  todayAppointmentsCount?: number;
   pendingTasksCount: number;
   overdueTasksCount: number;
   checkedOutFilesCount: number;
@@ -263,6 +342,7 @@ export interface DashboardMetrics {
 
 export interface DashboardUrgentItems {
   todayHearings: HearingRecord[];
+  todayAppointments?: AppointmentRecord[];
   overdueTasks: TaskRecord[];
   overdueFiles: PhysicalFileRecord[];
 }
@@ -277,6 +357,9 @@ export interface ChamberBackupCounts {
   fileMovements: number;
   reminders: number;
   auditLog: number;
+  clientNotes?: number;
+  caseNotes?: number;
+  appointments?: number;
 }
 
 export interface ChamberBackupMetadata {
@@ -294,12 +377,17 @@ export interface ChamberBackupMetadata {
 export interface ChamberBackupData {
   firm: FirmRecord;
   clients: ClientRecord[];
+  clientPhotos?: ClientPhotoRecord[];
+  clientNotes?: ClientNoteRecord[];
   cases: CaseRecord[];
+  caseNotes?: CaseNoteRecord[];
   hearings: HearingRecord[];
   hearingDateHistory: HearingDateHistoryRecord[];
   tasks: TaskRecord[];
   physicalFiles: PhysicalFileRecord[];
   fileMovements: FileMovementRecord[];
+  appointments?: AppointmentRecord[];
+  appointmentAttendees?: AppointmentAttendeeRecord[];
   reminders: ReminderRecord[];
   auditLogs: AuditLogRecord[];
 }

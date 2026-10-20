@@ -14,7 +14,7 @@ import {
   ClientProfileTab,
 } from '../modules/foundation/NavigationContext';
 
-export type EntityLinkType = 'case' | 'client' | 'hearing' | 'task' | 'file';
+export type EntityLinkType = 'case' | 'client' | 'hearing' | 'task' | 'file' | 'appointment';
 
 export interface EntityLinkProps {
   type: EntityLinkType;
@@ -89,6 +89,9 @@ export const EntityLink: React.FC<EntityLinkProps> = ({
       if (caseId && mode === 'page') return `/cases/${encodeURIComponent(caseId)}/files`;
       return '/files';
     }
+    if (type === 'appointment') {
+      return '/appointments';
+    }
     return '/dashboard';
   };
 
@@ -158,6 +161,13 @@ export const EntityLink: React.FC<EntityLinkProps> = ({
         navigateToScreen('files');
       }
       onAfterNavigate?.();
+      return;
+    }
+
+    if (type === 'appointment') {
+      navigateToScreen('appointments');
+      onAfterNavigate?.();
+      return;
     }
   };
 
@@ -175,6 +185,8 @@ export const EntityLink: React.FC<EntityLinkProps> = ({
         return <CheckSquare {...iconProps} />;
       case 'file':
         return <FolderArchive {...iconProps} />;
+      case 'appointment':
+        return <Calendar {...iconProps} />;
     }
   };
 

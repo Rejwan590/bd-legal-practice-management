@@ -1,11 +1,17 @@
 import pg from 'pg';
 import crypto from 'crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, and, isNull, desc, or, ilike, ne, sql } from 'drizzle-orm';
+import { eq, and, isNull, desc, or, ilike, ne, sql, SQL } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
-import { canUserSeeCase, buildCaseVisibilitySql } from '../services/visibilityService.js';
+import {
+  canUserSeeCase,
+  buildCaseVisibilitySql,
+  canUserSeeClient,
+  buildClientVisibilitySql,
+  canUserSeeAppointment,
+} from '../services/visibilityService.js';
 
 export interface VisibilityUserContext {
   id: string;
@@ -78,8 +84,8 @@ export interface IDatabase {
     user?: VisibilityUserContext
   ): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
-  listClients(firmId: string, search?: string): Promise<schema.Client[]>;
-  getClientById(id: string, firmId: string): Promise<schema.Client | null>;
+  listClients(firmId: string, search?: string, user?: VisibilityUserContext): Promise<schema.Client[]>;
+  getClientById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Client | null>;
   insertClient(client: schema.Client): Promise<schema.Client>;
   updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client>;
   countActiveCasesForClient(clientId: string, firmId: string): Promise<number>;
@@ -89,20 +95,42 @@ export interface IDatabase {
     includeRestricted?: boolean,
     user?: VisibilityUserContext
   ): Promise<ClientLinkedOverview>;
+  // Client Photos
+  getClientPhoto(clientId: string, firmId: string): Promise<schema.ClientPhoto | null>;
+  upsertClientPhoto(photo: schema.ClientPhoto): Promise<schema.ClientPhoto>;
+  deleteClientPhoto(clientId: string, firmId: string): Promise<void>;
+  // Client Notes
+  listClientNotes(
+    clientId: string,
+    firmId: string,
+    limit?: number,
+    offset?: number
+  ): Promise<{ notes: schema.ClientNote[]; total: number }>;
+  getClientNoteById(noteId: string, clientId: string, firmId: string): Promise<schema.ClientNote | null>;
+  insertClientNote(note: schema.ClientNote): Promise<schema.ClientNote>;
+  updateClientNote(
+    noteId: string,
+    clientId: string,
+    firmId: string,
+    updates: Partial<schema.ClientNote>
+  ): Promise<schema.ClientNote>;
+  deleteClientNote(noteId: string, clientId: string, firmId: string, updatedBy?: string): Promise<void>;
   // Cases (Step 3.2)
   listCases(
     firmId: string,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
       user?: VisibilityUserContext;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'caseDate' | 'createdAt' | 'caseNumber';
+      sortOrder?: 'asc' | 'desc';
     }
-  ): Promise<schema.Case[]>;
+  ): Promise<Array<schema.Case & { latestNote?: { noteDate: string; body: string } | null }>>;
   getCaseById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Case | null>;
   insertCase(c: schema.Case): Promise<schema.Case>;
   updateCase(id: string, firmId: string, updates: Partial<schema.Case>): Promise<schema.Case>;
@@ -115,6 +143,42 @@ export interface IDatabase {
     user?: VisibilityUserContext
   ): Promise<boolean>;
   getCaseLinkedCounts(caseId: string, firmId: string): Promise<CaseLinkedCounts>;
+  // Case Notes
+  listCaseNotes(
+    caseId: string,
+    firmId: string,
+    limit?: number,
+    offset?: number
+  ): Promise<{ notes: schema.CaseNote[]; total: number }>;
+  getCaseNoteById(noteId: string, caseId: string, firmId: string): Promise<schema.CaseNote | null>;
+  insertCaseNote(note: schema.CaseNote): Promise<schema.CaseNote>;
+  updateCaseNote(
+    noteId: string,
+    caseId: string,
+    firmId: string,
+    updates: Partial<schema.CaseNote>
+  ): Promise<schema.CaseNote>;
+  deleteCaseNote(noteId: string, caseId: string, firmId: string, updatedBy?: string): Promise<void>;
+  // Appointments
+  listAppointments(
+    firmId: string,
+    filter?: {
+      from?: string;
+      to?: string;
+      status?: string;
+      clientId?: string;
+      caseId?: string;
+      mine?: boolean;
+      user?: VisibilityUserContext;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ appointments: Array<schema.Appointment & { attendees: string[] }>; total: number }>;
+  getAppointmentById(id: string, firmId: string, user?: VisibilityUserContext): Promise<(schema.Appointment & { attendees: string[] }) | null>;
+  insertAppointment(appointment: schema.NewAppointment, attendeeUserIds: string[]): Promise<schema.Appointment & { attendees: string[] }>;
+  updateAppointment(id: string, firmId: string, updates: Partial<schema.Appointment>, attendeeUserIds?: string[]): Promise<schema.Appointment & { attendees: string[] }>;
+  deleteAppointment(id: string, firmId: string, updatedBy?: string): Promise<void>;
+  checkAppointmentOverlap(firmId: string, userId: string, startsAt: Date, endsAt: Date, excludeId?: string): Promise<boolean>;
   // Case Shares
   listCaseShares(caseId: string, firmId: string): Promise<schema.CaseShare[]>;
   listFirmCaseShares(firmId: string): Promise<schema.CaseShare[]>;
@@ -164,9 +228,14 @@ class MemoryDatabase implements IDatabase {
   public firms: schema.Firm[] = [];
   public users: schema.User[] = [];
   public clients: schema.Client[] = [];
+  public clientPhotos: schema.ClientPhoto[] = [];
+  public clientNotes: schema.ClientNote[] = [];
   public cases: schema.Case[] = [];
+  public caseNotes: schema.CaseNote[] = [];
   public hearings: schema.Hearing[] = [];
   public caseShares: schema.CaseShare[] = [];
+  public appointments: schema.Appointment[] = [];
+  public appointmentAttendees: schema.AppointmentAttendee[] = [];
   public auditLogs: schema.AuditLogEntry[] = [];
   public platformAdmins: schema.PlatformAdmin[] = [];
   public adminAudits: schema.AdminAuditEntry[] = [];
@@ -181,7 +250,36 @@ class MemoryDatabase implements IDatabase {
     this.firms = [...SEED_FIRMS];
     this.users = await getSeedUsers();
     this.clients = [...SEED_CLIENTS];
-    this.cases = [...SEED_CASES];
+    for (const c of this.clients) {
+      if (c.notes && c.notes.trim()) {
+        const noteId = `note-${c.id}`;
+        if (!this.clientNotes.some((n) => n.id === noteId)) {
+          this.clientNotes.push({
+            id: noteId,
+            firmId: c.firmId,
+            clientId: c.id,
+            noteDate: c.createdAt ? c.createdAt.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+            body: c.notes,
+            createdBy: c.createdBy,
+            updatedBy: c.updatedBy,
+            createdAt: c.createdAt || new Date(),
+            updatedAt: c.updatedAt || new Date(),
+            deletedAt: null,
+          });
+        }
+      }
+    }
+    this.cases = SEED_CASES.map((c) => ({
+      ...c,
+      status: (c.status as 'ongoing' | 'pending' | 'closed') || 'ongoing',
+      caseDate: (c as any).caseDate || null,
+      closedOn: (c as any).closedOn || null,
+      caseCategory: ((c as any).caseCategory as 'civil' | 'criminal_gr' | 'criminal_cr' | 'other') || 'civil',
+      partyARole: (c as any).partyARole || null,
+      partyBRole: (c as any).partyBRole || null,
+      policeStation: (c as any).policeStation || null,
+      sectionsOfLaw: (c as any).sectionsOfLaw || null,
+    }));
     if (this.platformAdmins.length === 0) {
       const adminHash = await bcrypt.hash('PlatformAdmin2026!', 10);
       this.platformAdmins = [
@@ -462,9 +560,24 @@ class MemoryDatabase implements IDatabase {
   }
 
   // Clients Methods
-  public async listClients(firmId: string, search?: string): Promise<schema.Client[]> {
+  public async listClients(
+    firmId: string,
+    search?: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.Client[]> {
     await this.init();
-    let res = this.clients.filter((c) => c.firmId === firmId && !c.deletedAt);
+    const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+    const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+    const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+
+    let res = this.clients.filter((c) => {
+      if (c.firmId !== firmId || c.deletedAt) return false;
+      if (user) {
+        return canUserSeeClient(user, c, firm, firmUsers, this.cases, firmShares);
+      }
+      return true;
+    });
+
     if (search && search.trim()) {
       const q = search.trim().toLowerCase();
       res = res.filter(
@@ -480,10 +593,23 @@ class MemoryDatabase implements IDatabase {
     );
   }
 
-  public async getClientById(id: string, firmId: string): Promise<schema.Client | null> {
+  public async getClientById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.Client | null> {
     await this.init();
     const c = this.clients.find((x) => x.id === id && x.firmId === firmId && !x.deletedAt);
-    return c ? { ...c } : null;
+    if (!c) return null;
+    if (user) {
+      const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+      const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+      if (!canUserSeeClient(user, c, firm, firmUsers, this.cases, firmShares)) {
+        return null;
+      }
+    }
+    return { ...c };
   }
 
   public async insertClient(client: schema.Client): Promise<schema.Client> {
@@ -530,11 +656,201 @@ class MemoryDatabase implements IDatabase {
         caseNumber: c.caseNumber,
         court: c.court,
         matterType: c.matterType,
-        status: c.status === 'ongoing' ? 'Ongoing' : 'Closed',
+        status: c.status === 'ongoing' ? 'Ongoing' : c.status === 'pending' ? 'Pending' : 'Closed',
       })),
       tasks: [],
       files: [],
     };
+  }
+
+  // Client Photos Methods
+  public async getClientPhoto(clientId: string, firmId: string): Promise<schema.ClientPhoto | null> {
+    await this.init();
+    const photo = this.clientPhotos.find((p) => p.clientId === clientId && p.firmId === firmId);
+    return photo ? { ...photo } : null;
+  }
+
+  public async upsertClientPhoto(photo: schema.ClientPhoto): Promise<schema.ClientPhoto> {
+    await this.init();
+    const index = this.clientPhotos.findIndex(
+      (p) => p.clientId === photo.clientId && p.firmId === photo.firmId
+    );
+    const saved: schema.ClientPhoto = {
+      ...photo,
+      updatedAt: new Date(),
+    };
+    if (index >= 0) {
+      this.clientPhotos[index] = saved;
+    } else {
+      this.clientPhotos.push(saved);
+    }
+    return { ...saved };
+  }
+
+  public async deleteClientPhoto(clientId: string, firmId: string): Promise<void> {
+    await this.init();
+    const index = this.clientPhotos.findIndex(
+      (p) => p.clientId === clientId && p.firmId === firmId
+    );
+    if (index >= 0) {
+      this.clientPhotos.splice(index, 1);
+    }
+  }
+
+  // Client Notes Methods
+  public async listClientNotes(
+    clientId: string,
+    firmId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ notes: schema.ClientNote[]; total: number }> {
+    await this.init();
+    const all = this.clientNotes.filter(
+      (n) => n.clientId === clientId && n.firmId === firmId && !n.deletedAt
+    );
+    all.sort((a, b) => {
+      if (b.noteDate !== a.noteDate) {
+        return b.noteDate.localeCompare(a.noteDate);
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return {
+      notes: all.slice(offset, offset + limit).map((n) => ({ ...n })),
+      total: all.length,
+    };
+  }
+
+  public async getClientNoteById(
+    noteId: string,
+    clientId: string,
+    firmId: string
+  ): Promise<schema.ClientNote | null> {
+    await this.init();
+    const note = this.clientNotes.find(
+      (n) => n.id === noteId && n.clientId === clientId && n.firmId === firmId && !n.deletedAt
+    );
+    return note ? { ...note } : null;
+  }
+
+  public async insertClientNote(note: schema.ClientNote): Promise<schema.ClientNote> {
+    await this.init();
+    this.clientNotes.unshift({ ...note });
+    return { ...note };
+  }
+
+  public async updateClientNote(
+    noteId: string,
+    clientId: string,
+    firmId: string,
+    updates: Partial<schema.ClientNote>
+  ): Promise<schema.ClientNote> {
+    await this.init();
+    const index = this.clientNotes.findIndex(
+      (n) => n.id === noteId && n.clientId === clientId && n.firmId === firmId && !n.deletedAt
+    );
+    if (index === -1) throw new Error(`Client note not found: ${noteId}`);
+    const updated = {
+      ...this.clientNotes[index],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.clientNotes[index] = updated;
+    return { ...updated };
+  }
+
+  public async deleteClientNote(
+    noteId: string,
+    clientId: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<void> {
+    await this.init();
+    const index = this.clientNotes.findIndex(
+      (n) => n.id === noteId && n.clientId === clientId && n.firmId === firmId && !n.deletedAt
+    );
+    if (index !== -1) {
+      this.clientNotes[index].deletedAt = new Date();
+      this.clientNotes[index].updatedAt = new Date();
+      if (updatedBy) this.clientNotes[index].updatedBy = updatedBy;
+    }
+  }
+
+  // Case Notes Methods
+  public async listCaseNotes(
+    caseId: string,
+    firmId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ notes: schema.CaseNote[]; total: number }> {
+    await this.init();
+    const all = this.caseNotes.filter(
+      (n) => n.caseId === caseId && n.firmId === firmId && !n.deletedAt
+    );
+    all.sort((a, b) => {
+      if (b.noteDate !== a.noteDate) {
+        return b.noteDate.localeCompare(a.noteDate);
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return {
+      notes: all.slice(offset, offset + limit).map((n) => ({ ...n })),
+      total: all.length,
+    };
+  }
+
+  public async getCaseNoteById(
+    noteId: string,
+    caseId: string,
+    firmId: string
+  ): Promise<schema.CaseNote | null> {
+    await this.init();
+    const note = this.caseNotes.find(
+      (n) => n.id === noteId && n.caseId === caseId && n.firmId === firmId && !n.deletedAt
+    );
+    return note ? { ...note } : null;
+  }
+
+  public async insertCaseNote(note: schema.CaseNote): Promise<schema.CaseNote> {
+    await this.init();
+    this.caseNotes.unshift({ ...note });
+    return { ...note };
+  }
+
+  public async updateCaseNote(
+    noteId: string,
+    caseId: string,
+    firmId: string,
+    updates: Partial<schema.CaseNote>
+  ): Promise<schema.CaseNote> {
+    await this.init();
+    const index = this.caseNotes.findIndex(
+      (n) => n.id === noteId && n.caseId === caseId && n.firmId === firmId && !n.deletedAt
+    );
+    if (index === -1) throw new Error(`Case note not found: ${noteId}`);
+    const updated = {
+      ...this.caseNotes[index],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.caseNotes[index] = updated;
+    return { ...updated };
+  }
+
+  public async deleteCaseNote(
+    noteId: string,
+    caseId: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<void> {
+    await this.init();
+    const index = this.caseNotes.findIndex(
+      (n) => n.id === noteId && n.caseId === caseId && n.firmId === firmId && !n.deletedAt
+    );
+    if (index !== -1) {
+      this.caseNotes[index].deletedAt = new Date();
+      this.caseNotes[index].updatedAt = new Date();
+      if (updatedBy) this.caseNotes[index].updatedBy = updatedBy;
+    }
   }
 
   // Cases Methods
@@ -542,15 +858,17 @@ class MemoryDatabase implements IDatabase {
     firmId: string,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
       user?: VisibilityUserContext;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'caseDate' | 'createdAt' | 'caseNumber';
+      sortOrder?: 'asc' | 'desc';
     }
-  ): Promise<schema.Case[]> {
+  ): Promise<Array<schema.Case & { latestNote?: { noteDate: string; body: string } | null }>> {
     await this.init();
     const visibleIds = this.getVisibleCaseSetForMemory(
       firmId,
@@ -606,9 +924,31 @@ class MemoryDatabase implements IDatabase {
       );
     }
 
-    return res.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    // Sort by caseDate or createdAt
+    const sortBy = filter?.sortBy || 'createdAt';
+    const sortOrder = filter?.sortOrder || 'desc';
+    res.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'caseDate') {
+        const timeA = a.caseDate ? new Date(a.caseDate).getTime() : 0;
+        const timeB = b.caseDate ? new Date(b.caseDate).getTime() : 0;
+        diff = timeB - timeA;
+      } else {
+        diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return sortOrder === 'asc' ? -diff : diff;
+    });
+
+    return res.map((c) => {
+      const activeNotes = this.caseNotes
+        .filter((n) => n.caseId === c.id && n.firmId === c.firmId && !n.deletedAt)
+        .sort((a, b) => {
+          if (b.noteDate !== a.noteDate) return b.noteDate.localeCompare(a.noteDate);
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+      const latestNote = activeNotes.length > 0 ? { noteDate: activeNotes[0].noteDate, body: activeNotes[0].body } : null;
+      return { ...c, latestNote };
+    });
   }
 
   public async getCaseById(
@@ -1028,6 +1368,230 @@ class MemoryDatabase implements IDatabase {
     return { userCount, deviceCount, pendingDeviceCount, lastActivity };
   }
 
+  // Appointments Methods
+  public async listAppointments(
+    firmId: string,
+    filter?: {
+      from?: string;
+      to?: string;
+      status?: string;
+      clientId?: string;
+      caseId?: string;
+      mine?: boolean;
+      user?: VisibilityUserContext;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ appointments: Array<schema.Appointment & { attendees: string[] }>; total: number }> {
+    await this.init();
+    const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+    const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+    const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+
+    let list = this.appointments.filter((a) => a.firmId === firmId && !a.deletedAt);
+
+    // Apply visibility filter
+    if (filter?.user) {
+      const u = filter.user;
+      list = list.filter((a) => {
+        const attendeeIds = this.appointmentAttendees
+          .filter((att) => att.appointmentId === a.id)
+          .map((att) => att.userId);
+        return canUserSeeAppointment(u, a, attendeeIds, firm, firmUsers, this.cases, firmShares);
+      });
+    }
+
+    if (filter?.mine && filter?.user) {
+      const uid = filter.user.id;
+      list = list.filter((a) => {
+        const attendeeIds = this.appointmentAttendees
+          .filter((att) => att.appointmentId === a.id)
+          .map((att) => att.userId);
+        return a.organiserUserId === uid || attendeeIds.includes(uid);
+      });
+    }
+
+    if (filter?.status && filter.status !== 'all') {
+      list = list.filter((a) => a.status === filter.status);
+    }
+    if (filter?.clientId) {
+      list = list.filter((a) => a.clientId === filter.clientId);
+    }
+    if (filter?.caseId) {
+      list = list.filter((a) => a.caseId === filter.caseId);
+    }
+    if (filter?.from) {
+      const fromTime = new Date(filter.from).getTime();
+      list = list.filter((a) => new Date(a.startsAt).getTime() >= fromTime);
+    }
+    if (filter?.to) {
+      const toTime = new Date(filter.to).getTime();
+      list = list.filter((a) => new Date(a.startsAt).getTime() <= toTime);
+    }
+
+    list.sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+    const total = list.length;
+    const limit = filter?.limit || 50;
+    const offset = filter?.offset || 0;
+    const paged = list.slice(offset, offset + limit);
+
+    const appointmentsWithAttendees = paged.map((a) => {
+      const attendees = this.appointmentAttendees
+        .filter((att) => att.appointmentId === a.id)
+        .map((att) => att.userId);
+      return { ...a, attendees };
+    });
+
+    return { appointments: appointmentsWithAttendees, total };
+  }
+
+  public async getAppointmentById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Appointment & { attendees: string[] }) | null> {
+    await this.init();
+    const appt = this.appointments.find((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (!appt) return null;
+
+    const attendees = this.appointmentAttendees
+      .filter((att) => att.appointmentId === appt.id)
+      .map((att) => att.userId);
+
+    if (user) {
+      const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = this.users.filter((u) => u.firmId === firmId && !u.deletedAt);
+      const firmShares = this.caseShares.filter((s) => s.firmId === firmId && !s.deletedAt);
+      if (!canUserSeeAppointment(user, appt, attendees, firm, firmUsers, this.cases, firmShares)) {
+        return null;
+      }
+    }
+
+    return { ...appt, attendees };
+  }
+
+  public async insertAppointment(
+    appointment: schema.NewAppointment,
+    attendeeUserIds: string[]
+  ): Promise<schema.Appointment & { attendees: string[] }> {
+    await this.init();
+    const now = new Date();
+    const newAppt: schema.Appointment = {
+      id: appointment.id || crypto.randomUUID(),
+      firmId: appointment.firmId,
+      title: appointment.title,
+      type: appointment.type,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      mode: appointment.mode || 'in_person',
+      location: appointment.location || null,
+      organiserUserId: appointment.organiserUserId,
+      clientId: appointment.clientId || null,
+      caseId: appointment.caseId || null,
+      status: appointment.status || 'scheduled',
+      notes: appointment.notes || null,
+      reminderMinutesBefore: appointment.reminderMinutesBefore ?? 30,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdBy: appointment.createdBy || null,
+      updatedBy: appointment.updatedBy || null,
+    };
+    this.appointments.push(newAppt);
+
+    for (const uid of attendeeUserIds) {
+      this.appointmentAttendees.push({
+        id: crypto.randomUUID(),
+        appointmentId: newAppt.id,
+        userId: uid,
+        firmId: newAppt.firmId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { ...newAppt, attendees: [...attendeeUserIds] };
+  }
+
+  public async updateAppointment(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Appointment>,
+    attendeeUserIds?: string[]
+  ): Promise<schema.Appointment & { attendees: string[] }> {
+    await this.init();
+    const index = this.appointments.findIndex((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (index === -1) throw new Error(`Appointment not found: ${id}`);
+
+    const now = new Date();
+    const updated = {
+      ...this.appointments[index],
+      ...updates,
+      updatedAt: now,
+    };
+    this.appointments[index] = updated;
+
+    if (attendeeUserIds !== undefined) {
+      this.appointmentAttendees = this.appointmentAttendees.filter((att) => att.appointmentId !== id);
+      for (const uid of attendeeUserIds) {
+        this.appointmentAttendees.push({
+          id: crypto.randomUUID(),
+          appointmentId: id,
+          userId: uid,
+          firmId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    const currentAttendees = this.appointmentAttendees
+      .filter((att) => att.appointmentId === id)
+      .map((att) => att.userId);
+
+    return { ...updated, attendees: currentAttendees };
+  }
+
+  public async deleteAppointment(id: string, firmId: string, updatedBy?: string): Promise<void> {
+    await this.init();
+    const index = this.appointments.findIndex((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (index !== -1) {
+      this.appointments[index].deletedAt = new Date();
+      this.appointments[index].updatedAt = new Date();
+      if (updatedBy) this.appointments[index].updatedBy = updatedBy;
+    }
+  }
+
+  public async checkAppointmentOverlap(
+    firmId: string,
+    userId: string,
+    startsAt: Date,
+    endsAt: Date,
+    excludeId?: string
+  ): Promise<boolean> {
+    await this.init();
+    const startMs = startsAt.getTime();
+    const endMs = endsAt.getTime();
+
+    for (const a of this.appointments) {
+      if (a.firmId !== firmId || a.deletedAt || a.status === 'cancelled') continue;
+      if (excludeId && a.id === excludeId) continue;
+
+      const aStartMs = new Date(a.startsAt).getTime();
+      const aEndMs = new Date(a.endsAt).getTime();
+
+      if (startMs < aEndMs && endMs > aStartMs) {
+        if (a.organiserUserId === userId) return true;
+        const isAttending = this.appointmentAttendees.some(
+          (att) => att.appointmentId === a.id && att.userId === userId
+        );
+        if (isAttending) return true;
+      }
+    }
+    return false;
+  }
+
   public async transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T> {
     await this.init();
     // Snapshot state for rollback on error
@@ -1036,7 +1600,14 @@ class MemoryDatabase implements IDatabase {
       firms: [...this.firms],
       users: [...this.users],
       clients: [...this.clients],
+      clientPhotos: [...this.clientPhotos],
+      clientNotes: [...this.clientNotes],
       cases: [...this.cases],
+      caseNotes: [...this.caseNotes],
+      hearings: [...this.hearings],
+      caseShares: [...this.caseShares],
+      appointments: [...this.appointments],
+      appointmentAttendees: [...this.appointmentAttendees],
       auditLogs: [...this.auditLogs],
       platformAdmins: [...this.platformAdmins],
       adminAudits: [...this.adminAudits],
@@ -1053,7 +1624,14 @@ class MemoryDatabase implements IDatabase {
       this.firms = snapshot.firms;
       this.users = snapshot.users;
       this.clients = snapshot.clients;
+      this.clientPhotos = snapshot.clientPhotos;
+      this.clientNotes = snapshot.clientNotes;
       this.cases = snapshot.cases;
+      this.caseNotes = snapshot.caseNotes;
+      this.hearings = snapshot.hearings;
+      this.caseShares = snapshot.caseShares;
+      this.appointments = snapshot.appointments;
+      this.appointmentAttendees = snapshot.appointmentAttendees;
       this.auditLogs = snapshot.auditLogs;
       this.platformAdmins = snapshot.platformAdmins;
       this.adminAudits = snapshot.adminAudits;
@@ -1366,8 +1944,17 @@ class PostgresDatabase implements IDatabase {
   }
 
   // Clients Methods
-  public async listClients(firmId: string, search?: string): Promise<schema.Client[]> {
-    const conditions = [eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)];
+  public async listClients(firmId: string, search?: string, user?: VisibilityUserContext): Promise<schema.Client[]> {
+    let visibilitySql: SQL | undefined;
+    if (user) {
+      const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = await this.listUsers(firmId);
+      visibilitySql = buildClientVisibilitySql(user, firm, firmUsers);
+    }
+
+    const conditions = [
+      visibilitySql || and(eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt))!,
+    ];
 
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
@@ -1388,11 +1975,21 @@ class PostgresDatabase implements IDatabase {
       .orderBy(desc(schema.clients.createdAt));
   }
 
-  public async getClientById(id: string, firmId: string): Promise<schema.Client | null> {
+  public async getClientById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Client | null> {
+    const conditions = [
+      eq(schema.clients.id, id),
+      eq(schema.clients.firmId, firmId),
+      isNull(schema.clients.deletedAt),
+    ];
+    if (user) {
+      const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = await this.listUsers(firmId);
+      conditions.push(buildClientVisibilitySql(user, firm, firmUsers));
+    }
     const rows = await this.db
       .select()
       .from(schema.clients)
-      .where(and(eq(schema.clients.id, id), eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)))
+      .where(and(...conditions))
       .limit(1);
     return rows[0] || null;
   }
@@ -1454,11 +2051,231 @@ class PostgresDatabase implements IDatabase {
         caseNumber: c.caseNumber,
         court: c.court,
         matterType: c.matterType,
-        status: c.status === 'ongoing' ? 'Ongoing' : 'Closed',
+        status: c.status === 'ongoing' ? 'Ongoing' : c.status === 'pending' ? 'Pending' : 'Closed',
       })),
       tasks: [],
       files: [],
     };
+  }
+
+  // Client Photos Methods
+  public async getClientPhoto(clientId: string, firmId: string): Promise<schema.ClientPhoto | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.clientPhotos)
+      .where(and(eq(schema.clientPhotos.clientId, clientId), eq(schema.clientPhotos.firmId, firmId)))
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async upsertClientPhoto(photo: schema.ClientPhoto): Promise<schema.ClientPhoto> {
+    const rows = await this.db
+      .insert(schema.clientPhotos)
+      .values(photo)
+      .onConflictDoUpdate({
+        target: schema.clientPhotos.clientId,
+        set: {
+          mime: photo.mime,
+          bytes: photo.bytes,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return rows[0];
+  }
+
+  public async deleteClientPhoto(clientId: string, firmId: string): Promise<void> {
+    await this.db
+      .delete(schema.clientPhotos)
+      .where(and(eq(schema.clientPhotos.clientId, clientId), eq(schema.clientPhotos.firmId, firmId)));
+  }
+
+  // Client Notes Methods
+  public async listClientNotes(
+    clientId: string,
+    firmId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ notes: schema.ClientNote[]; total: number }> {
+    const whereCond = and(
+      eq(schema.clientNotes.clientId, clientId),
+      eq(schema.clientNotes.firmId, firmId),
+      isNull(schema.clientNotes.deletedAt)
+    );
+    const [notes, countRes] = await Promise.all([
+      this.db
+        .select()
+        .from(schema.clientNotes)
+        .where(whereCond)
+        .orderBy(desc(schema.clientNotes.noteDate), desc(schema.clientNotes.createdAt))
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.clientNotes)
+        .where(whereCond),
+    ]);
+    return { notes, total: countRes[0]?.count || 0 };
+  }
+
+  public async getClientNoteById(
+    noteId: string,
+    clientId: string,
+    firmId: string
+  ): Promise<schema.ClientNote | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.clientNotes)
+      .where(
+        and(
+          eq(schema.clientNotes.id, noteId),
+          eq(schema.clientNotes.clientId, clientId),
+          eq(schema.clientNotes.firmId, firmId),
+          isNull(schema.clientNotes.deletedAt)
+        )
+      )
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async insertClientNote(note: schema.ClientNote): Promise<schema.ClientNote> {
+    const rows = await this.db.insert(schema.clientNotes).values(note).returning();
+    return rows[0];
+  }
+
+  public async updateClientNote(
+    noteId: string,
+    clientId: string,
+    firmId: string,
+    updates: Partial<schema.ClientNote>
+  ): Promise<schema.ClientNote> {
+    const rows = await this.db
+      .update(schema.clientNotes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.clientNotes.id, noteId),
+          eq(schema.clientNotes.clientId, clientId),
+          eq(schema.clientNotes.firmId, firmId),
+          isNull(schema.clientNotes.deletedAt)
+        )
+      )
+      .returning();
+    if (!rows[0]) throw new Error(`Client note not found: ${noteId}`);
+    return rows[0];
+  }
+
+  public async deleteClientNote(
+    noteId: string,
+    clientId: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<void> {
+    await this.db
+      .update(schema.clientNotes)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), ...(updatedBy ? { updatedBy } : {}) })
+      .where(
+        and(
+          eq(schema.clientNotes.id, noteId),
+          eq(schema.clientNotes.clientId, clientId),
+          eq(schema.clientNotes.firmId, firmId),
+          isNull(schema.clientNotes.deletedAt)
+        )
+      );
+  }
+
+  // Case Notes Methods
+  public async listCaseNotes(
+    caseId: string,
+    firmId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ notes: schema.CaseNote[]; total: number }> {
+    const whereCond = and(
+      eq(schema.caseNotes.caseId, caseId),
+      eq(schema.caseNotes.firmId, firmId),
+      isNull(schema.caseNotes.deletedAt)
+    );
+    const [notes, countRes] = await Promise.all([
+      this.db
+        .select()
+        .from(schema.caseNotes)
+        .where(whereCond)
+        .orderBy(desc(schema.caseNotes.noteDate), desc(schema.caseNotes.createdAt))
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.caseNotes)
+        .where(whereCond),
+    ]);
+    return { notes, total: countRes[0]?.count || 0 };
+  }
+
+  public async getCaseNoteById(
+    noteId: string,
+    caseId: string,
+    firmId: string
+  ): Promise<schema.CaseNote | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.caseNotes)
+      .where(
+        and(
+          eq(schema.caseNotes.id, noteId),
+          eq(schema.caseNotes.caseId, caseId),
+          eq(schema.caseNotes.firmId, firmId),
+          isNull(schema.caseNotes.deletedAt)
+        )
+      )
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async insertCaseNote(note: schema.CaseNote): Promise<schema.CaseNote> {
+    const rows = await this.db.insert(schema.caseNotes).values(note).returning();
+    return rows[0];
+  }
+
+  public async updateCaseNote(
+    noteId: string,
+    caseId: string,
+    firmId: string,
+    updates: Partial<schema.CaseNote>
+  ): Promise<schema.CaseNote> {
+    const rows = await this.db
+      .update(schema.caseNotes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.caseNotes.id, noteId),
+          eq(schema.caseNotes.caseId, caseId),
+          eq(schema.caseNotes.firmId, firmId),
+          isNull(schema.caseNotes.deletedAt)
+        )
+      )
+      .returning();
+    if (!rows[0]) throw new Error(`Case note not found: ${noteId}`);
+    return rows[0];
+  }
+
+  public async deleteCaseNote(
+    noteId: string,
+    caseId: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<void> {
+    await this.db
+      .update(schema.caseNotes)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), ...(updatedBy ? { updatedBy } : {}) })
+      .where(
+        and(
+          eq(schema.caseNotes.id, noteId),
+          eq(schema.caseNotes.caseId, caseId),
+          eq(schema.caseNotes.firmId, firmId),
+          isNull(schema.caseNotes.deletedAt)
+        )
+      );
   }
 
   // Cases Methods
@@ -1466,15 +2283,17 @@ class PostgresDatabase implements IDatabase {
     firmId: string,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       includeRestricted?: boolean;
       user?: VisibilityUserContext;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'caseDate' | 'createdAt' | 'caseNumber';
+      sortOrder?: 'asc' | 'desc';
     }
-  ): Promise<schema.Case[]> {
+  ): Promise<Array<schema.Case & { latestNote?: { noteDate: string; body: string } | null }>> {
     const visCond = await this.buildPostgresCaseCondition(
       firmId,
       filter?.user,
@@ -1536,11 +2355,35 @@ class PostgresDatabase implements IDatabase {
       );
     }
 
-    return this.db
+    const sortBy = filter?.sortBy || 'createdAt';
+    const sortOrder = filter?.sortOrder || 'desc';
+    const orderClause =
+      sortBy === 'caseDate'
+        ? sortOrder === 'asc' ? sql`${schema.cases.caseDate} ASC NULLS LAST` : sql`${schema.cases.caseDate} DESC NULLS LAST`
+        : sortOrder === 'asc' ? sql`${schema.cases.createdAt} ASC` : sql`${schema.cases.createdAt} DESC`;
+
+    const caseRows = await this.db
       .select()
       .from(schema.cases)
       .where(and(...conditions))
-      .orderBy(desc(schema.cases.createdAt));
+      .orderBy(orderClause);
+
+    // Fetch latest notes for returned cases
+    const result: Array<schema.Case & { latestNote?: { noteDate: string; body: string } | null }> = [];
+    for (const c of caseRows) {
+      const notes = await this.db
+        .select({ noteDate: schema.caseNotes.noteDate, body: schema.caseNotes.body })
+        .from(schema.caseNotes)
+        .where(and(eq(schema.caseNotes.caseId, c.id), eq(schema.caseNotes.firmId, firmId), isNull(schema.caseNotes.deletedAt)))
+        .orderBy(desc(schema.caseNotes.noteDate), desc(schema.caseNotes.createdAt))
+        .limit(1);
+      result.push({
+        ...c,
+        latestNote: notes[0] || null,
+      });
+    }
+
+    return result;
   }
 
   public async getCaseById(
@@ -1878,6 +2721,244 @@ class PostgresDatabase implements IDatabase {
 
   public async deleteDevice(id: string): Promise<void> {
     await this.db.delete(schema.devices).where(eq(schema.devices.id, id));
+  }
+
+  // Appointments Methods
+  public async listAppointments(
+    firmId: string,
+    filter?: {
+      from?: string;
+      to?: string;
+      status?: string;
+      clientId?: string;
+      caseId?: string;
+      mine?: boolean;
+      user?: VisibilityUserContext;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ appointments: Array<schema.Appointment & { attendees: string[] }>; total: number }> {
+    const conditions: SQL[] = [eq(schema.appointments.firmId, firmId), isNull(schema.appointments.deletedAt)];
+
+    if (filter?.status && filter.status !== 'all') {
+      conditions.push(eq(schema.appointments.status, filter.status as any));
+    }
+    if (filter?.clientId) {
+      conditions.push(eq(schema.appointments.clientId, filter.clientId));
+    }
+    if (filter?.caseId) {
+      conditions.push(eq(schema.appointments.caseId, filter.caseId));
+    }
+    if (filter?.from) {
+      conditions.push(sql`${schema.appointments.startsAt} >= ${new Date(filter.from).toISOString()}::timestamptz`);
+    }
+    if (filter?.to) {
+      conditions.push(sql`${schema.appointments.startsAt} <= ${new Date(filter.to).toISOString()}::timestamptz`);
+    }
+
+    const allAppts = await this.db
+      .select()
+      .from(schema.appointments)
+      .where(and(...conditions))
+      .orderBy(schema.appointments.startsAt);
+
+    // Fetch attendees for all matching appointments
+    const apptIds = allAppts.map((a) => a.id);
+    let allAttendees: schema.AppointmentAttendee[] = [];
+    if (apptIds.length > 0) {
+      allAttendees = await this.db
+        .select()
+        .from(schema.appointmentAttendees)
+        .where(
+          and(
+            eq(schema.appointmentAttendees.firmId, firmId),
+            sql`${schema.appointmentAttendees.appointmentId} IN (${sql.join(
+              apptIds.map((id) => sql`${id}`),
+              sql`, `
+            )})`
+          )
+        );
+    }
+
+    // Apply visibility filter and mine filter
+    let filtered = allAppts;
+    if (filter?.user) {
+      const u = filter.user;
+      const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = await this.listUsers(firmId);
+      const firmCases = await this.db.select().from(schema.cases).where(eq(schema.cases.firmId, firmId));
+      const firmShares = await this.listFirmCaseShares(firmId);
+
+      filtered = filtered.filter((a) => {
+        const attIds = allAttendees.filter((att) => att.appointmentId === a.id).map((att) => att.userId);
+        return canUserSeeAppointment(u, a, attIds, firm, firmUsers, firmCases, firmShares);
+      });
+    }
+
+    if (filter?.mine && filter?.user) {
+      const uid = filter.user.id;
+      filtered = filtered.filter((a) => {
+        const attIds = allAttendees.filter((att) => att.appointmentId === a.id).map((att) => att.userId);
+        return a.organiserUserId === uid || attIds.includes(uid);
+      });
+    }
+
+    const total = filtered.length;
+    const limit = filter?.limit || 50;
+    const offset = filter?.offset || 0;
+    const paged = filtered.slice(offset, offset + limit);
+
+    const appointmentsWithAttendees = paged.map((a) => {
+      const attendees = allAttendees.filter((att) => att.appointmentId === a.id).map((att) => att.userId);
+      return { ...a, attendees };
+    });
+
+    return { appointments: appointmentsWithAttendees, total };
+  }
+
+  public async getAppointmentById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Appointment & { attendees: string[] }) | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.appointments)
+      .where(and(eq(schema.appointments.id, id), eq(schema.appointments.firmId, firmId), isNull(schema.appointments.deletedAt)))
+      .limit(1);
+    const appt = rows[0];
+    if (!appt) return null;
+
+    const attendeesRows = await this.db
+      .select()
+      .from(schema.appointmentAttendees)
+      .where(and(eq(schema.appointmentAttendees.appointmentId, id), eq(schema.appointmentAttendees.firmId, firmId)));
+    const attendees = attendeesRows.map((a) => a.userId);
+
+    if (user) {
+      const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
+      const firmUsers = await this.listUsers(firmId);
+      const firmCases = await this.db.select().from(schema.cases).where(eq(schema.cases.firmId, firmId));
+      const firmShares = await this.listFirmCaseShares(firmId);
+      if (!canUserSeeAppointment(user, appt, attendees, firm, firmUsers, firmCases, firmShares)) {
+        return null;
+      }
+    }
+
+    return { ...appt, attendees };
+  }
+
+  public async insertAppointment(
+    appointment: schema.NewAppointment,
+    attendeeUserIds: string[]
+  ): Promise<schema.Appointment & { attendees: string[] }> {
+    const now = new Date();
+    const apptId = appointment.id || crypto.randomUUID();
+    const rows = await this.db
+      .insert(schema.appointments)
+      .values({
+        ...appointment,
+        id: apptId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const appt = rows[0];
+
+    for (const uid of attendeeUserIds) {
+      await this.db.insert(schema.appointmentAttendees).values({
+        id: crypto.randomUUID(),
+        appointmentId: apptId,
+        userId: uid,
+        firmId: appt.firmId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { ...appt, attendees: [...attendeeUserIds] };
+  }
+
+  public async updateAppointment(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Appointment>,
+    attendeeUserIds?: string[]
+  ): Promise<schema.Appointment & { attendees: string[] }> {
+    const now = new Date();
+    const rows = await this.db
+      .update(schema.appointments)
+      .set({ ...updates, updatedAt: now })
+      .where(and(eq(schema.appointments.id, id), eq(schema.appointments.firmId, firmId), isNull(schema.appointments.deletedAt)))
+      .returning();
+    const appt = rows[0];
+    if (!appt) throw new Error(`Appointment not found: ${id}`);
+
+    if (attendeeUserIds !== undefined) {
+      await this.db.delete(schema.appointmentAttendees).where(eq(schema.appointmentAttendees.appointmentId, id));
+      for (const uid of attendeeUserIds) {
+        await this.db.insert(schema.appointmentAttendees).values({
+          id: crypto.randomUUID(),
+          appointmentId: id,
+          userId: uid,
+          firmId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    const currentAttendeesRows = await this.db
+      .select()
+      .from(schema.appointmentAttendees)
+      .where(eq(schema.appointmentAttendees.appointmentId, id));
+
+    return { ...appt, attendees: currentAttendeesRows.map((a) => a.userId) };
+  }
+
+  public async deleteAppointment(id: string, firmId: string, updatedBy?: string): Promise<void> {
+    await this.db
+      .update(schema.appointments)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), ...(updatedBy ? { updatedBy } : {}) })
+      .where(and(eq(schema.appointments.id, id), eq(schema.appointments.firmId, firmId), isNull(schema.appointments.deletedAt)));
+  }
+
+  public async checkAppointmentOverlap(
+    firmId: string,
+    userId: string,
+    startsAt: Date,
+    endsAt: Date,
+    excludeId?: string
+  ): Promise<boolean> {
+    const conditions = [
+      eq(schema.appointments.firmId, firmId),
+      isNull(schema.appointments.deletedAt),
+      ne(schema.appointments.status, 'cancelled'),
+      sql`${schema.appointments.startsAt} < ${endsAt.toISOString()}::timestamptz`,
+      sql`${schema.appointments.endsAt} > ${startsAt.toISOString()}::timestamptz`,
+    ];
+    if (excludeId) {
+      conditions.push(ne(schema.appointments.id, excludeId));
+    }
+
+    const overlapping = await this.db
+      .select({
+        id: schema.appointments.id,
+        organiserUserId: schema.appointments.organiserUserId,
+      })
+      .from(schema.appointments)
+      .where(and(...conditions));
+
+    for (const a of overlapping) {
+      if (a.organiserUserId === userId) return true;
+      const att = await this.db
+        .select()
+        .from(schema.appointmentAttendees)
+        .where(and(eq(schema.appointmentAttendees.appointmentId, a.id), eq(schema.appointmentAttendees.userId, userId)))
+        .limit(1);
+      if (att.length > 0) return true;
+    }
+    return false;
   }
 
   public async getFirmMetrics(

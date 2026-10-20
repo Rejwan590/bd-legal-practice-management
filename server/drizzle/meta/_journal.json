@@ -36,6 +36,13 @@
       "when": 1791220000000,
       "tag": "0004_team_hierarchy_and_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791230000000,
+      "tag": "0005_clients_cases_appointments",
+      "breakpoints": true
     }
   ]
 }

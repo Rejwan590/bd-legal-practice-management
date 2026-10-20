@@ -205,6 +205,41 @@ export class MockSearchRepository implements ISearchRepository {
       }
     }
 
+    // Appointments
+    if (!filter?.entity || filter.entity === 'all' || filter.entity === 'appointment') {
+      if (can('appointments.view', currentUser)) {
+        const appts = (store.appointments || []).filter(
+          (a) =>
+            a.firmId === firmId &&
+            a.deletedAt === null &&
+            (!a.caseId || visibleCaseIds.has(a.caseId))
+        );
+        for (const a of appts) {
+          const titleMatch = a.title.toLowerCase().includes(q);
+          const locationMatch = a.location ? a.location.toLowerCase().includes(q) : false;
+          const notesMatch = a.notes ? a.notes.toLowerCase().includes(q) : false;
+          const caseRec = a.caseId ? caseMap.get(a.caseId) : undefined;
+          const clientRec = a.clientId ? (store.clients || []).find((c) => c.id === a.clientId) : undefined;
+
+          if (titleMatch || locationMatch || notesMatch) {
+            results.push({
+              id: `search-appt-${a.id}`,
+              entity: 'appointment',
+              title: a.title,
+              subtitle: `${new Date(a.startsAt).toLocaleDateString()} • ${a.type.replace('_', ' ')}`,
+              badge: a.status.toUpperCase(),
+              details: a.location ? `Location: ${a.location}` : undefined,
+              clientName: clientRec?.name,
+              caseNumber: caseRec?.caseNumber,
+              status: a.status,
+              targetTab: 'appointments',
+              targetId: a.id,
+            });
+          }
+        }
+      }
+    }
+
     return results.slice(0, limit);
   }
 }

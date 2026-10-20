@@ -12,6 +12,7 @@ import { HearingsScreen } from './modules/hearings/HearingsScreen';
 import { TasksScreen } from './modules/tasks/TasksScreen';
 import { FilesScreen } from './modules/files/FilesScreen';
 import { CalendarScreen } from './modules/calendar/CalendarScreen';
+import { AppointmentsScreen } from './modules/appointments/AppointmentsScreen';
 import { DashboardScreen } from './modules/dashboard/DashboardScreen';
 import { BackupScreen } from './modules/backup/BackupScreen';
 import { GlobalSearchModal } from './modules/search/GlobalSearchModal';
@@ -48,6 +49,7 @@ function MainApp() {
       {currentTab === 'hearings' && <HearingsScreen />}
       {currentTab === 'tasks' && <TasksScreen />}
       {currentTab === 'files' && <FilesScreen />}
+      {currentTab === 'appointments' && <AppointmentsScreen />}
       {currentTab === 'calendar' && <CalendarScreen />}
       {currentTab === 'search' && (
         <GlobalSearchModal

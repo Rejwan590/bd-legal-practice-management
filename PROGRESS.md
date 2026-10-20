@@ -3,8 +3,11 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Case Dossier Hub, Client Profile Hub, and URL Navigation completed and verified. Team Hierarchy & Visibility for Firm Users, Reviewer Hardening (Batches 1-4), and Super Admin (Steps A, B, D) completed and verified.
-- [x] Fixed Vercel `npm install` ERESOLVE by removing unused `"esbuild": "^0.25.0"` devDependency pin from root `package.json` and regenerating `package-lock.json` (`npm ci` clean installs, `npm run lint`, `npm run build`, `npm run test:health` [87/87], `npm test --prefix server` [381 passed], and `npm run build --prefix admin-app` all verified).
+Clients, Cases, and Appointments modules completed and fully verified across server (REST API, PostgreSQL schema & migration 0005, memory DB) and frontend mock/data layers with 100% parity. Central visibility, permissions, subscription read-only enforcement, audit logging, firm isolation, and restricted confidentiality strictly preserved.
+- [x] Clients module: profile photos (file/camera canvas resize, EXIF strip, magic byte validation, 300KB limit, private caching), client notes (migrated, 5000 chars, editable date, pagination, audit), redesigned profile layout (large avatar, tap-to-call, tap-to-mail, stacked mobile), and central client visibility.
+- [x] Cases module: BD party structure (categories, dynamic roles, police station, sections of law, court suggestions, filing/disposal dates), case notes (dossier notes tab, pagination, audit), cases list table (pending filter, status counts, sort by case_date, formatted party title & latest note snippet).
+- [x] Appointments module: table appointments & appointment_attendees, permissions appointments.view & appointments.manage, non-blocking overlap detection, reschedule audit logging, primary /appointments screen (filters, range tabs, search), schedule/reschedule modal with attendee picker, Today's Appointments dashboard section with 1-click completion/reschedule, client profile appointments tab, and 100% bilingual i18n parity.
+- [x] All 381 server tests pass, frontend builds cleanly (`npm run build`), admin app builds cleanly (`npm run build --prefix admin-app`), and type checks pass cleanly (`npm run lint`).
 
 ## Case Dossier Hub, Client Profile Hub & URL Navigation (Frontend)
 - **Dependency-Light URL Router (`src/modules/foundation/NavigationContext.tsx` & `vercel.json`)**:

@@ -59,7 +59,15 @@ export class MockDashboardRepository implements IDashboardRepository {
       (f) => f.dueBackAt && new Date(f.dueBackAt).getTime() < nowMs
     ).length;
 
-    // 6. Reminders: active pending reminders
+    // 6. Appointments: today's appointments
+    const appointments = (store.appointments || []).filter((a) => {
+      if (a.firmId !== firmId || a.deletedAt !== null) return false;
+      if (a.caseId && !allowedCaseIds.has(a.caseId)) return false;
+      return true;
+    });
+    const todayAppointmentsCount = appointments.filter((a) => a.startsAt.slice(0, 10) === todayStr).length;
+
+    // 7. Reminders: active pending reminders
     let reminders = (store.reminders || []).filter(
       (r) => r.firmId === firmId && r.deletedAt === null && r.status !== 'dismissed'
     );
@@ -90,6 +98,7 @@ export class MockDashboardRepository implements IDashboardRepository {
       activeCasesCount,
       totalClientsCount,
       todayHearingsCount,
+      todayAppointmentsCount,
       pendingTasksCount,
       overdueTasksCount,
       checkedOutFilesCount,
@@ -141,8 +150,16 @@ export class MockDashboardRepository implements IDashboardRepository {
         new Date(f.dueBackAt).getTime() < nowMs
     );
 
+    // Today's appointments
+    const appointments = (store.appointments || []).filter((a) => {
+      if (a.firmId !== firmId || a.deletedAt !== null) return false;
+      if (a.caseId && !allowedCaseIds.has(a.caseId)) return false;
+      return a.startsAt.slice(0, 10) === todayStr;
+    });
+
     return {
       todayHearings,
+      todayAppointments: appointments,
       overdueTasks,
       overdueFiles,
     };

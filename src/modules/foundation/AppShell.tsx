@@ -129,6 +129,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, stage: 1 },
     { id: 'clients', label: t('nav.clients'), icon: Users, stage: 1 },
     { id: 'cases', label: t('nav.cases'), icon: Briefcase, stage: 1 },
+    { id: 'appointments', label: t('nav.appointments', 'Appointments'), icon: Clock, stage: 1, hide: !can('appointments.view') },
     { id: 'hearings', label: t('nav.hearings'), icon: Gavel, stage: 1 },
     { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare, stage: 1 },
     { id: 'files', label: t('nav.files'), icon: FolderArchive, stage: 1 },

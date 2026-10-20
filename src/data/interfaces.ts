@@ -5,8 +5,13 @@ import {
   CalendarEventRecord,
   CalendarEventType,
   CaseRecord,
+  CaseCategory,
+  CaseNoteRecord,
   CaseShareRecord,
   ClientRecord,
+  ClientNoteRecord,
+  ClientPhotoRecord,
+  AppointmentRecord,
   FileMovementRecord,
   FirmRecord,
   HearingDateHistoryRecord,
@@ -150,6 +155,13 @@ export interface IClientRepository {
   delete(context: SecurityContext, id: string): Promise<{ success: boolean; softDeleted: true }>;
   archive(context: SecurityContext, id: string): Promise<ClientRecord>;
   getLinkedOverview(context: SecurityContext, clientId: string): Promise<ClientLinkedOverview>;
+  getPhoto(context: SecurityContext, clientId: string): Promise<ClientPhotoRecord | null>;
+  savePhoto(context: SecurityContext, clientId: string, mime: string, bytes: string): Promise<ClientPhotoRecord>;
+  deletePhoto(context: SecurityContext, clientId: string): Promise<void>;
+  listNotes(context: SecurityContext, clientId: string, options?: { limit?: number; offset?: number }): Promise<{ notes: ClientNoteRecord[]; total: number }>;
+  createNote(context: SecurityContext, clientId: string, data: { noteDate: string; body: string }): Promise<ClientNoteRecord>;
+  updateNote(context: SecurityContext, clientId: string, noteId: string, data: { noteDate?: string; body?: string }): Promise<ClientNoteRecord>;
+  deleteNote(context: SecurityContext, clientId: string, noteId: string): Promise<{ success: boolean; softDeleted: true }>;
 }
 
 export interface ICaseRepository {
@@ -157,11 +169,13 @@ export interface ICaseRepository {
     context: SecurityContext,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'case_date' | 'created_at' | 'updated_at';
+      sortOrder?: 'asc' | 'desc';
     }
   ): Promise<CaseRecord[]>;
   getById(context: SecurityContext, id: string): Promise<CaseRecord | null>;
@@ -194,6 +208,64 @@ export interface ICaseRepository {
   listShares?(context: SecurityContext, caseId: string): Promise<CaseShareRecord[]>;
   shareCase?(context: SecurityContext, caseId: string, userId: string): Promise<CaseShareRecord>;
   unshareCase?(context: SecurityContext, caseId: string, shareIdOrUserId: string): Promise<void>;
+  listNotes(context: SecurityContext, caseId: string, options?: { limit?: number; offset?: number }): Promise<{ notes: CaseNoteRecord[]; total: number }>;
+  createNote(context: SecurityContext, caseId: string, data: { noteDate: string; body: string }): Promise<CaseNoteRecord>;
+  updateNote(context: SecurityContext, caseId: string, noteId: string, data: { noteDate?: string; body?: string }): Promise<CaseNoteRecord>;
+  deleteNote(context: SecurityContext, caseId: string, noteId: string): Promise<{ success: boolean; softDeleted: true }>;
+}
+
+export interface IAppointmentRepository {
+  list(
+    context: SecurityContext,
+    filter?: {
+      status?: AppointmentRecord['status'] | 'all';
+      type?: AppointmentRecord['type'] | 'all';
+      range?: 'upcoming' | 'past' | 'all';
+      fromDate?: string;
+      toDate?: string;
+      clientId?: string;
+      caseId?: string;
+      search?: string;
+    }
+  ): Promise<AppointmentRecord[]>;
+  getById(context: SecurityContext, id: string): Promise<AppointmentRecord | null>;
+  create(
+    context: SecurityContext,
+    data: {
+      title: string;
+      type: AppointmentRecord['type'];
+      startsAt: string;
+      endsAt: string;
+      mode?: AppointmentRecord['mode'];
+      status?: AppointmentRecord['status'];
+      location?: string | null;
+      clientId?: string | null;
+      caseId?: string | null;
+      notes?: string | null;
+      reminderMinutesBefore?: number;
+      attendees?: string[];
+    }
+  ): Promise<AppointmentRecord & { overlapWarning?: boolean }>;
+  update(
+    context: SecurityContext,
+    id: string,
+    data: Partial<{
+      title: string;
+      type: AppointmentRecord['type'];
+      startsAt: string;
+      endsAt: string;
+      mode: AppointmentRecord['mode'];
+      location: string | null;
+      clientId: string | null;
+      caseId: string | null;
+      status: AppointmentRecord['status'];
+      notes: string | null;
+      reminderMinutesBefore: number;
+      attendees: string[];
+      rescheduleReason?: string;
+    }>
+  ): Promise<AppointmentRecord & { overlapWarning?: boolean }>;
+  delete(context: SecurityContext, id: string): Promise<{ success: boolean; softDeleted: true }>;
 }
 
 export interface CaseHearingsOverview {

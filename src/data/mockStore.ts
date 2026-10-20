@@ -1,8 +1,13 @@
 import { ALL_PERMISSIONS, DEFAULT_STAFF_PERMISSIONS } from '../permissions';
 import {
+  AppointmentRecord,
+  AppointmentAttendeeRecord,
   AuditLogRecord,
+  CaseNoteRecord,
   CaseRecord,
   CaseShareRecord,
+  ClientNoteRecord,
+  ClientPhotoRecord,
   ClientRecord,
   FileMovementRecord,
   FirmRecord,
@@ -96,7 +101,11 @@ export const INITIAL_CASES: CaseRecord[] = [
     description: 'Partition suit regarding inherited ancestral commercial property at Motijheel C/A.',
     plaintiff: 'Haji Mohammad Rafiqul Islam & Others',
     defendant: 'Azizur Rahman & 4 Others',
+    partyARole: 'Plaintiff',
+    partyBRole: 'Defendant',
     ourRole: 'Plaintiff',
+    caseCategory: 'civil',
+    caseDate: '2023-03-15',
     plaintiffLawyer: 'Adv. Mahbubur Rahman',
     defendantLawyer: 'Adv. Shamsul Huda',
     status: 'ongoing',
@@ -119,7 +128,11 @@ export const INITIAL_CASES: CaseRecord[] = [
     description: 'Challenging judgment of District Judge regarding execution of decree.',
     plaintiff: 'Begum Rokeya Sultana',
     defendant: 'Land Reforms Board & Government of Bangladesh',
+    partyARole: 'Petitioner',
+    partyBRole: 'Respondent',
     ourRole: 'Petitioner',
+    caseCategory: 'civil',
+    caseDate: '2023-06-20',
     plaintiffLawyer: 'Adv. Mahbubur Rahman (Senior Advocate)',
     defendantLawyer: 'Deputy Attorney General (State)',
     status: 'ongoing',
@@ -142,7 +155,11 @@ export const INITIAL_CASES: CaseRecord[] = [
     description: 'High-value Letter of Credit encashment and cross-border commercial arbitration. Strictly confidential chamber matter.',
     plaintiff: 'Kabir Steel Mills Ltd.',
     defendant: 'Sonali Bank PLC & Standard Chartered Bank',
+    partyARole: 'Petitioner',
+    partyBRole: 'Respondent',
     ourRole: 'Petitioner',
+    caseCategory: 'civil',
+    caseDate: '2022-11-10',
     plaintiffLawyer: 'Adv. Mahbubur Rahman',
     defendantLawyer: 'Barrister Rafiq-ul Huq Associates',
     status: 'ongoing',
@@ -165,7 +182,11 @@ export const INITIAL_CASES: CaseRecord[] = [
     description: 'Application for temporary injunction against unauthorized construction work.',
     plaintiff: 'Haji Mohammad Rafiqul Islam',
     defendant: 'City Corporation & Developers',
+    partyARole: 'Applicant',
+    partyBRole: 'Opposite Party',
     ourRole: 'Applicant',
+    caseCategory: 'civil',
+    caseDate: '2024-02-10',
     plaintiffLawyer: 'Adv. Nusrat Jahan',
     defendantLawyer: 'Legal Counsel, DNCC',
     status: 'ongoing',
@@ -595,17 +616,157 @@ export const INITIAL_REMINDERS: ReminderRecord[] = [
   },
 ];
 
+export const INITIAL_CLIENT_PHOTOS: ClientPhotoRecord[] = [];
+
+export const INITIAL_CLIENT_NOTES: ClientNoteRecord[] = [
+  {
+    id: 'cnote-001',
+    firmId: DEFAULT_FIRM_ID,
+    clientId: 'client-001',
+    noteDate: '2024-01-10',
+    body: 'Longstanding family client. Title suit and land partition matters in Dhaka District Court.',
+    createdAt: '2024-01-10T10:00:00.000Z',
+    updatedAt: '2024-01-10T10:00:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+  {
+    id: 'cnote-002',
+    firmId: DEFAULT_FIRM_ID,
+    clientId: 'client-002',
+    noteDate: '2024-01-15',
+    body: 'Civil Revision before High Court Division concerning property decree execution.',
+    createdAt: '2024-01-15T11:30:00.000Z',
+    updatedAt: '2024-01-15T11:30:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+  {
+    id: 'cnote-003',
+    firmId: DEFAULT_FIRM_ID,
+    clientId: 'client-003',
+    noteDate: '2024-02-01',
+    body: 'Commercial recovery matter and Letter of Credit arbitration.',
+    createdAt: '2024-02-01T09:00:00.000Z',
+    updatedAt: '2024-02-01T09:00:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+];
+
+export const INITIAL_CASE_NOTES: CaseNoteRecord[] = [
+  {
+    id: 'casenote-001',
+    firmId: DEFAULT_FIRM_ID,
+    caseId: 'case-001',
+    noteDate: '2024-01-15',
+    body: 'Filed plaint and obtained summons for opposite parties.',
+    createdAt: '2024-01-15T10:00:00.000Z',
+    updatedAt: '2024-01-15T10:00:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+];
+
+export const INITIAL_APPOINTMENTS: AppointmentRecord[] = [
+  {
+    id: 'appt-001',
+    firmId: DEFAULT_FIRM_ID,
+    title: 'Consultation: Haji Mohammad Rafiqul Islam',
+    type: 'consultation',
+    startsAt: '2026-10-21T10:00:00.000Z',
+    endsAt: '2026-10-21T11:00:00.000Z',
+    mode: 'in_person',
+    location: 'Chamber Conference Room',
+    organiserUserId: 'user-owner-001',
+    clientId: 'client-001',
+    caseId: 'case-001',
+    status: 'scheduled',
+    notes: 'Discuss cross-examination strategy for DW-1',
+    reminderMinutesBefore: 30,
+    attendees: ['user-owner-001', 'user-staff-002'],
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+  {
+    id: 'appt-002',
+    firmId: DEFAULT_FIRM_ID,
+    title: 'Chamber Weekly Briefing',
+    type: 'internal_meeting',
+    startsAt: '2026-10-22T15:00:00.000Z',
+    endsAt: '2026-10-22T16:00:00.000Z',
+    mode: 'in_person',
+    location: 'Main Library',
+    organiserUserId: 'user-owner-001',
+    status: 'scheduled',
+    reminderMinutesBefore: 15,
+    attendees: ['user-owner-001', 'user-staff-002'],
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+    deletedAt: null,
+    createdBy: 'user-owner-001',
+    updatedBy: 'user-owner-001',
+  },
+];
+
+export const INITIAL_APPOINTMENT_ATTENDEES: AppointmentAttendeeRecord[] = [
+  {
+    id: 'att-001',
+    appointmentId: 'appt-001',
+    userId: 'user-owner-001',
+    firmId: DEFAULT_FIRM_ID,
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+  },
+  {
+    id: 'att-002',
+    appointmentId: 'appt-001',
+    userId: 'user-staff-002',
+    firmId: DEFAULT_FIRM_ID,
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+  },
+  {
+    id: 'att-003',
+    appointmentId: 'appt-002',
+    userId: 'user-owner-001',
+    firmId: DEFAULT_FIRM_ID,
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+  },
+  {
+    id: 'att-004',
+    appointmentId: 'appt-002',
+    userId: 'user-staff-002',
+    firmId: DEFAULT_FIRM_ID,
+    createdAt: '2024-02-15T10:00:00.000Z',
+    updatedAt: '2024-02-15T10:00:00.000Z',
+  },
+];
+
 export interface AppStoreData {
   firm: FirmRecord;
   users: UserRecord[];
   clients: ClientRecord[];
+  clientPhotos?: ClientPhotoRecord[];
+  clientNotes?: ClientNoteRecord[];
   cases: CaseRecord[];
+  caseNotes?: CaseNoteRecord[];
   caseShares: CaseShareRecord[];
   hearings: HearingRecord[];
   hearingDateHistory: HearingDateHistoryRecord[];
   tasks: TaskRecord[];
   physicalFiles: PhysicalFileRecord[];
   fileMovements: FileMovementRecord[];
+  appointments?: AppointmentRecord[];
+  appointmentAttendees?: AppointmentAttendeeRecord[];
   reminders: ReminderRecord[];
   auditLogs: AuditLogRecord[];
   customCollections: Record<string, unknown[]>;
@@ -676,6 +837,21 @@ class LocalStoreManager {
       if (!parsed.reminders || !Array.isArray(parsed.reminders)) {
         parsed.reminders = [...INITIAL_REMINDERS];
       }
+      if (!parsed.clientPhotos || !Array.isArray(parsed.clientPhotos)) {
+        parsed.clientPhotos = [...INITIAL_CLIENT_PHOTOS];
+      }
+      if (!parsed.clientNotes || !Array.isArray(parsed.clientNotes)) {
+        parsed.clientNotes = [...INITIAL_CLIENT_NOTES];
+      }
+      if (!parsed.caseNotes || !Array.isArray(parsed.caseNotes)) {
+        parsed.caseNotes = [...INITIAL_CASE_NOTES];
+      }
+      if (!parsed.appointments || !Array.isArray(parsed.appointments)) {
+        parsed.appointments = [...INITIAL_APPOINTMENTS];
+      }
+      if (!parsed.appointmentAttendees || !Array.isArray(parsed.appointmentAttendees)) {
+        parsed.appointmentAttendees = [...INITIAL_APPOINTMENT_ATTENDEES];
+      }
       this.saveState(parsed);
       return parsed;
     } catch (err) {
@@ -689,13 +865,18 @@ class LocalStoreManager {
       firm: { ...INITIAL_FIRM },
       users: [...INITIAL_USERS],
       clients: [...INITIAL_CLIENTS],
+      clientPhotos: [...INITIAL_CLIENT_PHOTOS],
+      clientNotes: [...INITIAL_CLIENT_NOTES],
       cases: [...INITIAL_CASES],
+      caseNotes: [...INITIAL_CASE_NOTES],
       caseShares: [],
       hearings: [...INITIAL_HEARINGS],
       hearingDateHistory: [...INITIAL_HEARING_DATE_HISTORY],
       tasks: [...INITIAL_TASKS],
       physicalFiles: [...INITIAL_PHYSICAL_FILES],
       fileMovements: [...INITIAL_FILE_MOVEMENTS],
+      appointments: [...INITIAL_APPOINTMENTS],
+      appointmentAttendees: [...INITIAL_APPOINTMENT_ATTENDEES],
       reminders: [...INITIAL_REMINDERS],
       auditLogs: [
         {

@@ -4,3 +4,4 @@ export * from './restFirm';
 export * from './restAudit';
 export * from './restClient';
 export * from './restCase';
+export * from './restAppointment';

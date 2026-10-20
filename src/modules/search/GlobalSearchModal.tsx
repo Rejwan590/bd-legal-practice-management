@@ -5,6 +5,7 @@ import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { SearchResultEntity, SearchResultItem } from '../../data/types';
 import { EntityLink } from '../../components/EntityLink';
+import { ClientAvatar } from '../../components/ClientAvatar';
 import {
   Search,
   X,
@@ -341,11 +342,15 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 >
                   <div className="flex items-start gap-3 min-w-0">
                     <div
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border mt-0.5 ${getEntityBg(
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border mt-0.5 overflow-hidden ${getEntityBg(
                         item.entity
                       )}`}
                     >
-                      {getEntityIcon(item.entity)}
+                      {item.entity === 'client' ? (
+                        <ClientAvatar name={item.clientName || item.title} size="sm" />
+                      ) : (
+                        getEntityIcon(item.entity)
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">

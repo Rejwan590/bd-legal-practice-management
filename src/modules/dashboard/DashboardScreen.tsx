@@ -9,6 +9,8 @@ import {
   DashboardUrgentItems,
   HearingRecord,
   CalendarEventRecord,
+  AppointmentRecord,
+  ClientRecord,
 } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { EntityLink } from '../../components/EntityLink';
@@ -17,6 +19,7 @@ import { CaseFormModal } from '../cases/CaseFormModal';
 import { ClientFormModal } from '../clients/ClientFormModal';
 import { TaskFormModal } from '../tasks/TaskFormModal';
 import { DailyCauseListModal } from '../calendar/DailyCauseListModal';
+import { AppointmentFormModal } from '../appointments/AppointmentFormModal';
 import {
   Briefcase,
   Users,
@@ -81,6 +84,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
     hearings: CalendarEventRecord[];
     firmName: string;
   } | null>(null);
+  const [todayAppointments, setTodayAppointments] = useState<AppointmentRecord[]>([]);
+  const [clientsMap, setClientsMap] = useState<Record<string, ClientRecord>>({});
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentRecord | null>(null);
   const [, setLoading] = useState(true);
 
   // Modals state
@@ -97,7 +104,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
       setLoading(true);
       const todayIso = new Date().toISOString();
 
-      const [m, u, up, act, cause] = await Promise.all([
+      const [m, u, up, act, cause, cls] = await Promise.all([
         repos.dashboard.getMetrics(securityContext),
         repos.dashboard.getUrgentItems(securityContext),
         repos.dashboard.getUpcomingHearings(securityContext, 7),
@@ -105,6 +112,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
           ? repos.auditLog.list(securityContext, { limit: 6 }).catch(() => [])
           : Promise.resolve([]),
         repos.calendar.getDayCauseList(securityContext, todayIso),
+        repos.client.list(securityContext).catch(() => []),
       ]);
 
       setMetrics(m);
@@ -112,6 +120,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
       setUpcomingHearings(up);
       setRecentActivities(act);
       setTodayCauseList(cause);
+      setTodayAppointments(u?.todayAppointments || []);
+
+      const cmap: Record<string, ClientRecord> = {};
+      cls.forEach((c: ClientRecord) => {
+        cmap[c.id] = c;
+      });
+      setClientsMap(cmap);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -156,6 +171,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
   const handleCompleteTask = async (taskId: string) => {
     if (isReadOnly) return;
     await repos.task.complete(securityContext, taskId, 'Completed via Chamber Dashboard');
+    triggerRefresh();
+  };
+
+  const handleCompleteAppointment = async (appointmentId: string) => {
+    if (isReadOnly || !can('appointments.manage')) return;
+    await repos.appointment.update(securityContext, appointmentId, { status: 'completed' });
     triggerRefresh();
   };
 
@@ -655,6 +676,160 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
             </div>
           </div>
 
+          {/* Section A2: Today's Appointments */}
+          {can('appointments.view') && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {t('appointments.todayTitle', "Today's Appointments")}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {todayAppointments.length} consultation(s) & meeting(s) scheduled for today
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {can('appointments.manage') && !isReadOnly && (
+                    <button
+                      onClick={() => {
+                        setSelectedAppointment(null);
+                        setAppointmentModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-md hover:bg-slate-100 transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{t('appointments.scheduleShort', 'New')}</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onNavigate('appointments')}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                  >
+                    <span>{t('dashboard.todayDocket.viewAll')}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 sm:p-4">
+                {todayAppointments.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500">
+                    <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2 opacity-80" />
+                    <p className="text-sm font-semibold text-slate-700">
+                      {t('appointments.noAppointmentsToday', 'No appointments scheduled for today.')}
+                    </p>
+                    {can('appointments.manage') && !isReadOnly && (
+                      <button
+                        onClick={() => {
+                          setSelectedAppointment(null);
+                          setAppointmentModalOpen(true);
+                        }}
+                        className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{t('appointments.scheduleAppointment', 'Schedule Appointment')}</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {todayAppointments.map((appt) => {
+                      const start = new Date(appt.startsAt);
+                      const end = new Date(appt.endsAt);
+                      const client = appt.clientId ? clientsMap[appt.clientId] : null;
+
+                      return (
+                        <div
+                          key={appt.id}
+                          data-testid={`today-appointment-row-${appt.id}`}
+                          className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-100/60 transition"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-sm text-slate-900">{appt.title}</span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                  appt.status === 'scheduled'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : appt.status === 'completed'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {appt.status}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 capitalize">
+                                {appt.type.replace('_', ' ')}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                              <span className="inline-flex items-center gap-1 font-semibold text-indigo-900">
+                                <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>
+                                  {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
+                                  {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </span>
+                              {client && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Users className="w-3 h-3 text-slate-400" />
+                                  <span className="font-medium text-slate-700">{client.name}</span>
+                                </span>
+                              )}
+                              {appt.location && (
+                                <span className="inline-flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  <span>{appt.location}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {can('appointments.manage') && !isReadOnly && (
+                              <>
+                                {appt.status === 'scheduled' && (
+                                  <button
+                                    type="button"
+                                    title="Mark Completed"
+                                    onClick={() => handleCompleteAppointment(appt.id)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 shadow-2xs transition"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Done</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  title="Reschedule / Edit"
+                                  onClick={() => {
+                                    setSelectedAppointment(appt);
+                                    setAppointmentModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  <span className="hidden sm:inline">Reschedule</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Section B: Urgent & Overdue Attention Matters */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -1053,6 +1228,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
           firmName={todayCauseList.firmName}
           hearings={todayCauseList.hearings}
           onClose={() => setCauseListModalOpen(false)}
+        />
+      )}
+
+      {appointmentModalOpen && (
+        <AppointmentFormModal
+          isOpen={appointmentModalOpen}
+          initialData={selectedAppointment}
+          onClose={() => {
+            setAppointmentModalOpen(false);
+            setSelectedAppointment(null);
+          }}
+          onSaved={() => {
+            triggerRefresh();
+          }}
         />
       )}
     </div>

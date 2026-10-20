@@ -1,5 +1,6 @@
 import {
   IAuditLogRepository,
+  IAppointmentRepository,
   IBackupRepository,
   ICalendarRepository,
   ICaseRepository,
@@ -13,6 +14,7 @@ import {
   ITaskRepository,
   IUserRepository,
 } from '../interfaces';
+import { MockAppointmentRepository } from './appointment';
 import { MockAuditLogRepository } from './audit';
 import { MockBackupRepository } from './backup';
 import { MockCalendarRepository } from './calendar';
@@ -33,12 +35,14 @@ import {
   RestUserRepository,
   RestClientRepository,
   RestCaseRepository,
+  RestAppointmentRepository,
 } from './rest';
 
 // Export all individual classes, helpers, and types
 export {
   assertNotReadOnly,
   generateUUID,
+  MockAppointmentRepository,
   MockAuditLogRepository,
   MockBackupRepository,
   MockCalendarRepository,
@@ -58,6 +62,7 @@ export {
   RestUserRepository,
   RestClientRepository,
   RestCaseRepository,
+  RestAppointmentRepository,
 };
 
 // Single registry of repositories
@@ -67,6 +72,7 @@ export interface Repositories {
   firm: IFirmRepository;
   client: IClientRepository;
   case: ICaseRepository;
+  appointment: IAppointmentRepository;
   hearing: IHearingRepository;
   task: ITaskRepository;
   physicalFile: IPhysicalFileRepository;
@@ -101,6 +107,11 @@ const clientRepo: IClientRepository = isRestMode
 const caseRepo: ICaseRepository = isRestMode
   ? new RestCaseRepository()
   : new MockCaseRepository(mockAuditLogRepo);
+
+const appointmentRepo: IAppointmentRepository = isRestMode
+  ? new RestAppointmentRepository()
+  : new MockAppointmentRepository(mockAuditLogRepo);
+
 const reminderRepo = new MockReminderRepository(mockAuditLogRepo);
 const hearingRepo = new MockHearingRepository(mockAuditLogRepo, reminderRepo);
 const taskRepo = new MockTaskRepository(mockAuditLogRepo, reminderRepo);
@@ -116,6 +127,7 @@ export const repositories: Repositories = {
   firm: firmRepo,
   client: clientRepo,
   case: caseRepo,
+  appointment: appointmentRepo,
   hearing: hearingRepo,
   task: taskRepo,
   physicalFile: physicalFileRepo,

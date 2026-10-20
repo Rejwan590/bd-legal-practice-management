@@ -26,6 +26,7 @@ export type NavTab =
   | 'dashboard'
   | 'cases'
   | 'clients'
+  | 'appointments'
   | 'calendar'
   | 'tasks'
   | 'files'
@@ -37,8 +38,8 @@ export type NavTab =
   | 'health';
 
 export type ScreenId = NavTab;
-export type CaseDossierTab = 'overview' | 'hearings' | 'tasks' | 'files' | 'activity';
-export type ClientProfileTab = 'cases' | 'tasks' | 'files';
+export type CaseDossierTab = 'overview' | 'hearings' | 'notes' | 'appointments' | 'tasks' | 'files' | 'activity';
+export type ClientProfileTab = 'cases' | 'appointments' | 'tasks' | 'files';
 
 export interface RouteState {
   screen: NavTab;
@@ -48,8 +49,8 @@ export interface RouteState {
   clientTab: ClientProfileTab;
 }
 
-const VALID_CASE_TABS: CaseDossierTab[] = ['overview', 'hearings', 'tasks', 'files', 'activity'];
-const VALID_CLIENT_TABS: ClientProfileTab[] = ['cases', 'tasks', 'files'];
+const VALID_CASE_TABS: CaseDossierTab[] = ['overview', 'hearings', 'notes', 'appointments', 'tasks', 'files', 'activity'];
+const VALID_CLIENT_TABS: ClientProfileTab[] = ['cases', 'appointments', 'tasks', 'files'];
 
 export function parseUrlRoute(pathname: string, hash: string = ''): RouteState {
   const cleanHash = hash.replace(/^#\/?/, '').trim();
@@ -97,6 +98,7 @@ export function parseUrlRoute(pathname: string, hash: string = ''): RouteState {
     };
   }
 
+  if (root === 'appointments') return { ...defaultState, screen: 'appointments' };
   if (root === 'calendar') return { ...defaultState, screen: 'calendar' };
   if (root === 'tasks') return { ...defaultState, screen: 'tasks' };
   if (root === 'files') return { ...defaultState, screen: 'files' };
@@ -129,6 +131,8 @@ export function buildUrlFromRoute(route: RouteState): string {
         return `/clients/${encodeURIComponent(route.clientId)}`;
       }
       return '/clients';
+    case 'appointments':
+      return '/appointments';
     case 'calendar':
       return '/calendar';
     case 'tasks':
@@ -219,7 +223,7 @@ interface NavigationContextValue {
   openFileCheckIn: (file: PhysicalFileRecord) => void;
   openFileHistory: (file: PhysicalFileRecord) => void;
   openEntityModalById: (
-    entity: 'hearing' | 'task' | 'file' | 'case' | 'client',
+    entity: 'hearing' | 'task' | 'file' | 'case' | 'client' | 'appointment',
     id: string
   ) => Promise<void>;
 }
@@ -569,9 +573,13 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const openEntityModalById = useCallback(
-    async (entity: 'hearing' | 'task' | 'file' | 'case' | 'client', id: string) => {
+    async (entity: 'hearing' | 'task' | 'file' | 'case' | 'client' | 'appointment', id: string) => {
       if (!currentUser) return;
       try {
+        if (entity === 'appointment') {
+          navigateToScreen('appointments');
+          return;
+        }
         if (entity === 'case') {
           const c = await repos.case.getById({ currentUser }, id);
           if (c) openCaseDossier(c.id, 'overview');

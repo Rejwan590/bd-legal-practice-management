@@ -99,6 +99,35 @@ export const clients = pgTable('clients', {
   index('idx_clients_phone').on(table.phone),
 ]);
 
+// Client Photos Table (Primary key is client_id - one photo per client)
+export const clientPhotos = pgTable('client_photos', {
+  clientId: text('client_id').primaryKey().references(() => clients.id, { onDelete: 'cascade' }),
+  firmId: text('firm_id').references(() => firms.id, { onDelete: 'cascade' }).notNull(),
+  mime: text('mime').notNull(),
+  bytes: text('bytes').notNull(), // Base64 encoded string
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_client_photos_firm_id').on(table.firmId),
+]);
+
+// Client Notes Table
+export const clientNotes = pgTable('client_notes', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  clientId: text('client_id').references(() => clients.id).notNull(),
+  noteDate: text('note_date').notNull(), // YYYY-MM-DD
+  body: text('body').notNull(),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('idx_client_notes_firm_id').on(table.firmId),
+  index('idx_client_notes_client_id').on(table.clientId),
+  index('idx_client_notes_note_date').on(table.noteDate),
+]);
+
 // Cases Table (for linking & orphan case checks)
 export const cases = pgTable('cases', {
   id: text('id').primaryKey(),
@@ -115,7 +144,14 @@ export const cases = pgTable('cases', {
   plaintiffLawyer: text('plaintiff_lawyer'),
   defendantLawyer: text('defendant_lawyer'),
   responsibleLawyerId: text('responsible_lawyer_id'),
-  status: text('status').$type<'ongoing' | 'closed'>().default('ongoing').notNull(),
+  status: text('status').$type<'ongoing' | 'pending' | 'closed'>().default('ongoing').notNull(),
+  caseDate: timestamp('case_date', { withTimezone: true }),
+  closedOn: timestamp('closed_on', { withTimezone: true }),
+  caseCategory: text('case_category').$type<'civil' | 'criminal_gr' | 'criminal_cr' | 'other'>().default('civil').notNull(),
+  partyARole: text('party_a_role'),
+  partyBRole: text('party_b_role'),
+  policeStation: text('police_station'),
+  sectionsOfLaw: text('sections_of_law'),
   restricted: boolean('restricted').default(false).notNull(),
   nextHearingAt: timestamp('next_hearing_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -131,7 +167,27 @@ export const cases = pgTable('cases', {
   index('idx_cases_status').on(table.status),
   index('idx_cases_file_serial').on(table.fileSerial),
   index('idx_cases_resp_lawyer').on(table.responsibleLawyerId),
+  index('idx_cases_case_date').on(table.caseDate),
+  index('idx_cases_category').on(table.caseCategory),
   uniqueIndex('uidx_cases_firm_file_serial').on(table.firmId, table.fileSerial),
+]);
+
+// Case Notes Table
+export const caseNotes = pgTable('case_notes', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  caseId: text('case_id').references(() => cases.id).notNull(),
+  noteDate: text('note_date').notNull(), // YYYY-MM-DD
+  body: text('body').notNull(),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('idx_case_notes_firm_id').on(table.firmId),
+  index('idx_case_notes_case_id').on(table.caseId),
+  index('idx_case_notes_note_date').on(table.noteDate),
 ]);
 
 // Hearings Table
@@ -292,17 +348,69 @@ export const devices = pgTable('devices', {
   index('idx_devices_status').on(table.status),
 ]);
 
+// Appointments Table (Appointments Module)
+export const appointments = pgTable('appointments', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  title: text('title').notNull(),
+  type: text('type').$type<'client_meeting' | 'consultation' | 'phone_call' | 'internal_meeting' | 'court_visit' | 'other'>().notNull(),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  mode: text('mode').$type<'in_person' | 'phone' | 'video'>().default('in_person').notNull(),
+  location: text('location'),
+  organiserUserId: text('organiser_user_id').references(() => users.id).notNull(),
+  clientId: text('client_id').references(() => clients.id),
+  caseId: text('case_id').references(() => cases.id),
+  status: text('status').$type<'scheduled' | 'completed' | 'cancelled' | 'no_show'>().default('scheduled').notNull(),
+  notes: text('notes'),
+  reminderMinutesBefore: integer('reminder_minutes_before').default(30).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_appointments_firm_id').on(table.firmId),
+  index('idx_appointments_starts_at').on(table.startsAt),
+  index('idx_appointments_organiser').on(table.organiserUserId),
+  index('idx_appointments_client_id').on(table.clientId),
+  index('idx_appointments_case_id').on(table.caseId),
+]);
+
+// Appointment Attendees Table
+export const appointmentAttendees = pgTable('appointment_attendees', {
+  id: text('id').primaryKey(),
+  appointmentId: text('appointment_id').references(() => appointments.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  firmId: text('firm_id').references(() => firms.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_appointment_attendees_appointment_id').on(table.appointmentId),
+  index('idx_appointment_attendees_user_id').on(table.userId),
+]);
+
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
 export type NewFirm = typeof firms.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
+export type ClientPhoto = typeof clientPhotos.$inferSelect;
+export type NewClientPhoto = typeof clientPhotos.$inferInsert;
+export type ClientNote = typeof clientNotes.$inferSelect;
+export type NewClientNote = typeof clientNotes.$inferInsert;
 export type Case = typeof cases.$inferSelect;
+export type CaseNote = typeof caseNotes.$inferSelect;
+export type NewCaseNote = typeof caseNotes.$inferInsert;
 export type Hearing = typeof hearings.$inferSelect;
 export type NewHearing = typeof hearings.$inferInsert;
 export type CaseShare = typeof caseShares.$inferSelect;
 export type NewCaseShare = typeof caseShares.$inferInsert;
+export type Appointment = typeof appointments.$inferSelect;
+export type NewAppointment = typeof appointments.$inferInsert;
+export type AppointmentAttendee = typeof appointmentAttendees.$inferSelect;
+export type NewAppointmentAttendee = typeof appointmentAttendees.$inferInsert;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;

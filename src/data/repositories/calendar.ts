@@ -130,6 +130,37 @@ export class MockCalendarRepository implements ICalendarRepository {
       });
     }
 
+    // 4. Appointments
+    if (!range?.type || range.type === 'all' || range.type === 'appointment') {
+      const appts = (store.appointments || []).filter(
+        (a) => a.firmId === currentUser.firmId && a.deletedAt === null
+      );
+
+      appts.forEach((a) => {
+        if (a.caseId && !visibleCaseIds.has(a.caseId)) {
+          return;
+        }
+
+        const caseRec = a.caseId ? (store.cases || []).find((c) => c.id === a.caseId) : null;
+        const clientRec = a.clientId ? (store.clients || []).find((cl) => cl.id === a.clientId) : null;
+
+        events.push({
+          id: `cal-appt-${a.id}`,
+          title: a.title,
+          date: a.startsAt,
+          type: 'appointment',
+          sourceId: a.id,
+          caseId: a.caseId,
+          caseNumber: caseRec?.caseNumber,
+          clientId: a.clientId,
+          clientName: clientRec?.name,
+          assigneeId: a.organiserUserId,
+          status: a.status,
+          restricted: caseRec?.restricted,
+        });
+      });
+    }
+
     // Filter by date range if provided
     let filtered = events;
     if (range?.startIso) {

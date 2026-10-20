@@ -11,6 +11,8 @@ export type PermissionKey =
   | 'hearings.update'
   | 'clients.view'
   | 'clients.edit'
+  | 'appointments.view'
+  | 'appointments.manage'
   | 'tasks.view'
   | 'tasks.assign'
   | 'tasks.complete'
@@ -46,6 +48,8 @@ export const ALL_PERMISSIONS: PermissionKey[] = [
   'hearings.update',
   'clients.view',
   'clients.edit',
+  'appointments.view',
+  'appointments.manage',
   'tasks.view',
   'tasks.assign',
   'tasks.complete',
