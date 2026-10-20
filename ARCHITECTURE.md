@@ -15,6 +15,7 @@ The original idea file described local-only, offline-first storage. After discus
 - Cryptography: Web Crypto API (SubtleCrypto) for SHA-256 checksums, PBKDF2 key derivation (600,000 iterations default with header iteration tracking; 100,000 legacy fallback), and AES-GCM 256-bit encryption.
 - Backend: Node.js + TypeScript, REST under /api/v1, PostgreSQL, Drizzle or Prisma migrations.
 - Hosting: one DigitalOcean Droplet (Singapore) running Docker Compose (api, postgres) behind Caddy. Cloudflare in front for DNS/CDN/protection. Off-site nightly dump to Backblaze B2 or Cloudflare R2.
+- Uploads policy: No document uploads, except small client profile photos (browser-resized via canvas to at most 400px on the longest side, re-encoded as JPEG/WebP to strip EXIF, max 300 KB, authenticated access with private caching).
 
 ## Rules for all code
 1. Every record/table has: id (uuid), firm_id, created_at, updated_at, deleted_at (soft delete only, never hard delete), created_by, updated_by.
@@ -48,9 +49,14 @@ The original idea file described local-only, offline-first storage. After discus
 - plans(id, name, duration_months, price_bdt, seats, features jsonb)
 - payments(id, firm_id, amount, method, txn_id, paid_at, verified_by)
 - users(id, firm_id, name, email, password_hash, role, job_type, job_title_label, reports_to_user_id, permissions jsonb, language, active, must_change_password)
-- clients(id, firm_id, name, phone, address, notes)
-- cases(id, firm_id, client_id, responsible_lawyer_id, file_serial, case_number, court, matter_type, description, plaintiff, defendant, our_role, plaintiff_lawyer, defendant_lawyer, status, restricted, next_hearing_at)
+- clients(id, firm_id, name, name_bn, phone, email, address, notes)
+- client_photos(client_id, firm_id, mime, bytes, updated_at)
+- client_notes(id, firm_id, client_id, note_date, body, created_by, updated_by, created_at, updated_at, deleted_at)
+- cases(id, firm_id, client_id, responsible_lawyer_id, file_serial, case_number, court, matter_type, description, case_category, case_date, closed_on, party_a_role, party_b_role, plaintiff, defendant, our_role, plaintiff_lawyer, defendant_lawyer, police_station, sections_of_law, status, restricted, next_hearing_at)
 - case_shares(id, firm_id, case_id, user_id, created_by, created_at, deleted_at)
+- case_notes(id, firm_id, case_id, note_date, body, created_by, updated_by, created_at, updated_at, deleted_at)
+- appointments(id, firm_id, client_id, case_id, title, type, mode, status, starts_at, ends_at, location, notes, reminder_minutes_before, created_by, updated_by, created_at, updated_at, deleted_at)
+- appointment_attendees(id, firm_id, appointment_id, user_id, created_at)
 - hearings(id, firm_id, case_id, appearing_lawyer_id, scheduled_at, status, outcome_note)
 - hearing_date_history(id, hearing_id, old_at, new_at, reason, changed_by, changed_at)
 - tasks(id, firm_id, case_id, client_id, assigned_to, title, priority, due_at, status)
@@ -65,7 +71,7 @@ The original idea file described local-only, offline-first storage. After discus
 - devices(id, firm_id, user_id, device_key_hash, name, user_agent, status, first_seen_at, last_seen_at, approved_by_admin_id) [Web-app level browser authorization]
 
 ## Permission keys
-cases.view, cases.create, cases.edit, cases.delete, hearings.update, clients.view, clients.edit, tasks.view, tasks.assign, tasks.complete, files.view, files.manage, billing.view, settings.manage, users.manage, restricted.view, data.export.
+cases.view, cases.create, cases.edit, cases.delete, hearings.update, clients.view, clients.edit, appointments.view, appointments.manage, tasks.view, tasks.assign, tasks.complete, files.view, files.manage, billing.view, settings.manage, users.manage, restricted.view, data.export.
 Roles: Owner (all permissions). Staff (configurable subset).
 
 ## Module connection map

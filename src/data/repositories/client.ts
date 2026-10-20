@@ -1,7 +1,8 @@
 import { can } from '../../permissions';
+import { canUserSeeClient, filterVisibleClients } from '../clientVisibility';
 import { IAuditLogRepository, IClientRepository, ClientLinkedOverview } from '../interfaces';
 import { localStore } from '../mockStore';
-import { ClientRecord, SecurityContext } from '../types';
+import { ClientNoteRecord, ClientPhotoRecord, ClientRecord, SecurityContext } from '../types';
 import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
@@ -19,10 +20,18 @@ export class MockClientRepository implements IClientRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
 
-    // Firm isolation & soft delete filter
-    let results = (store.clients || []).filter(
-      (c) => c.firmId === currentUser.firmId && c.deletedAt === null
+    // Apply visibility rules & firm isolation & soft delete
+    let results = filterVisibleClients(
+      currentUser,
+      store.clients || [],
+      firm,
+      store.users || [],
+      store.cases || []
     );
 
     if (filter?.search && filter.search.trim()) {
@@ -50,7 +59,18 @@ export class MockClientRepository implements IClientRepository {
     const found = (store.clients || []).find(
       (c) => c.id === id && c.firmId === currentUser.firmId && c.deletedAt === null
     );
-    return found || null;
+    if (!found) return null;
+
+    const firm =
+      store.firm.id === currentUser.firmId
+        ? store.firm
+        : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
+
+    if (!canUserSeeClient(currentUser, found, firm, store.users || [], store.cases || [])) {
+      return null;
+    }
+
+    return found;
   }
 
   async create(
@@ -357,5 +377,281 @@ export class MockClientRepository implements IClientRepository {
       tasks: mappedTasks,
       files: mappedFiles,
     };
+  }
+
+  async getPhoto(context: SecurityContext, clientId: string): Promise<ClientPhotoRecord | null> {
+    const client = await this.getById(context, clientId);
+    if (!client) return null;
+    const store = localStore.getData();
+    const photo = (store.clientPhotos || []).find(
+      (p) => p.clientId === clientId && p.firmId === context.currentUser.firmId
+    );
+    return photo || null;
+  }
+
+  async savePhoto(
+    context: SecurityContext,
+    clientId: string,
+    mime: string,
+    bytes: string
+  ): Promise<ClientPhotoRecord> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to update photo');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    const validMimes = ['image/jpeg', 'image/webp', 'image/png'];
+    if (!validMimes.includes(mime)) {
+      throw new Error(`Invalid photo format: ${mime}. Allowed formats: JPEG, WebP, PNG.`);
+    }
+
+    if (bytes.length > 300 * 1024) {
+      throw new Error('Photo exceeds maximum allowed size of 300 KB');
+    }
+
+    const now = new Date().toISOString();
+    const photoRecord: ClientPhotoRecord = {
+      clientId,
+      firmId: context.currentUser.firmId,
+      mime,
+      bytes,
+      dataUrl: bytes.startsWith('data:') ? bytes : `data:${mime};base64,${bytes}`,
+      updatedAt: now,
+    };
+
+    localStore.mutate((store) => {
+      if (!store.clientPhotos) store.clientPhotos = [];
+      const idx = store.clientPhotos.findIndex(
+        (p) => p.clientId === clientId && p.firmId === context.currentUser.firmId
+      );
+      if (idx !== -1) {
+        store.clientPhotos[idx] = photoRecord;
+      } else {
+        store.clientPhotos.push(photoRecord);
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'ClientPhoto',
+      entityId: clientId,
+      action: 'UPDATE',
+      oldValue: null,
+      newValue: { clientId, mime, size: bytes.length },
+    });
+
+    return photoRecord;
+  }
+
+  async deletePhoto(context: SecurityContext, clientId: string): Promise<void> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to delete photo');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    localStore.mutate((store) => {
+      if (store.clientPhotos) {
+        store.clientPhotos = store.clientPhotos.filter(
+          (p) => !(p.clientId === clientId && p.firmId === context.currentUser.firmId)
+        );
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'ClientPhoto',
+      entityId: clientId,
+      action: 'DELETE',
+      oldValue: null,
+      newValue: { clientId, deleted: true },
+    });
+  }
+
+  async listNotes(
+    context: SecurityContext,
+    clientId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<{ notes: ClientNoteRecord[]; total: number }> {
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    const store = localStore.getData();
+    const allNotes = (store.clientNotes || [])
+      .filter(
+        (n) =>
+          n.clientId === clientId &&
+          n.firmId === context.currentUser.firmId &&
+          n.deletedAt === null
+      )
+      .sort((a, b) => {
+        const dComp = new Date(b.noteDate).getTime() - new Date(a.noteDate).getTime();
+        if (dComp !== 0) return dComp;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+    const paged = allNotes.slice(offset, offset + limit);
+
+    return { notes: paged, total: allNotes.length };
+  }
+
+  async createNote(
+    context: SecurityContext,
+    clientId: string,
+    data: { noteDate: string; body: string }
+  ): Promise<ClientNoteRecord> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to create note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    if (!data.body || data.body.trim().length === 0) {
+      throw new Error('Note body is required');
+    }
+    if (data.body.length > 5000) {
+      throw new Error('Note body cannot exceed 5000 characters');
+    }
+
+    const now = new Date().toISOString();
+    const newNote: ClientNoteRecord = {
+      id: generateUUID(),
+      firmId: context.currentUser.firmId,
+      clientId,
+      noteDate: data.noteDate || now.slice(0, 10),
+      body: data.body.trim(),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdBy: context.currentUser.id,
+      updatedBy: context.currentUser.id,
+    };
+
+    localStore.mutate((store) => {
+      if (!store.clientNotes) store.clientNotes = [];
+      store.clientNotes.unshift(newNote);
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'ClientNote',
+      entityId: newNote.id,
+      action: 'CREATE',
+      oldValue: null,
+      newValue: { clientId, noteDate: newNote.noteDate, bodyLength: newNote.body.length },
+    });
+
+    return newNote;
+  }
+
+  async updateNote(
+    context: SecurityContext,
+    clientId: string,
+    noteId: string,
+    data: { noteDate?: string; body?: string }
+  ): Promise<ClientNoteRecord> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to update note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    if (data.body !== undefined && data.body.length > 5000) {
+      throw new Error('Note body cannot exceed 5000 characters');
+    }
+
+    const store = localStore.getData();
+    const existing = (store.clientNotes || []).find(
+      (n) =>
+        n.id === noteId &&
+        n.clientId === clientId &&
+        n.firmId === context.currentUser.firmId &&
+        n.deletedAt === null
+    );
+    if (!existing) throw new Error('Note not found');
+
+    const oldSnapshot = { ...existing };
+    const now = new Date().toISOString();
+    let updated: ClientNoteRecord | null = null;
+
+    localStore.mutate((s) => {
+      const idx = (s.clientNotes || []).findIndex((n) => n.id === noteId);
+      if (idx !== -1) {
+        s.clientNotes![idx] = {
+          ...s.clientNotes![idx],
+          noteDate: data.noteDate ?? s.clientNotes![idx].noteDate,
+          body: data.body !== undefined ? data.body.trim() : s.clientNotes![idx].body,
+          updatedAt: now,
+          updatedBy: context.currentUser.id,
+        };
+        updated = { ...s.clientNotes![idx] };
+      }
+    });
+
+    if (!updated) throw new Error('Failed to update note');
+
+    await this.auditRepo.record(context, {
+      entity: 'ClientNote',
+      entityId: noteId,
+      action: 'UPDATE',
+      oldValue: oldSnapshot as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
+    });
+
+    return updated;
+  }
+
+  async deleteNote(
+    context: SecurityContext,
+    clientId: string,
+    noteId: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to delete note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const client = await this.getById(context, clientId);
+    if (!client) throw new Error('Client not found');
+
+    const store = localStore.getData();
+    const existing = (store.clientNotes || []).find(
+      (n) =>
+        n.id === noteId &&
+        n.clientId === clientId &&
+        n.firmId === context.currentUser.firmId &&
+        n.deletedAt === null
+    );
+    if (!existing) throw new Error('Note not found');
+
+    const oldSnapshot = { ...existing };
+    const now = new Date().toISOString();
+
+    localStore.mutate((s) => {
+      const target = (s.clientNotes || []).find((n) => n.id === noteId);
+      if (target) {
+        target.deletedAt = now;
+        target.updatedAt = now;
+        target.updatedBy = context.currentUser.id;
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'ClientNote',
+      entityId: noteId,
+      action: 'DELETE',
+      oldValue: oldSnapshot as unknown as Record<string, unknown>,
+      newValue: { deletedAt: now, softDeleted: true },
+    });
+
+    return { success: true, softDeleted: true };
   }
 }

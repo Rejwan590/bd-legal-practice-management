@@ -6,6 +6,7 @@ import { getRepositories } from '../../data/repositories';
 import { ClientRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { EntityLink } from '../../components/EntityLink';
+import { ClientAvatar } from '../../components/ClientAvatar';
 import { ClientFormModal } from './ClientFormModal';
 import { ClientProfileView } from './ClientProfileView';
 import {
@@ -241,9 +242,13 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               header: 'Client',
               accessor: (client) => (
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0 border border-slate-200">
-                    {client.name.slice(0, 2).toUpperCase()}
-                  </div>
+                  <ClientAvatar
+                    clientId={client.id}
+                    name={client.name}
+                    nameBn={client.nameBn}
+                    size="md"
+                    context={{ currentUser }}
+                  />
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <EntityLink
