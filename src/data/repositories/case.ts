@@ -1,9 +1,10 @@
 import { can } from '../../permissions';
 import { isLawyerOrOwner } from '../../rolePresets';
+import { validateCaseRoles } from '../caseRoles';
 import { canUserSeeCase, filterVisibleCases } from '../caseVisibility';
 import { IAuditLogRepository, ICaseRepository } from '../interfaces';
 import { localStore } from '../mockStore';
-import { BaseRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../types';
+import { BaseRecord, CaseNoteRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../types';
 import { assertNotReadOnly, generateUUID } from './common';
 
 export function getVisibleCaseIdsForContext(context: SecurityContext): Set<string> {
@@ -56,11 +57,13 @@ export class MockCaseRepository implements ICaseRepository {
     context: SecurityContext,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'case_date' | 'created_at' | 'updated_at';
+      sortOrder?: 'asc' | 'desc';
     }
   ): Promise<CaseRecord[]> {
     if (!can('cases.view', context.currentUser)) {
@@ -129,11 +132,39 @@ export class MockCaseRepository implements ICaseRepository {
           c.matterType.toLowerCase().includes(q) ||
           c.fileSerial.toLowerCase().includes(q) ||
           c.plaintiffLawyer.toLowerCase().includes(q) ||
-          c.defendantLawyer.toLowerCase().includes(q)
+          c.defendantLawyer.toLowerCase().includes(q) ||
+          (c.policeStation && c.policeStation.toLowerCase().includes(q)) ||
+          (c.sectionsOfLaw && c.sectionsOfLaw.toLowerCase().includes(q))
       );
     }
 
-    // Sort descending by creation date
+    // Attach latest note
+    cases = cases.map((c) => {
+      const notes = (store.caseNotes || []).filter(
+        (n) => n.caseId === c.id && n.deletedAt === null
+      );
+      if (notes.length === 0) return { ...c, latestNote: null };
+      notes.sort((a, b) => {
+        const dComp = new Date(b.noteDate).getTime() - new Date(a.noteDate).getTime();
+        if (dComp !== 0) return dComp;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+      return {
+        ...c,
+        latestNote: { noteDate: notes[0].noteDate, body: notes[0].body },
+      };
+    });
+
+    // Sort
+    if (filter?.sortBy === 'case_date') {
+      const order = filter.sortOrder === 'asc' ? 1 : -1;
+      return cases.sort((a, b) => {
+        const da = a.caseDate ? new Date(a.caseDate).getTime() : 0;
+        const db = b.caseDate ? new Date(b.caseDate).getTime() : 0;
+        return (da - db) * order;
+      });
+    }
+
     return cases.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
@@ -212,6 +243,12 @@ export class MockCaseRepository implements ICaseRepository {
       throw new Error('Permission denied: restricted.view required to create confidential cases');
     }
 
+    const cat = data.caseCategory || 'civil';
+    const roleValidation = validateCaseRoles(cat, data.ourRole, data.partyARole, data.partyBRole);
+    if (!roleValidation.valid) {
+      throw new Error(roleValidation.error || 'Invalid case roles');
+    }
+
     let resolvedRespLawyerId: string | null = data.responsibleLawyerId ?? null;
     if (!resolvedRespLawyerId) {
       if (isLawyerOrOwner(currentUser.role, currentUser.jobType)) {
@@ -233,7 +270,14 @@ export class MockCaseRepository implements ICaseRepository {
       description: data.description.trim(),
       plaintiff: data.plaintiff.trim(),
       defendant: data.defendant.trim(),
+      caseCategory: cat,
+      partyARole: data.partyARole ?? null,
+      partyBRole: data.partyBRole ?? null,
       ourRole: data.ourRole,
+      caseDate: data.caseDate ?? null,
+      closedOn: data.status === 'closed' ? (data.closedOn || now.slice(0, 10)) : null,
+      policeStation: data.policeStation ?? null,
+      sectionsOfLaw: data.sectionsOfLaw ?? null,
       plaintiffLawyer: data.plaintiffLawyer.trim(),
       defendantLawyer: data.defendantLawyer.trim(),
       responsibleLawyerId: resolvedRespLawyerId,
@@ -314,8 +358,25 @@ export class MockCaseRepository implements ICaseRepository {
       throw new Error('Case not found');
     }
 
+    const targetCat = data.caseCategory ?? existing.caseCategory ?? 'civil';
+    const targetOurRole = data.ourRole ?? existing.ourRole;
+    const targetPartyA = data.partyARole !== undefined ? data.partyARole : existing.partyARole;
+    const targetPartyB = data.partyBRole !== undefined ? data.partyBRole : existing.partyBRole;
+    const roleValidation = validateCaseRoles(targetCat, targetOurRole, targetPartyA, targetPartyB);
+    if (!roleValidation.valid) {
+      throw new Error(roleValidation.error || 'Invalid case roles');
+    }
+
     const oldSnapshot = { ...existing };
     const now = new Date().toISOString();
+
+    let targetClosedOn = data.closedOn !== undefined ? data.closedOn : existing.closedOn;
+    if (data.status === 'closed' && !targetClosedOn) {
+      targetClosedOn = now.slice(0, 10);
+    } else if (data.status === 'ongoing') {
+      targetClosedOn = null;
+    }
+
     let updated: CaseRecord | null = null;
 
     localStore.mutate((s) => {
@@ -324,6 +385,7 @@ export class MockCaseRepository implements ICaseRepository {
         s.cases[idx] = {
           ...s.cases[idx],
           ...data,
+          closedOn: targetClosedOn,
           updatedAt: now,
           updatedBy: currentUser.id,
         };
@@ -633,6 +695,190 @@ export class MockCaseRepository implements ICaseRepository {
         newValue: { caseId: null, notes: newNotes },
       });
     }
+
+    return { success: true, softDeleted: true };
+  }
+
+  async listNotes(
+    context: SecurityContext,
+    caseId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<{ notes: CaseNoteRecord[]; total: number }> {
+    const caseRec = await this.getById(context, caseId);
+    if (!caseRec) throw new Error('Case not found');
+
+    const store = localStore.getData();
+    const allNotes = (store.caseNotes || [])
+      .filter(
+        (n) =>
+          n.caseId === caseId &&
+          n.firmId === context.currentUser.firmId &&
+          n.deletedAt === null
+      )
+      .sort((a, b) => {
+        const dComp = new Date(b.noteDate).getTime() - new Date(a.noteDate).getTime();
+        if (dComp !== 0) return dComp;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+    const paged = allNotes.slice(offset, offset + limit);
+
+    return { notes: paged, total: allNotes.length };
+  }
+
+  async createNote(
+    context: SecurityContext,
+    caseId: string,
+    data: { noteDate: string; body: string }
+  ): Promise<CaseNoteRecord> {
+    if (!can('cases.edit', context.currentUser)) {
+      throw new Error('Permission denied: cases.edit required to create case note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const caseRec = await this.getById(context, caseId);
+    if (!caseRec) throw new Error('Case not found');
+
+    if (!data.body || data.body.trim().length === 0) {
+      throw new Error('Note body is required');
+    }
+    if (data.body.length > 5000) {
+      throw new Error('Note body cannot exceed 5000 characters');
+    }
+
+    const now = new Date().toISOString();
+    const newNote: CaseNoteRecord = {
+      id: generateUUID(),
+      firmId: context.currentUser.firmId,
+      caseId,
+      noteDate: data.noteDate || now.slice(0, 10),
+      body: data.body.trim(),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdBy: context.currentUser.id,
+      updatedBy: context.currentUser.id,
+    };
+
+    localStore.mutate((store) => {
+      if (!store.caseNotes) store.caseNotes = [];
+      store.caseNotes.unshift(newNote);
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'CaseNote',
+      entityId: newNote.id,
+      action: 'CREATE',
+      oldValue: null,
+      newValue: { caseId, noteDate: newNote.noteDate, bodyLength: newNote.body.length },
+    });
+
+    return newNote;
+  }
+
+  async updateNote(
+    context: SecurityContext,
+    caseId: string,
+    noteId: string,
+    data: { noteDate?: string; body?: string }
+  ): Promise<CaseNoteRecord> {
+    if (!can('cases.edit', context.currentUser)) {
+      throw new Error('Permission denied: cases.edit required to update case note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const caseRec = await this.getById(context, caseId);
+    if (!caseRec) throw new Error('Case not found');
+
+    if (data.body !== undefined && data.body.length > 5000) {
+      throw new Error('Note body cannot exceed 5000 characters');
+    }
+
+    const store = localStore.getData();
+    const existing = (store.caseNotes || []).find(
+      (n) =>
+        n.id === noteId &&
+        n.caseId === caseId &&
+        n.firmId === context.currentUser.firmId &&
+        n.deletedAt === null
+    );
+    if (!existing) throw new Error('Case note not found');
+
+    const oldSnapshot = { ...existing };
+    const now = new Date().toISOString();
+    let updated: CaseNoteRecord | null = null;
+
+    localStore.mutate((s) => {
+      const idx = (s.caseNotes || []).findIndex((n) => n.id === noteId);
+      if (idx !== -1) {
+        s.caseNotes![idx] = {
+          ...s.caseNotes![idx],
+          noteDate: data.noteDate ?? s.caseNotes![idx].noteDate,
+          body: data.body !== undefined ? data.body.trim() : s.caseNotes![idx].body,
+          updatedAt: now,
+          updatedBy: context.currentUser.id,
+        };
+        updated = { ...s.caseNotes![idx] };
+      }
+    });
+
+    if (!updated) throw new Error('Failed to update case note');
+
+    await this.auditRepo.record(context, {
+      entity: 'CaseNote',
+      entityId: noteId,
+      action: 'UPDATE',
+      oldValue: oldSnapshot as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
+    });
+
+    return updated;
+  }
+
+  async deleteNote(
+    context: SecurityContext,
+    caseId: string,
+    noteId: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    if (!can('cases.edit', context.currentUser)) {
+      throw new Error('Permission denied: cases.edit required to delete case note');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const caseRec = await this.getById(context, caseId);
+    if (!caseRec) throw new Error('Case not found');
+
+    const store = localStore.getData();
+    const existing = (store.caseNotes || []).find(
+      (n) =>
+        n.id === noteId &&
+        n.caseId === caseId &&
+        n.firmId === context.currentUser.firmId &&
+        n.deletedAt === null
+    );
+    if (!existing) throw new Error('Case note not found');
+
+    const oldSnapshot = { ...existing };
+    const now = new Date().toISOString();
+
+    localStore.mutate((s) => {
+      const target = (s.caseNotes || []).find((n) => n.id === noteId);
+      if (target) {
+        target.deletedAt = now;
+        target.updatedAt = now;
+        target.updatedBy = context.currentUser.id;
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'CaseNote',
+      entityId: noteId,
+      action: 'DELETE',
+      oldValue: oldSnapshot as unknown as Record<string, unknown>,
+      newValue: { deletedAt: now, softDeleted: true },
+    });
 
     return { success: true, softDeleted: true };
   }

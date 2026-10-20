@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permission.js';
 import { enforceFirmIsolation } from '../middleware/firmIsolation.js';
 import { enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
+import * as schema from '../db/schema.js';
 import { recordAudit } from '../services/auditService.js';
 import { isLawyerOrOwner } from '../rolePresets.js';
 
@@ -12,6 +13,63 @@ export const casesRouter = Router();
 
 casesRouter.use(authMiddleware);
 casesRouter.use(enforceFirmIsolation);
+
+export function validateCaseRoles(
+  category: string,
+  ourRole?: string | null,
+  partyARole?: string | null,
+  partyBRole?: string | null
+): { valid: boolean; error?: string } {
+  if (category === 'criminal_gr') {
+    const validOurRoles = ['Prosecution counsel', 'Defence counsel'];
+    if (ourRole && !validOurRoles.includes(ourRole)) {
+      return {
+        valid: false,
+        error: `Invalid ourRole '${ourRole}' for Criminal GR. Allowed roles: ${validOurRoles.join(', ')}`,
+      };
+    }
+    const validPartyARoles = ['Prosecution', 'State'];
+    if (partyARole && !validPartyARoles.includes(partyARole)) {
+      return {
+        valid: false,
+        error: `Invalid partyARole '${partyARole}' for Criminal GR. Allowed roles: ${validPartyARoles.join(', ')}`,
+      };
+    }
+  } else if (category === 'criminal_cr') {
+    const validOurRoles = ["Complainant's counsel", 'Defence counsel'];
+    if (ourRole && !validOurRoles.includes(ourRole)) {
+      return {
+        valid: false,
+        error: `Invalid ourRole '${ourRole}' for Criminal CR. Allowed roles: ${validOurRoles.join(', ')}`,
+      };
+    }
+    const validPartyARoles = ['Complainant'];
+    if (partyARole && !validPartyARoles.includes(partyARole)) {
+      return {
+        valid: false,
+        error: `Invalid partyARole '${partyARole}' for Criminal CR. Allowed roles: ${validPartyARoles.join(', ')}`,
+      };
+    }
+  } else if (category === 'civil') {
+    const validOurRoles = [
+      'Plaintiff',
+      'Defendant',
+      'Applicant',
+      'Opposite Party',
+      'Revisioner',
+      'Respondent',
+      'Appellant',
+      'Petitioner',
+    ];
+    if (ourRole && !validOurRoles.includes(ourRole)) {
+      return {
+        valid: false,
+        error: `Invalid ourRole '${ourRole}' for Civil. Allowed roles: ${validOurRoles.join(', ')}`,
+      };
+    }
+  }
+  return { valid: true };
+}
 
 function canAccessRestricted(req: AuthenticatedRequest): boolean {
   if (!req.user) return false;
@@ -219,6 +277,13 @@ casesRouter.post(
       defendantLawyer,
       responsibleLawyerId,
       status,
+      caseDate,
+      closedOn,
+      caseCategory = 'civil',
+      partyARole,
+      partyBRole,
+      policeStation,
+      sectionsOfLaw,
       restricted,
     } = req.body;
 
@@ -234,6 +299,12 @@ casesRouter.post(
     }
     if (!matterType || !matterType.trim()) {
       return res.status(400).json({ error: 'Matter type is required' });
+    }
+
+    // Role validation
+    const roleValidation = validateCaseRoles(caseCategory, ourRole, partyARole, partyBRole);
+    if (!roleValidation.valid) {
+      return res.status(400).json({ error: roleValidation.error });
     }
 
     // Client verification: Client must exist, belong to this firm, and not be soft-deleted
@@ -291,11 +362,18 @@ casesRouter.post(
       description: description?.trim() || null,
       plaintiff: plaintiff?.trim() || null,
       defendant: defendant?.trim() || null,
-      ourRole: ourRole || 'Plaintiff',
+      ourRole: ourRole || (caseCategory === 'criminal_gr' ? 'Prosecution counsel' : caseCategory === 'criminal_cr' ? "Complainant's counsel" : 'Plaintiff'),
       plaintiffLawyer: plaintiffLawyer?.trim() || null,
       defendantLawyer: defendantLawyer?.trim() || null,
       responsibleLawyerId: resolvedRespLawyerId,
-      status: status === 'closed' ? 'closed' : 'ongoing',
+      status: status === 'closed' ? 'closed' : status === 'pending' ? 'pending' : 'ongoing',
+      caseDate: caseDate ? new Date(caseDate) : null,
+      closedOn: closedOn ? new Date(closedOn) : status === 'closed' ? now : null,
+      caseCategory: caseCategory || 'civil',
+      partyARole: partyARole?.trim() || null,
+      partyBRole: partyBRole?.trim() || null,
+      policeStation: policeStation?.trim() || null,
+      sectionsOfLaw: sectionsOfLaw?.trim() || null,
       restricted: isRestricted,
       nextHearingAt: null,
       createdAt: now,
@@ -379,6 +457,16 @@ casesRouter.patch(
       }
     }
 
+    // Role validation on updates
+    const targetCategory = req.body.caseCategory || existing.caseCategory;
+    const targetOurRole = req.body.ourRole !== undefined ? req.body.ourRole : existing.ourRole;
+    const targetPartyARole = req.body.partyARole !== undefined ? req.body.partyARole : existing.partyARole;
+    const targetPartyBRole = req.body.partyBRole !== undefined ? req.body.partyBRole : existing.partyBRole;
+    const roleValidation = validateCaseRoles(targetCategory, targetOurRole, targetPartyARole, targetPartyBRole);
+    if (!roleValidation.valid) {
+      return res.status(400).json({ error: roleValidation.error });
+    }
+
     // Check duplicate warning if caseNumber or court changed
     let isDuplicate = false;
     const targetCaseNumber = req.body.caseNumber || existing.caseNumber;
@@ -410,6 +498,15 @@ casesRouter.patch(
         responsibleLawyerId: req.body.responsibleLawyerId || null,
       }),
       ...(req.body.status && { status: req.body.status }),
+      ...(req.body.caseDate !== undefined && { caseDate: req.body.caseDate ? new Date(req.body.caseDate) : null }),
+      ...(req.body.closedOn !== undefined && { closedOn: req.body.closedOn ? new Date(req.body.closedOn) : null }),
+      ...(req.body.status === 'closed' && req.body.closedOn === undefined && !existing.closedOn && { closedOn: new Date() }),
+      ...(req.body.status === 'ongoing' && req.body.closedOn === undefined && { closedOn: null }),
+      ...(req.body.caseCategory !== undefined && { caseCategory: req.body.caseCategory }),
+      ...(req.body.partyARole !== undefined && { partyARole: req.body.partyARole?.trim() || null }),
+      ...(req.body.partyBRole !== undefined && { partyBRole: req.body.partyBRole?.trim() || null }),
+      ...(req.body.policeStation !== undefined && { policeStation: req.body.policeStation?.trim() || null }),
+      ...(req.body.sectionsOfLaw !== undefined && { sectionsOfLaw: req.body.sectionsOfLaw?.trim() || null }),
       ...(req.body.restricted !== undefined && { restricted: Boolean(req.body.restricted) }),
       ...(req.body.nextHearingAt !== undefined && {
         nextHearingAt: req.body.nextHearingAt ? new Date(req.body.nextHearingAt) : null,
@@ -494,6 +591,156 @@ casesRouter.delete(
       },
     });
 
+    res.json({ success: true, softDeleted: true });
+  }
+);
+
+// GET /api/v1/cases/:id/notes - List case notes
+casesRouter.get(
+  '/:id/notes',
+  requirePermission('cases.view'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    if (c.restricted && !canAccessRestricted(req)) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
+    const notesData = await db.listCaseNotes(c.id, req.user!.firmId, limit, offset);
+    res.json(notesData);
+  }
+);
+
+// POST /api/v1/cases/:id/notes - Create case note
+casesRouter.post(
+  '/:id/notes',
+  requirePermission('cases.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    if (c.restricted && !canAccessRestricted(req)) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const { noteDate, body } = req.body;
+    if (!body || !body.trim()) {
+      return res.status(400).json({ error: 'Note text is required' });
+    }
+    if (body.trim().length > 5000) {
+      return res.status(400).json({ error: 'Note text cannot exceed 5000 characters' });
+    }
+    const formattedDate = noteDate && String(noteDate).trim() ? String(noteDate).trim().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const note = await db.insertCaseNote({
+      id: crypto.randomUUID(),
+      firmId: req.user!.firmId,
+      caseId: c.id,
+      noteDate: formattedDate,
+      body: body.trim(),
+      createdBy: req.user!.id,
+      updatedBy: req.user!.id,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'CaseNote',
+      entityId: note.id,
+      action: 'CREATE',
+      oldValue: null,
+      newValue: {
+        caseId: c.id,
+        noteDate: note.noteDate,
+        bodyLength: note.body.length,
+      },
+    });
+
+    res.status(201).json(note);
+  }
+);
+
+// PATCH /api/v1/cases/:id/notes/:noteId - Update case note
+casesRouter.patch(
+  '/:id/notes/:noteId',
+  requirePermission('cases.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    if (c.restricted && !canAccessRestricted(req)) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const existing = await db.getCaseNoteById(req.params.noteId, c.id, req.user!.firmId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    const { noteDate, body } = req.body;
+    if (body !== undefined && body.trim().length > 5000) {
+      return res.status(400).json({ error: 'Note text cannot exceed 5000 characters' });
+    }
+    const updates: Partial<schema.CaseNote> = {};
+    if (noteDate !== undefined) updates.noteDate = String(noteDate).trim().slice(0, 10);
+    if (body !== undefined) updates.body = body.trim();
+    updates.updatedBy = req.user!.id;
+
+    const updated = await db.updateCaseNote(existing.id, c.id, req.user!.firmId, updates);
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'CaseNote',
+      entityId: updated.id,
+      action: 'UPDATE',
+      oldValue: { noteDate: existing.noteDate, bodyLength: existing.body.length },
+      newValue: { noteDate: updated.noteDate, bodyLength: updated.body.length },
+    });
+    res.json(updated);
+  }
+);
+
+// DELETE /api/v1/cases/:id/notes/:noteId - Delete case note
+casesRouter.delete(
+  '/:id/notes/:noteId',
+  requirePermission('cases.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const c = await db.getCaseById(req.params.id, req.user!.firmId, req.user);
+    if (!c || c.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    if (c.restricted && !canAccessRestricted(req)) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    const existing = await db.getCaseNoteById(req.params.noteId, c.id, req.user!.firmId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    await db.deleteCaseNote(existing.id, c.id, req.user!.firmId, req.user!.id);
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'CaseNote',
+      entityId: existing.id,
+      action: 'DELETE',
+      oldValue: { noteDate: existing.noteDate, bodyLength: existing.body.length },
+      newValue: { softDeleted: true },
+    });
     res.json({ success: true, softDeleted: true });
   }
 );

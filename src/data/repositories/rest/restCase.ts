@@ -1,5 +1,5 @@
 import { ICaseRepository } from '../../interfaces';
-import { BaseRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../../types';
+import { BaseRecord, CaseNoteRecord, CaseRecord, CaseShareRecord, SecurityContext } from '../../types';
 import { restFetch } from './restCommon';
 
 export class RestCaseRepository implements ICaseRepository {
@@ -7,11 +7,13 @@ export class RestCaseRepository implements ICaseRepository {
     _context: SecurityContext,
     filter?: {
       search?: string;
-      status?: 'ongoing' | 'closed' | 'all';
+      status?: 'ongoing' | 'pending' | 'closed' | 'all';
       court?: string;
       matterType?: string;
       clientId?: string;
       scope?: 'my' | 'team' | 'all';
+      sortBy?: 'case_date' | 'created_at' | 'updated_at';
+      sortOrder?: 'asc' | 'desc';
     }
   ): Promise<CaseRecord[]> {
     const params = new URLSearchParams();
@@ -21,6 +23,8 @@ export class RestCaseRepository implements ICaseRepository {
     if (filter?.matterType) params.set('matterType', filter.matterType);
     if (filter?.clientId) params.set('clientId', filter.clientId);
     if (filter?.scope) params.set('scope', filter.scope);
+    if (filter?.sortBy) params.set('sortBy', filter.sortBy);
+    if (filter?.sortOrder) params.set('sortOrder', filter.sortOrder);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<CaseRecord[]>(`/cases${qs}`);
   }
@@ -113,6 +117,51 @@ export class RestCaseRepository implements ICaseRepository {
 
   async unshareCase(_context: SecurityContext, caseId: string, shareIdOrUserId: string): Promise<void> {
     await restFetch<{ success: boolean }>(`/cases/${caseId}/shares/${shareIdOrUserId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async listNotes(
+    _context: SecurityContext,
+    caseId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<{ notes: CaseNoteRecord[]; total: number }> {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set('limit', String(options.limit));
+    if (options?.offset !== undefined) params.set('offset', String(options.offset));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return restFetch<{ notes: CaseNoteRecord[]; total: number }>(`/cases/${caseId}/notes${qs}`);
+  }
+
+  async createNote(
+    _context: SecurityContext,
+    caseId: string,
+    data: { noteDate: string; body: string }
+  ): Promise<CaseNoteRecord> {
+    return restFetch<CaseNoteRecord>(`/cases/${caseId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateNote(
+    _context: SecurityContext,
+    caseId: string,
+    noteId: string,
+    data: { noteDate?: string; body?: string }
+  ): Promise<CaseNoteRecord> {
+    return restFetch<CaseNoteRecord>(`/cases/${caseId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteNote(
+    _context: SecurityContext,
+    caseId: string,
+    noteId: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    return restFetch<{ success: boolean; softDeleted: true }>(`/cases/${caseId}/notes/${noteId}`, {
       method: 'DELETE',
     });
   }
