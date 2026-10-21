@@ -3,6 +3,16 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+Documentation baseline established and unified across the entire project repository. Core standing rules for AI assistants, comprehensive PRD with feature statuses, complete PostgreSQL 16 schema documentation, REST API catalog, design system specification, and updated 14-phase build guide completed without any code regressions.
+- [x] `AGENTS.md` created (< 200 lines): Standing rules for AI tools (read order, invariant rules, frontend rules, engineering process, end-of-task report format, what not to build yet). Pointer added to `README.md`.
+- [x] `PRD.md` created: Authoritative Product Requirements Document detailing user roles, team hierarchy, BD case categories, dynamic party roles, "Date Fixed For" specification, feature matrix (`[BUILT]`, `[PLANNED]`, `[IDEA]`), and verified `MISMATCH` discrepancies.
+- [x] `DATABASE.md` created: Definitive PostgreSQL 16 schema reference with Mermaid ER diagram, compound indexing rules, soft-delete rules, sensitive data protection, and planned columns.
+- [x] `API.md` created: REST API specification detailing `/api/v1` and `/api/admin` catalogs, dual auth systems, rate limits, request/response formats, and planned endpoints.
+- [x] `DESIGN.md` created: Design system and UI/UX specification covering color tokens, typography (Noto Sans Bengali line height protection), breakpoints (360px, 768px, 1280px), touch targets (>=44px), component patterns, and print stylesheet for cause list.
+- [x] `BUILD_GUIDE.md` updated: Authoritative 14-phase ordered roadmap highlighting completed phases and establishing Phase 5 ("Hearings Backend & Date Fixed For") as the recommended next task.
+- [x] All 381 server tests pass, frontend builds cleanly (`npm run build`), admin app builds cleanly (`npm run build --prefix admin-app`), and type checks pass cleanly (`npm run lint`).
+
+## Previous status
 Clients, Cases, and Appointments modules completed and fully verified across server (REST API, PostgreSQL schema & migration 0005, memory DB) and frontend mock/data layers with 100% parity. Central visibility, permissions, subscription read-only enforcement, audit logging, firm isolation, and restricted confidentiality strictly preserved.
 - [x] Clients module: profile photos (file/camera canvas resize, EXIF strip, magic byte validation, 300KB limit, private caching), client notes (migrated, 5000 chars, editable date, pagination, audit), redesigned profile layout (large avatar, tap-to-call, tap-to-mail, stacked mobile), and central client visibility.
 - [x] Cases module: BD party structure (categories, dynamic roles, police station, sections of law, court suggestions, filing/disposal dates), case notes (dossier notes tab, pagination, audit), cases list table (pending filter, status counts, sort by case_date, formatted party title & latest note snippet).
