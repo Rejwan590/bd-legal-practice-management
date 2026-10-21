@@ -1,5 +1,7 @@
 # BD Legal Practice Management System
 
+> **AI Coding Assistant Notice**: All coding tools (Antigravity, Claude, Codex, Gemini) must strictly read and adhere to [AGENTS.md](file:///./AGENTS.md) before performing any changes in this repository.
+
 Web application for law chambers and legal practices in Bangladesh, featuring dual English and Bangla language support, case tracking, court hearings with immutable date histories, task assignment, physical file tracking, automated reminders, chamber backup/restore, and subscription licensing with read-only enforcement.
 
 ## Architecture & Technology Stack
