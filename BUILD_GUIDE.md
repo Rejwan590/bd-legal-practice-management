@@ -6,8 +6,8 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 
 ## Roadmap Overview & Progress Summary
 
-- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 12 (Foundation, Clients, Cases, Appointments, Super Admin & Device Auth).
-- **Recommended Next Task**: **Phase 5 — Hearings Backend & "Date Fixed For"**.
+- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Super Admin & Device Auth).
+- **Recommended Next Task**: **Phase 6 — Daily Cause List Docket & Bulk Actions**.
 
 ---
 
@@ -48,19 +48,19 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 
 ---
 
-### Phase 5: Hearings Backend & "Date Fixed For" `[RECOMMENDED NEXT TASK]`
-- [ ] Add `fixed_for` (controlled key) and `fixed_for_note` (max 200 chars) to `hearings`.
-- [ ] Add `old_fixed_for` and `new_fixed_for` to `hearing_date_history`.
-- [ ] Implement controlled category lists with English/Bangla parity:
+### Phase 5: Hearings Backend & "Date Fixed For" `[COMPLETED]`
+- [x] Add `fixed_for` (controlled key) and `fixed_for_note` (max 200 chars) to `hearings`.
+- [x] Add `old_fixed_for` and `new_fixed_for` to `hearing_date_history`.
+- [x] Implement controlled category lists with English/Bangla parity:
   - **Civil**: `first_hearing`, `written_statement`, `framing_of_issues`, `hearing`, `plaintiff_evidence`, `defendant_evidence`, `argument`, `order`, `judgment`, `compliance`, `ex_parte_hearing`, `peremptory_hearing`, `other`.
   - **Criminal (GR & CR)**: `cognizance`, `charge_framing`, `witness_examination`, `statement_of_accused`, `argument`, `bail_hearing`, `remand`, `order`, `judgment`, `compliance`, `other`.
   - **Other**: `hearing`, `order`, `judgment`, `other`.
-- [ ] Enforce `fixed_for` on hearing creation and reschedule.
-- [ ] Enforce next date + next `fixed_for` + reason on adjournment (default: same `fixed_for`).
-- [ ] Update frontend to display `fixed_for` in Case Dossier, Hearings list, Calendar, Dashboard, and History modal.
-- [ ] Automated tests: invalid category rejection, history recording old/new values, and adjournment carry-over.
+- [x] Enforce `fixed_for` on hearing creation and reschedule.
+- [x] Enforce next date + next `fixed_for` + reason on adjournment (default: same `fixed_for`).
+- [x] Update frontend to display `fixed_for` in Case Dossier, Hearings list, Calendar, Dashboard, and History modal.
+- [x] Automated tests: invalid category rejection, history recording old/new values, and adjournment carry-over (419/419 passed).
 
-### Phase 6: Daily Cause List Docket & Bulk Actions `[PLANNED]`
+### Phase 6: Daily Cause List Docket & Bulk Actions `[RECOMMENDED NEXT TASK]`
 - [ ] Daily cause list docket view filterable by court, date, appearing lawyer, and `fixed_for`.
 - [ ] Bulk adjournment and step completion from the cause list screen.
 - [ ] High-contrast, printable A4 cause list docket stylesheet.
