@@ -3,6 +3,38 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+Phase 7: Tasks Module Backend & Assignment completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
+- [x] **Backend & Database**:
+  - `tasks` table added to PostgreSQL schema with migration `0007_tasks_module.sql` and journal update.
+  - Fields: `id`, `firm_id`, `case_id`, `client_id`, `assigned_to`, `title`, `description`, `priority` (`urgent`, `high`, `medium`, `normal`, `low`), `due_at`, `status` (`pending`, `in_progress`, `completed`, `cancelled`), `completed_at`, `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`.
+  - Memory & Postgres database implementations updated with rollback transaction support (`getTaskById`, `listTasks`, `insertTask`, `updateTask`, `deleteTask`).
+  - Dynamic `assignedToName` resolution in list and single lookups.
+  - Linked tasks and task counts wired in `getClientLinkedOverview` and `getCaseLinkedCounts`.
+  - REST routes in `server/src/routes/tasks.ts` mounted at `/api/v1/tasks`:
+    - `GET /api/v1/tasks` (with filters: `caseId`, `clientId`, `assignedTo`, `status`, `priority`, `search`, `limit`, `offset`).
+    - `GET /api/v1/tasks/:id`.
+    - `POST /api/v1/tasks` (requires `tasks.assign`, validates firm users, cases, clients, records audit `TASK_ASSIGN`).
+    - `PATCH /api/v1/tasks/:id` (reopening requires `tasks.complete`, edits require `tasks.assign`, records audit `UPDATE`).
+    - `POST /api/v1/tasks/:id/complete` (requires `tasks.complete`, staff partition check, appends completion note, records audit `TASK_COMPLETE`).
+    - `POST /api/v1/tasks/:id/reassign` (requires `tasks.assign`, records audit `TASK_ASSIGN` with `reassignmentReason`).
+    - `DELETE /api/v1/tasks/:id` (soft delete, records audit `DELETE`).
+  - Strict security invariants enforced:
+    - Firm isolation on all queries (`WHERE firm_id = $firmId`).
+    - Staff partitioning invariant: staff without `tasks.assign` can only see and complete tasks assigned to them.
+    - Central case visibility & confidentiality: tasks linked to hidden or restricted cases are inaccessible to unauthorized staff.
+    - Subscription read-only gate on all 5 mutating routes (`enforceSubscriptionReadOnly`).
+  - Server test suite `server/tests/tasks.test.ts` (40 assertions) added and verified: **473 / 473 server tests passing (0 failed)** across all 10 suites (`foundation`, `clients`, `cases`, `hearings`, `tasks`, `postgres`, `adminAuth`, `adminFirms`, `devices`, `teamVisibility`).
+- [x] **Frontend Data & Repositories**:
+  - `RestTaskRepository` created and wired into `src/data/repositories/index.ts` with 100% parity with `MockTaskRepository` in REST mode.
+- [x] **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm test --prefix server`: PASS (473 assertions passed, 0 failed across all 10 suites)
+  - `npm run test:health`: PASS (87/87 checks passed, 0 failed)
+  - `npm run build`: PASS (1,787 modules transformed in 1.06s)
+  - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 663ms)
+- [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
+
+## Previous status
 Phase 6: Daily Cause List Docket & Bulk Actions completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
 - [x] **Backend Bulk Endpoints & Transaction Safety**:
   - `POST /api/v1/hearings/bulk-status`: bulk update `status` + `outcomeNote`.
@@ -20,12 +52,6 @@ Phase 6: Daily Cause List Docket & Bulk Actions completed and fully verified acr
   - High-contrast, printable A4 cause list docket conforming to `DESIGN.md` Section 6 (`@media print`) with advocate notes column and clerk signature block.
 - [x] **Bilingual i18n Parity**:
   - Added matching keys in `en.json` and `bn.json` with zero discrepancy.
-- [x] **Verification Summary**:
-  - `npm run lint`: PASS (0 errors)
-  - `npm test --prefix server`: PASS (433 assertions passed, 0 failed)
-  - `npm run build`: PASS (1,786 modules transformed in 1.43s)
-  - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 961ms)
-- [x] **Recommended Next Step**: Phase 7 — Tasks Module Backend & Assignment.
 
 ## Previous status
 Phase 5: Hearings Backend & "Date Fixed For" completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.

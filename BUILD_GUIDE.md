@@ -6,8 +6,8 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 
 ## Roadmap Overview & Progress Summary
 
-- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Daily Cause List Docket & Bulk Actions, Super Admin & Device Auth).
-- **Recommended Next Task**: **Phase 7 — Tasks Module Backend & Assignment**.
+- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Daily Cause List Docket & Bulk Actions, Tasks Module Backend & Assignment, Super Admin & Device Auth).
+- **Recommended Next Task**: **Phase 8 — Physical File Tracking & Custody Backend**.
 
 ---
 
@@ -65,12 +65,15 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 - [x] Bulk adjournment, bulk reschedule, and bulk status completion from the cause list screen.
 - [x] High-contrast, printable A4 cause list docket stylesheet with clerk signature block.
 
-### Phase 7: Tasks Module Backend & Assignment `[RECOMMENDED NEXT TASK]`
-- [ ] Move tasks from frontend mock to PostgreSQL `tasks` table.
-- [ ] Task assignment, priorities (`urgent`, `high`, `medium`, `normal`, `low`), due dates, and status transitions.
-- [ ] Case and client association with overdue date calculations.
+### Phase 7: Tasks Module Backend & Assignment `[COMPLETED]`
+- [x] Move tasks to PostgreSQL `tasks` table with migration `0007_tasks_module.sql`.
+- [x] Task assignment, priorities (`urgent`, `high`, `medium`, `normal`, `low`), due dates, and status transitions.
+- [x] Case and client association with overdue date calculations and linked counts.
+- [x] Staff partitioning invariant: staff without `tasks.assign` can only see and complete tasks assigned to them.
+- [x] Dual-mode parity: `RestTaskRepository` with full feature parity to `MockTaskRepository`.
+- [x] Central case visibility, firm isolation, audit trail (`TASK_ASSIGN`, `TASK_COMPLETE`, `UPDATE`, `DELETE`), and subscription read-only gate.
 
-### Phase 8: Physical File Tracking & Custody Backend `[PLANNED]`
+### Phase 8: Physical File Tracking & Custody Backend `[RECOMMENDED NEXT TASK]`
 - [ ] Move physical files to PostgreSQL `physical_files` and `file_movements`.
 - [ ] Firm-scoped serial generator (`F-000001`).
 - [ ] Check-out / check-in custody workflows with holder assignment and return deadlines.

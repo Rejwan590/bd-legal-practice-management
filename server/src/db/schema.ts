@@ -412,6 +412,33 @@ export const appointmentAttendees = pgTable('appointment_attendees', {
   index('idx_appointment_attendees_user_id').on(table.userId),
 ]);
 
+// Tasks Table (Tasks Module)
+export const tasks = pgTable('tasks', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  caseId: text('case_id').references(() => cases.id),
+  clientId: text('client_id').references(() => clients.id),
+  assignedTo: text('assigned_to').references(() => users.id).notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  priority: text('priority').$type<'urgent' | 'high' | 'medium' | 'normal' | 'low'>().default('normal').notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+  status: text('status').$type<'pending' | 'in_progress' | 'completed' | 'cancelled'>().default('pending').notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_tasks_firm_id').on(table.firmId),
+  index('idx_tasks_case_id').on(table.caseId),
+  index('idx_tasks_client_id').on(table.clientId),
+  index('idx_tasks_assigned_to').on(table.assignedTo),
+  index('idx_tasks_status').on(table.status),
+  index('idx_tasks_due_at').on(table.dueAt),
+]);
+
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
 export type NewFirm = typeof firms.$inferInsert;
@@ -447,4 +474,7 @@ export type LicenseEvent = typeof licenseEvents.$inferSelect;
 export type NewLicenseEvent = typeof licenseEvents.$inferInsert;
 export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+
 

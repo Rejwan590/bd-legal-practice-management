@@ -6,3 +6,4 @@ export * from './restClient';
 export * from './restCase';
 export * from './restAppointment';
 export * from './restHearing';
+export * from './restTask';

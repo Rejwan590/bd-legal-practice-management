@@ -498,7 +498,7 @@ export const INITIAL_PHYSICAL_FILES: PhysicalFileRecord[] = [
     currentHolderId: 'user-owner-001',
     currentHolderName: 'Adv. Mahbubur Rahman',
     checkedOutAt: '2026-10-02T08:30:00.000Z',
-    dueBackAt: '2026-10-25T17:00:00.000Z',
+    dueBackAt: '2026-11-25T17:00:00.000Z',
     notes: 'Dispatched to Dhaka District Judge Court for injunction hearing.',
     createdAt: '2024-02-10T14:00:00.000Z',
     updatedAt: '2026-10-02T08:30:00.000Z',

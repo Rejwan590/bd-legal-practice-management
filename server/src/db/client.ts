@@ -202,6 +202,25 @@ export interface IDatabase {
   deleteHearing(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }>;
   insertHearingDateHistory(history: schema.NewHearingDateHistory): Promise<schema.HearingDateHistory>;
   listHearingDateHistory(hearingId: string, firmId: string): Promise<schema.HearingDateHistory[]>;
+  // Tasks (Tasks Module)
+  listTasks(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      assignedTo?: string;
+      status?: string;
+      priority?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    },
+    user?: VisibilityUserContext
+  ): Promise<{ tasks: Array<schema.Task & { assignedToName?: string }>; total: number }>;
+  getTaskById(id: string, firmId: string, user?: VisibilityUserContext): Promise<(schema.Task & { assignedToName?: string }) | null>;
+  insertTask(task: schema.NewTask): Promise<schema.Task & { assignedToName?: string }>;
+  updateTask(id: string, firmId: string, updates: Partial<schema.Task>): Promise<schema.Task & { assignedToName?: string }>;
+  deleteTask(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }>;
   // Platform Admins & Admin Audit (Super Admin for software owner)
   getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null>;
   getPlatformAdminById(id: string): Promise<schema.PlatformAdmin | null>;
@@ -257,6 +276,7 @@ class MemoryDatabase implements IDatabase {
   public licenseEvents: schema.LicenseEvent[] = [];
   public payments: schema.Payment[] = [];
   public devices: schema.Device[] = [];
+  public tasks: schema.Task[] = [];
   private initialized = false;
 
   public async init() {
@@ -665,6 +685,10 @@ class MemoryDatabase implements IDatabase {
       (c) => c.clientId === clientId && visibleIds.has(c.id)
     );
 
+    const clientTasks = this.tasks.filter(
+      (t) => t.clientId === clientId && t.firmId === firmId && !t.deletedAt && (!t.caseId || visibleIds.has(t.caseId))
+    );
+
     return {
       cases: clientCases.map((c) => ({
         id: c.id,
@@ -673,7 +697,13 @@ class MemoryDatabase implements IDatabase {
         matterType: c.matterType,
         status: c.status === 'ongoing' ? 'Ongoing' : c.status === 'pending' ? 'Pending' : 'Closed',
       })),
-      tasks: [],
+      tasks: clientTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        priority: t.priority,
+        status: t.status,
+        dueAt: new Date(t.dueAt).toISOString(),
+      })),
       files: [],
     };
   }
@@ -1031,9 +1061,12 @@ class MemoryDatabase implements IDatabase {
     const hearingsCount = this.hearings.filter(
       (h) => h.caseId === caseId && h.firmId === firmId && !h.deletedAt
     ).length;
+    const tasksCount = this.tasks.filter(
+      (t) => t.caseId === caseId && t.firmId === firmId && !t.deletedAt && t.status !== 'cancelled'
+    ).length;
     return {
       hearingsCount,
-      tasksCount: 0,
+      tasksCount,
       filesCount: 0,
       remindersCount: 0,
     };
@@ -1192,6 +1225,179 @@ class MemoryDatabase implements IDatabase {
       .filter((h) => h.hearingId === hearingId && h.firmId === firmId)
       .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
       .map((h) => ({ ...h }));
+  }
+
+  // Tasks Methods
+  public async listTasks(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      assignedTo?: string;
+      status?: string;
+      priority?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    },
+    user?: VisibilityUserContext
+  ): Promise<{ tasks: Array<schema.Task & { assignedToName?: string }>; total: number }> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    let list = this.tasks.filter((t) => {
+      if (t.firmId !== firmId || t.deletedAt) return false;
+      if (t.caseId && !visibleCaseIds.has(t.caseId)) return false;
+      return true;
+    });
+
+    // Staff Partitioning Invariant:
+    // If user is Staff and does not have tasks.assign, can only see their own assigned tasks
+    if (user && user.role === 'Staff' && !(user.permissions && user.permissions.includes('tasks.assign'))) {
+      list = list.filter((t) => t.assignedTo === user.id);
+    } else if (filter?.assignedTo) {
+      list = list.filter((t) => t.assignedTo === filter.assignedTo);
+    }
+
+    if (filter?.caseId) {
+      list = list.filter((t) => t.caseId === filter.caseId);
+    }
+    if (filter?.clientId) {
+      list = list.filter((t) => t.clientId === filter.clientId);
+    }
+    if (filter?.priority) {
+      list = list.filter((t) => t.priority === filter.priority);
+    }
+    if (filter?.status) {
+      if (filter.status === 'active') {
+        list = list.filter((t) => t.status === 'pending' || t.status === 'in_progress');
+      } else {
+        list = list.filter((t) => t.status === filter.status);
+      }
+    }
+    if (filter?.search) {
+      const q = filter.search.toLowerCase();
+      list = list.filter((t) => {
+        const assignee = this.users.find((u) => u.id === t.assignedTo);
+        const name = assignee ? assignee.name.toLowerCase() : '';
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.description && t.description.toLowerCase().includes(q)) ||
+          name.includes(q)
+        );
+      });
+    }
+
+    // Sort by dueAt ascending (soonest due first)
+    list.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+
+    const total = list.length;
+    const limit = filter?.limit || 50;
+    const offset = filter?.offset || 0;
+    const paged = list.slice(offset, offset + limit);
+
+    const tasksWithName = paged.map((t) => {
+      const assignee = this.users.find((u) => u.id === t.assignedTo);
+      return {
+        ...t,
+        assignedToName: assignee ? assignee.name : 'Unknown User',
+      };
+    });
+
+    return { tasks: tasksWithName, total };
+  }
+
+  public async getTaskById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Task & { assignedToName?: string }) | null> {
+    await this.init();
+    const task = this.tasks.find((t) => t.id === id && t.firmId === firmId && !t.deletedAt);
+    if (!task) return null;
+
+    if (user) {
+      // Staff partitioning
+      if (user.role === 'Staff' && !(user.permissions && user.permissions.includes('tasks.assign'))) {
+        if (task.assignedTo !== user.id) return null;
+      }
+      // Case visibility
+      if (task.caseId) {
+        const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+        if (!visibleCaseIds.has(task.caseId)) return null;
+      }
+    }
+
+    const assignee = this.users.find((u) => u.id === task.assignedTo);
+    return {
+      ...task,
+      assignedToName: assignee ? assignee.name : 'Unknown User',
+    };
+  }
+
+  public async insertTask(task: schema.NewTask): Promise<schema.Task & { assignedToName?: string }> {
+    await this.init();
+    const created: schema.Task = {
+      id: task.id || `task-${crypto.randomUUID()}`,
+      firmId: task.firmId,
+      caseId: task.caseId ?? null,
+      clientId: task.clientId ?? null,
+      assignedTo: task.assignedTo,
+      title: task.title,
+      description: task.description ?? null,
+      priority: task.priority ?? 'normal',
+      dueAt: task.dueAt,
+      status: task.status ?? 'pending',
+      completedAt: task.completedAt ?? null,
+      createdAt: task.createdAt || new Date(),
+      updatedAt: task.updatedAt || new Date(),
+      deletedAt: null,
+      createdBy: task.createdBy ?? null,
+      updatedBy: task.updatedBy ?? null,
+    };
+    this.tasks.push(created);
+    const assignee = this.users.find((u) => u.id === created.assignedTo);
+    return {
+      ...created,
+      assignedToName: assignee ? assignee.name : 'Unknown User',
+    };
+  }
+
+  public async updateTask(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Task>
+  ): Promise<schema.Task & { assignedToName?: string }> {
+    await this.init();
+    const idx = this.tasks.findIndex((t) => t.id === id && t.firmId === firmId && !t.deletedAt);
+    if (idx === -1) throw new Error(`Task not found: ${id}`);
+
+    const existing = this.tasks[idx];
+    const updated: schema.Task = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.tasks[idx] = updated;
+    const assignee = this.users.find((u) => u.id === updated.assignedTo);
+    return {
+      ...updated,
+      assignedToName: assignee ? assignee.name : 'Unknown User',
+    };
+  }
+
+  public async deleteTask(
+    id: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    await this.init();
+    const idx = this.tasks.findIndex((t) => t.id === id && t.firmId === firmId && !t.deletedAt);
+    if (idx === -1) throw new Error(`Task not found: ${id}`);
+    this.tasks[idx].deletedAt = new Date();
+    this.tasks[idx].updatedAt = new Date();
+    if (updatedBy) this.tasks[idx].updatedBy = updatedBy;
+    return { success: true, softDeleted: true };
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
@@ -1699,6 +1905,7 @@ class MemoryDatabase implements IDatabase {
       licenseEvents: [...this.licenseEvents],
       payments: [...this.payments],
       devices: [...this.devices],
+      tasks: [...this.tasks],
     };
 
     try {
@@ -1724,6 +1931,7 @@ class MemoryDatabase implements IDatabase {
       this.licenseEvents = snapshot.licenseEvents;
       this.payments = snapshot.payments;
       this.devices = snapshot.devices;
+      this.tasks = snapshot.tasks;
       throw err;
     }
   }
@@ -2131,6 +2339,17 @@ class PostgresDatabase implements IDatabase {
       .from(schema.cases)
       .where(and(...conditions));
 
+    const taskConditions = [
+      eq(schema.tasks.clientId, clientId),
+      eq(schema.tasks.firmId, firmId),
+      isNull(schema.tasks.deletedAt),
+      sql`(${schema.tasks.caseId} IS NULL OR ${schema.tasks.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`,
+    ];
+    const clientTasks = await this.db
+      .select()
+      .from(schema.tasks)
+      .where(and(...taskConditions));
+
     return {
       cases: clientCases.map((c) => ({
         id: c.id,
@@ -2139,7 +2358,13 @@ class PostgresDatabase implements IDatabase {
         matterType: c.matterType,
         status: c.status === 'ongoing' ? 'Ongoing' : c.status === 'pending' ? 'Pending' : 'Closed',
       })),
-      tasks: [],
+      tasks: clientTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        priority: t.priority,
+        status: t.status,
+        dueAt: new Date(t.dueAt).toISOString(),
+      })),
       files: [],
     };
   }
@@ -2537,9 +2762,20 @@ class PostgresDatabase implements IDatabase {
           isNull(schema.hearings.deletedAt)
         )
       );
+    const tasksRows = await this.db
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.caseId, caseId),
+          eq(schema.tasks.firmId, firmId),
+          isNull(schema.tasks.deletedAt),
+          ne(schema.tasks.status, 'cancelled')
+        )
+      );
     return {
       hearingsCount: hearingsRows.length,
-      tasksCount: 0,
+      tasksCount: tasksRows.length,
       filesCount: 0,
       remindersCount: 0,
     };
@@ -2701,6 +2937,181 @@ class PostgresDatabase implements IDatabase {
       .from(schema.hearingDateHistory)
       .where(and(eq(schema.hearingDateHistory.hearingId, hearingId), eq(schema.hearingDateHistory.firmId, firmId)))
       .orderBy(desc(schema.hearingDateHistory.changedAt));
+  }
+
+  // Tasks Methods
+  public async listTasks(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      assignedTo?: string;
+      status?: string;
+      priority?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    },
+    user?: VisibilityUserContext
+  ): Promise<{ tasks: Array<schema.Task & { assignedToName?: string }>; total: number }> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+    const conditions = [
+      eq(schema.tasks.firmId, firmId),
+      isNull(schema.tasks.deletedAt),
+      sql`(${schema.tasks.caseId} IS NULL OR ${schema.tasks.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`,
+    ];
+
+    if (user && user.role === 'Staff' && !(user.permissions && user.permissions.includes('tasks.assign'))) {
+      conditions.push(eq(schema.tasks.assignedTo, user.id));
+    } else if (filter?.assignedTo) {
+      conditions.push(eq(schema.tasks.assignedTo, filter.assignedTo));
+    }
+
+    if (filter?.caseId) {
+      conditions.push(eq(schema.tasks.caseId, filter.caseId));
+    }
+    if (filter?.clientId) {
+      conditions.push(eq(schema.tasks.clientId, filter.clientId));
+    }
+    if (filter?.priority) {
+      conditions.push(eq(schema.tasks.priority, filter.priority as any));
+    }
+    if (filter?.status) {
+      if (filter.status === 'active') {
+        conditions.push(sql`(${schema.tasks.status} = 'pending' OR ${schema.tasks.status} = 'in_progress')`);
+      } else {
+        conditions.push(eq(schema.tasks.status, filter.status as any));
+      }
+    }
+    if (filter?.search) {
+      const q = `%${filter.search.trim().toLowerCase()}%`;
+      conditions.push(
+        sql`(${schema.tasks.title} ILIKE ${q} OR ${schema.tasks.description} ILIKE ${q})`
+      );
+    }
+
+    const allRows = await this.db
+      .select({
+        task: schema.tasks,
+        assignedToName: schema.users.name,
+      })
+      .from(schema.tasks)
+      .leftJoin(schema.users, eq(schema.tasks.assignedTo, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(asc(schema.tasks.dueAt));
+
+    const total = allRows.length;
+    const limit = filter?.limit || 50;
+    const offset = filter?.offset || 0;
+    const paged = allRows.slice(offset, offset + limit);
+
+    return {
+      tasks: paged.map((r) => ({
+        ...r.task,
+        assignedToName: r.assignedToName || 'Unknown User',
+      })),
+      total,
+    };
+  }
+
+  public async getTaskById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Task & { assignedToName?: string }) | null> {
+    const conditions = [
+      eq(schema.tasks.id, id),
+      eq(schema.tasks.firmId, firmId),
+      isNull(schema.tasks.deletedAt),
+    ];
+
+    if (user && user.role === 'Staff' && !(user.permissions && user.permissions.includes('tasks.assign'))) {
+      conditions.push(eq(schema.tasks.assignedTo, user.id));
+    }
+
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.tasks.caseId} IS NULL OR ${schema.tasks.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    const rows = await this.db
+      .select({
+        task: schema.tasks,
+        assignedToName: schema.users.name,
+      })
+      .from(schema.tasks)
+      .leftJoin(schema.users, eq(schema.tasks.assignedTo, schema.users.id))
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].task,
+      assignedToName: rows[0].assignedToName || 'Unknown User',
+    };
+  }
+
+  public async insertTask(task: schema.NewTask): Promise<schema.Task & { assignedToName?: string }> {
+    const taskId = task.id || crypto.randomUUID();
+    const rows = await this.db
+      .insert(schema.tasks)
+      .values({ ...task, id: taskId })
+      .returning();
+
+    const created = rows[0];
+    const userRows = await this.db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, created.assignedTo))
+      .limit(1);
+
+    return {
+      ...created,
+      assignedToName: userRows[0]?.name || 'Unknown User',
+    };
+  }
+
+  public async updateTask(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Task>
+  ): Promise<schema.Task & { assignedToName?: string }> {
+    const rows = await this.db
+      .update(schema.tasks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firmId), isNull(schema.tasks.deletedAt)))
+      .returning();
+
+    const updated = rows[0];
+    if (!updated) throw new Error(`Task not found: ${id}`);
+
+    const userRows = await this.db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, updated.assignedTo))
+      .limit(1);
+
+    return {
+      ...updated,
+      assignedToName: userRows[0]?.name || 'Unknown User',
+    };
+  }
+
+  public async deleteTask(
+    id: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    await this.db
+      .update(schema.tasks)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+        ...(updatedBy ? { updatedBy } : {}),
+      })
+      .where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firmId), isNull(schema.tasks.deletedAt)));
+
+    return { success: true, softDeleted: true };
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
