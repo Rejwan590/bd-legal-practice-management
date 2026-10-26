@@ -28,6 +28,7 @@ import {
   Edit2,
 } from 'lucide-react';
 import { DailyCauseListModal } from './DailyCauseListModal';
+import { getFixedForLabel } from '../../data/hearingFixedFor';
 
 export const CalendarScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -706,15 +707,23 @@ export const CalendarScreen: React.FC = () => {
 
                     <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       {ev.type === 'hearing' && ev.caseId ? (
-                        <EntityLink
-                          type="hearing"
-                          id={ev.sourceId}
-                          caseId={ev.caseId}
-                          caseTab="hearings"
-                          label={ev.title}
-                          restricted={ev.restricted}
-                          className="font-bold text-xs"
-                        />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <EntityLink
+                            type="hearing"
+                            id={ev.sourceId}
+                            caseId={ev.caseId}
+                            caseTab="hearings"
+                            label={ev.title}
+                            restricted={ev.restricted}
+                            className="font-bold text-xs"
+                          />
+                          {ev.fixedFor && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {getFixedForLabel(ev.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                              {ev.fixedForNote ? ` (${ev.fixedForNote})` : ''}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <EntityLink
                           type={ev.type === 'file_return' ? 'file' : ev.type}
@@ -826,6 +835,12 @@ export const CalendarScreen: React.FC = () => {
                         restricted={ev.restricted}
                         className="font-bold text-slate-900"
                       />
+                      {ev.type === 'hearing' && ev.fixedFor && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                          {getFixedForLabel(ev.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                          {ev.fixedForNote ? ` (${ev.fixedForNote})` : ''}
+                        </span>
+                      )}
                       {ev.restricted && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
                           {t('cases.restricted')}
@@ -924,8 +939,16 @@ export const CalendarScreen: React.FC = () => {
                         {h.clientName && <span className="text-[11px] text-slate-500">{t('calendar.clientPrefix', { name: h.clientName })}</span>}
                       </td>
                       <td className="p-3">
-                        <span className="font-medium text-slate-800 block">{h.title}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-slate-800">{h.title}</span>
+                          {h.fixedFor && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                              {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                           {t('calendar.timePrefix', { time: new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
                         </span>
                       </td>

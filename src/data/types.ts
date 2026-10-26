@@ -168,6 +168,8 @@ export interface HearingRecord extends BaseRecord {
   purpose: string;
   status: HearingStatus;
   outcomeNote?: string;
+  fixedFor?: string;
+  fixedForNote?: string | null;
 }
 
 export interface HearingDateHistoryRecord {
@@ -178,6 +180,8 @@ export interface HearingDateHistoryRecord {
   oldAt: string; // ISO 8601
   newAt: string; // ISO 8601
   reason: string;
+  oldFixedFor?: string | null;
+  newFixedFor?: string | null;
   changedBy: string; // User ID
   changedByName: string;
   changedAt: string; // ISO 8601
@@ -303,6 +307,8 @@ export interface CalendarEventRecord {
   shelfLocation?: string;
   isOverdue?: boolean;
   restricted?: boolean;
+  fixedFor?: string;
+  fixedForNote?: string;
 }
 
 export interface SecurityContext {

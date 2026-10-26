@@ -47,6 +47,8 @@ export class MockCalendarRepository implements ICalendarRepository {
           clientName: clientRec?.name,
           status: h.status,
           restricted: caseRec?.restricted,
+          fixedFor: h.fixedFor || undefined,
+          fixedForNote: h.fixedForNote || undefined,
         });
       });
     }

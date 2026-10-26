@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { HearingRecord } from '../../data/types';
+import { HearingRecord, CaseCategory } from '../../data/types';
+import { useAuth } from '../foundation/AuthContext';
+import { getRepositories } from '../../data/repositories';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Calendar, AlertCircle, Save, Clock } from 'lucide-react';
+import { getFixedForOptionsForCategory, getFixedForLabel } from '../../data/hearingFixedFor';
 
 interface RescheduleHearingModalProps {
   isOpen: boolean;
   onClose: () => void;
   hearing: HearingRecord | null;
-  onReschedule: (hearingId: string, newDate: string, reason: string) => Promise<void>;
+  onReschedule: (
+    hearingId: string,
+    newDate: string,
+    reason: string,
+    fixedFor?: string,
+    fixedForNote?: string
+  ) => Promise<void>;
 }
 
 const COMMON_REASONS = [
@@ -26,22 +35,50 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
   hearing,
   onReschedule,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { currentUser } = useAuth();
+  const repos = getRepositories();
+
   const [newDate, setNewDate] = useState('');
   const [reason, setReason] = useState('');
+  const [fixedFor, setFixedFor] = useState('hearing');
+  const [fixedForNote, setFixedForNote] = useState('');
+  const [category, setCategory] = useState<CaseCategory | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const fixedForOptions = getFixedForOptionsForCategory(category);
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
+
   useEffect(() => {
-    if (hearing) {
+    if (hearing && isOpen) {
       // Default to 14 days after current scheduled date
       const current = new Date(hearing.scheduledAt);
       current.setDate(current.getDate() + 14);
       setNewDate(current.toISOString().slice(0, 16));
       setReason(COMMON_REASONS[0]);
+      setFixedFor(hearing.fixedFor || 'hearing');
+      setFixedForNote(hearing.fixedForNote || '');
+
+      if (currentUser) {
+        repos.case
+          .getById({ currentUser }, hearing.caseId)
+          .then((caseRec) => {
+            if (caseRec) {
+              setCategory(caseRec.caseCategory || null);
+              const opts = getFixedForOptionsForCategory(caseRec.caseCategory);
+            if (hearing.fixedFor) {
+              setFixedFor(hearing.fixedFor);
+            } else if (opts.length > 0) {
+              setFixedFor(opts[0].key);
+            }
+          }
+          })
+          .catch(console.error);
+      }
     }
     setErrorMsg(null);
-  }, [hearing, isOpen]);
+  }, [hearing, isOpen, currentUser]);
 
   if (!hearing) return null;
 
@@ -49,6 +86,10 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
     e.preventDefault();
     if (!newDate) {
       setErrorMsg('New hearing date is required');
+      return;
+    }
+    if (!fixedFor) {
+      setErrorMsg(t('hearings.fixedForRequired'));
       return;
     }
     if (!reason.trim()) {
@@ -59,7 +100,13 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      await onReschedule(hearing.id, new Date(newDate).toISOString(), reason.trim());
+      await onReschedule(
+        hearing.id,
+        new Date(newDate).toISOString(),
+        reason.trim(),
+        fixedFor,
+        fixedForNote.trim() || undefined
+      );
       onClose();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to reschedule hearing');
@@ -115,6 +162,11 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
         <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1">
           <div className="font-semibold text-slate-800">
             {t('hearings.purpose')}: <span className="font-normal">{hearing.purpose}</span>
+            {hearing.fixedFor && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                {getFixedForLabel(hearing.fixedFor, currentLang)}
+              </span>
+            )}
           </div>
           <div className="text-slate-600 flex items-center gap-1.5 font-medium">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -134,6 +186,38 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
               required
               value={newDate}
               onChange={(e) => setNewDate(e.target.value)}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('hearings.fixedFor')} *
+            </label>
+            <select
+              required
+              value={fixedFor}
+              onChange={(e) => setFixedFor(e.target.value)}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+            >
+              {fixedForOptions.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {currentLang === 'bn' ? opt.labelBn : opt.labelEn}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('hearings.fixedForNote')}
+            </label>
+            <input
+              type="text"
+              maxLength={200}
+              value={fixedForNote}
+              onChange={(e) => setFixedForNote(e.target.value)}
+              placeholder={t('hearings.fixedForNotePlaceholder')}
               className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
             />
           </div>

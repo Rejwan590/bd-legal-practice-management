@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CalendarEventRecord } from '../../data/types';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Printer, Scale, Building } from 'lucide-react';
+import { getFixedForLabel } from '../../data/hearingFixedFor';
 
 interface DailyCauseListModalProps {
   isOpen: boolean;
@@ -19,7 +20,8 @@ export const DailyCauseListModal: React.FC<DailyCauseListModalProps> = ({
   hearings,
   onClose,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
   const printRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen) return null;
@@ -127,7 +129,13 @@ export const DailyCauseListModal: React.FC<DailyCauseListModalProps> = ({
                       <span className="font-semibold text-indigo-950 block">
                         {h.title.split(' - ')[1] || h.title}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-mono">
+                      {h.fixedFor && (
+                        <span className="inline-block text-[11px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded mt-0.5">
+                          {getFixedForLabel(h.fixedFor, currentLang)}
+                          {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
                         Time: {new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </td>

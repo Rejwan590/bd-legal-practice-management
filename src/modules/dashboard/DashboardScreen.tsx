@@ -20,6 +20,7 @@ import { ClientFormModal } from '../clients/ClientFormModal';
 import { TaskFormModal } from '../tasks/TaskFormModal';
 import { DailyCauseListModal } from '../calendar/DailyCauseListModal';
 import { AppointmentFormModal } from '../appointments/AppointmentFormModal';
+import { getFixedForLabel } from '../../data/hearingFixedFor';
 import {
   Briefcase,
   Users,
@@ -571,7 +572,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
                         ) : (
                           <span className="font-bold text-sm text-slate-900 block">{h.caseNumber || h.title}</span>
                         )}
-                        <span className="text-xs text-slate-500 line-clamp-1">{h.title}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span className="text-xs text-slate-500">{h.title}</span>
+                          {h.fixedFor && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                              {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ),
                   },
@@ -582,6 +591,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                           {h.status ? h.status.toUpperCase() : 'SCHEDULED'}
                         </span>
+                        {h.fixedFor && (
+                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                            {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                          </span>
+                        )}
                         {h.restricted && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
                             <Lock className="w-3 h-3" />
@@ -1077,14 +1092,22 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
                         </div>
 
                         <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
-                          <EntityLink
-                            type="hearing"
-                            id={h.id}
-                            caseId={h.caseId}
-                            caseTab="hearings"
-                            label={h.purpose}
-                            className="text-xs font-bold block truncate"
-                          />
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <EntityLink
+                              type="hearing"
+                              id={h.id}
+                              caseId={h.caseId}
+                              caseTab="hearings"
+                              label={h.purpose}
+                              className="text-xs font-bold truncate"
+                            />
+                            {h.fixedFor && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                                {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                             {h.outcomeNote || 'Regular Court Sitting'}
                           </p>

@@ -36,6 +36,7 @@ import {
   RestClientRepository,
   RestCaseRepository,
   RestAppointmentRepository,
+  RestHearingRepository,
 } from './rest';
 
 // Export all individual classes, helpers, and types
@@ -63,6 +64,7 @@ export {
   RestClientRepository,
   RestCaseRepository,
   RestAppointmentRepository,
+  RestHearingRepository,
 };
 
 // Single registry of repositories
@@ -113,7 +115,9 @@ const appointmentRepo: IAppointmentRepository = isRestMode
   : new MockAppointmentRepository(mockAuditLogRepo);
 
 const reminderRepo = new MockReminderRepository(mockAuditLogRepo);
-const hearingRepo = new MockHearingRepository(mockAuditLogRepo, reminderRepo);
+const hearingRepo: IHearingRepository = isRestMode
+  ? new RestHearingRepository()
+  : new MockHearingRepository(mockAuditLogRepo, reminderRepo);
 const taskRepo = new MockTaskRepository(mockAuditLogRepo, reminderRepo);
 const physicalFileRepo = new MockPhysicalFileRepository(mockAuditLogRepo, reminderRepo);
 const calendarRepo = new MockCalendarRepository();

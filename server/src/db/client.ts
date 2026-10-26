@@ -1,7 +1,7 @@
 import pg from 'pg';
 import crypto from 'crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, and, isNull, desc, or, ilike, ne, sql, SQL } from 'drizzle-orm';
+import { eq, and, isNull, desc, asc, gte, lte, or, ilike, ne, sql, SQL } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
@@ -185,9 +185,23 @@ export interface IDatabase {
   insertCaseShare(share: schema.NewCaseShare): Promise<schema.CaseShare>;
   deleteCaseShare(id: string, firmId: string): Promise<void>;
   // Hearings
-  listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]>;
+  listHearings(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      fixedFor?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<schema.Hearing[]>;
+  getHearingById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing | null>;
   insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing>;
   updateHearing(id: string, firmId: string, updates: Partial<schema.Hearing>): Promise<schema.Hearing>;
+  deleteHearing(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }>;
+  insertHearingDateHistory(history: schema.NewHearingDateHistory): Promise<schema.HearingDateHistory>;
+  listHearingDateHistory(hearingId: string, firmId: string): Promise<schema.HearingDateHistory[]>;
   // Platform Admins & Admin Audit (Super Admin for software owner)
   getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null>;
   getPlatformAdminById(id: string): Promise<schema.PlatformAdmin | null>;
@@ -233,6 +247,7 @@ class MemoryDatabase implements IDatabase {
   public cases: schema.Case[] = [];
   public caseNotes: schema.CaseNote[] = [];
   public hearings: schema.Hearing[] = [];
+  public hearingDateHistory: schema.HearingDateHistory[] = [];
   public caseShares: schema.CaseShare[] = [];
   public appointments: schema.Appointment[] = [];
   public appointmentAttendees: schema.AppointmentAttendee[] = [];
@@ -1067,12 +1082,42 @@ class MemoryDatabase implements IDatabase {
     }
   }
 
-  public async listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]> {
+  public async listHearings(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      fixedFor?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<schema.Hearing[]> {
     await this.init();
     const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
     return this.hearings
-      .filter((h) => h.firmId === firmId && !h.deletedAt && visibleCaseIds.has(h.caseId))
+      .filter((h) => {
+        if (h.firmId !== firmId || h.deletedAt || !visibleCaseIds.has(h.caseId)) return false;
+        if (filter?.caseId && h.caseId !== filter.caseId) return false;
+        if (filter?.status && h.status !== filter.status) return false;
+        if (filter?.fixedFor && h.fixedFor !== filter.fixedFor) return false;
+        if (filter?.fromDate && new Date(h.scheduledAt) < new Date(filter.fromDate)) return false;
+        if (filter?.toDate && new Date(h.scheduledAt) > new Date(filter.toDate)) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
       .map((h) => ({ ...h }));
+  }
+
+  public async getHearingById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing | null> {
+    await this.init();
+    const hearing = this.hearings.find((h) => h.id === id && h.firmId === firmId && !h.deletedAt);
+    if (!hearing) return null;
+    if (user) {
+      const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+      if (!visibleCaseIds.has(hearing.caseId)) return null;
+    }
+    return { ...hearing };
   }
 
   public async insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing> {
@@ -1087,6 +1132,8 @@ class MemoryDatabase implements IDatabase {
       purpose: hearing.purpose ?? null,
       status: hearing.status ?? 'scheduled',
       outcomeNote: hearing.outcomeNote ?? null,
+      fixedFor: hearing.fixedFor ?? null,
+      fixedForNote: hearing.fixedForNote ?? null,
       createdAt: hearing.createdAt || new Date(),
       updatedAt: hearing.updatedAt || new Date(),
       deletedAt: null,
@@ -1108,6 +1155,43 @@ class MemoryDatabase implements IDatabase {
     };
     this.hearings[idx] = updated;
     return { ...updated };
+  }
+
+  public async deleteHearing(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }> {
+    await this.init();
+    const idx = this.hearings.findIndex((h) => h.id === id && h.firmId === firmId && !h.deletedAt);
+    if (idx === -1) throw new Error(`Hearing not found: ${id}`);
+    this.hearings[idx].deletedAt = new Date();
+    this.hearings[idx].updatedAt = new Date();
+    if (updatedBy) this.hearings[idx].updatedBy = updatedBy;
+    return { success: true, softDeleted: true };
+  }
+
+  public async insertHearingDateHistory(history: schema.NewHearingDateHistory): Promise<schema.HearingDateHistory> {
+    await this.init();
+    const created: schema.HearingDateHistory = {
+      id: history.id || `hdh-${crypto.randomUUID()}`,
+      firmId: history.firmId,
+      hearingId: history.hearingId,
+      caseId: history.caseId,
+      oldAt: history.oldAt,
+      newAt: history.newAt,
+      reason: history.reason,
+      oldFixedFor: history.oldFixedFor ?? null,
+      newFixedFor: history.newFixedFor ?? null,
+      changedBy: history.changedBy,
+      changedAt: history.changedAt || new Date(),
+    };
+    this.hearingDateHistory.push(created);
+    return { ...created };
+  }
+
+  public async listHearingDateHistory(hearingId: string, firmId: string): Promise<schema.HearingDateHistory[]> {
+    await this.init();
+    return this.hearingDateHistory
+      .filter((h) => h.hearingId === hearingId && h.firmId === firmId)
+      .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
+      .map((h) => ({ ...h }));
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
@@ -1605,6 +1689,7 @@ class MemoryDatabase implements IDatabase {
       cases: [...this.cases],
       caseNotes: [...this.caseNotes],
       hearings: [...this.hearings],
+      hearingDateHistory: [...this.hearingDateHistory],
       caseShares: [...this.caseShares],
       appointments: [...this.appointments],
       appointmentAttendees: [...this.appointmentAttendees],
@@ -1629,6 +1714,7 @@ class MemoryDatabase implements IDatabase {
       this.cases = snapshot.cases;
       this.caseNotes = snapshot.caseNotes;
       this.hearings = snapshot.hearings;
+      this.hearingDateHistory = snapshot.hearingDateHistory;
       this.caseShares = snapshot.caseShares;
       this.appointments = snapshot.appointments;
       this.appointmentAttendees = snapshot.appointmentAttendees;
@@ -2510,18 +2596,61 @@ class PostgresDatabase implements IDatabase {
       .where(and(eq(schema.caseShares.id, id), eq(schema.caseShares.firmId, firmId)));
   }
 
-  public async listHearings(firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing[]> {
+  public async listHearings(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      fixedFor?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<schema.Hearing[]> {
     const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+    const conditions = [
+      eq(schema.hearings.firmId, firmId),
+      isNull(schema.hearings.deletedAt),
+      sql`${schema.hearings.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond})`,
+    ];
+    if (filter?.caseId) {
+      conditions.push(eq(schema.hearings.caseId, filter.caseId));
+    }
+    if (filter?.status) {
+      conditions.push(eq(schema.hearings.status, filter.status as any));
+    }
+    if (filter?.fixedFor) {
+      conditions.push(eq(schema.hearings.fixedFor, filter.fixedFor));
+    }
+    if (filter?.fromDate) {
+      conditions.push(gte(schema.hearings.scheduledAt, new Date(filter.fromDate)));
+    }
+    if (filter?.toDate) {
+      conditions.push(lte(schema.hearings.scheduledAt, new Date(filter.toDate)));
+    }
     return this.db
       .select()
       .from(schema.hearings)
-      .where(
-        and(
-          eq(schema.hearings.firmId, firmId),
-          isNull(schema.hearings.deletedAt),
-          sql`${schema.hearings.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond})`
-        )
-      );
+      .where(and(...conditions))
+      .orderBy(asc(schema.hearings.scheduledAt));
+  }
+
+  public async getHearingById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Hearing | null> {
+    const conditions = [
+      eq(schema.hearings.id, id),
+      eq(schema.hearings.firmId, firmId),
+      isNull(schema.hearings.deletedAt),
+    ];
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`${schema.hearings.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond})`);
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.hearings)
+      .where(and(...conditions))
+      .limit(1);
+    return rows[0] || null;
   }
 
   public async insertHearing(hearing: schema.NewHearing): Promise<schema.Hearing> {
@@ -2543,6 +2672,35 @@ class PostgresDatabase implements IDatabase {
       .returning();
     if (!rows[0]) throw new Error(`Hearing not found: ${id}`);
     return rows[0];
+  }
+
+  public async deleteHearing(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }> {
+    const rows = await this.db
+      .update(schema.hearings)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), updatedBy: updatedBy ?? null })
+      .where(and(eq(schema.hearings.id, id), eq(schema.hearings.firmId, firmId), isNull(schema.hearings.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Hearing not found: ${id}`);
+    return { success: true, softDeleted: true };
+  }
+
+  public async insertHearingDateHistory(history: schema.NewHearingDateHistory): Promise<schema.HearingDateHistory> {
+    const rows = await this.db
+      .insert(schema.hearingDateHistory)
+      .values({
+        ...history,
+        id: history.id || `hdh-${crypto.randomUUID()}`,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  public async listHearingDateHistory(hearingId: string, firmId: string): Promise<schema.HearingDateHistory[]> {
+    return this.db
+      .select()
+      .from(schema.hearingDateHistory)
+      .where(and(eq(schema.hearingDateHistory.hearingId, hearingId), eq(schema.hearingDateHistory.firmId, firmId)))
+      .orderBy(desc(schema.hearingDateHistory.changedAt));
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {

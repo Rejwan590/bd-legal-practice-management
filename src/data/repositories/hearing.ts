@@ -31,6 +31,7 @@ export class MockHearingRepository implements IHearingRepository {
       status?: HearingStatus;
       fromDate?: string;
       toDate?: string;
+      fixedFor?: string;
     }
   ): Promise<HearingRecord[]> {
     if (!can('cases.view', context.currentUser)) {
@@ -62,6 +63,10 @@ export class MockHearingRepository implements IHearingRepository {
 
     if (filter?.toDate) {
       hearings = hearings.filter((h) => new Date(h.scheduledAt) <= new Date(filter.toDate!));
+    }
+
+    if (filter?.fixedFor) {
+      hearings = hearings.filter((h) => h.fixedFor === filter.fixedFor);
     }
 
     // Sort ascending by scheduled date
@@ -105,6 +110,8 @@ export class MockHearingRepository implements IHearingRepository {
       purpose: string;
       court?: string;
       outcomeNote?: string;
+      fixedFor?: string;
+      fixedForNote?: string | null;
     }
   ): Promise<HearingRecord> {
     if (!can('hearings.update', context.currentUser)) {
@@ -141,6 +148,8 @@ export class MockHearingRepository implements IHearingRepository {
       purpose: data.purpose.trim(),
       status: 'scheduled',
       outcomeNote: data.outcomeNote?.trim() || undefined,
+      fixedFor: data.fixedFor || 'hearing',
+      fixedForNote: data.fixedForNote?.trim() || null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -227,7 +236,9 @@ export class MockHearingRepository implements IHearingRepository {
     context: SecurityContext,
     hearingId: string,
     newDate: string,
-    reason: string
+    reason: string,
+    fixedFor?: string,
+    fixedForNote?: string | null
   ): Promise<{ hearing: HearingRecord; history: HearingDateHistoryRecord }> {
     if (!can('hearings.update', context.currentUser)) {
       throw new Error('Permission denied: hearings.update required to reschedule hearing');
@@ -247,6 +258,7 @@ export class MockHearingRepository implements IHearingRepository {
     const oldDate = hearing.scheduledAt;
     const now = new Date().toISOString();
 
+    const newFixedFor = fixedFor || hearing.fixedFor || 'hearing';
     const historyRecord: HearingDateHistoryRecord = {
       id: generateUUID(),
       firmId: currentUser.firmId,
@@ -255,6 +267,8 @@ export class MockHearingRepository implements IHearingRepository {
       oldAt: oldDate,
       newAt: newDate,
       reason: reason.trim(),
+      oldFixedFor: hearing.fixedFor ?? null,
+      newFixedFor,
       changedBy: currentUser.id,
       changedByName: currentUser.name,
       changedAt: now,
@@ -269,6 +283,8 @@ export class MockHearingRepository implements IHearingRepository {
       const target = (s.hearings || []).find((h) => h.id === hearingId);
       if (target) {
         target.scheduledAt = newDate;
+        target.fixedFor = newFixedFor;
+        if (fixedForNote !== undefined) target.fixedForNote = fixedForNote?.trim() || null;
         target.updatedAt = now;
         target.updatedBy = currentUser.id;
         updatedHearing = { ...target };
@@ -301,7 +317,9 @@ export class MockHearingRepository implements IHearingRepository {
     outcomeNote: string,
     nextDate: string,
     nextPurpose: string,
-    reason: string
+    reason: string,
+    nextFixedFor?: string,
+    nextFixedForNote?: string | null
   ): Promise<{
     adjournedHearing: HearingRecord;
     nextHearing: HearingRecord;
@@ -325,6 +343,7 @@ export class MockHearingRepository implements IHearingRepository {
     const now = new Date().toISOString();
     const oldDate = hearing.scheduledAt;
 
+    const resolvedNextFixedFor = nextFixedFor || hearing.fixedFor || 'hearing';
     const historyRecord: HearingDateHistoryRecord = {
       id: generateUUID(),
       firmId: currentUser.firmId,
@@ -333,6 +352,8 @@ export class MockHearingRepository implements IHearingRepository {
       oldAt: oldDate,
       newAt: nextDate,
       reason: reason.trim(),
+      oldFixedFor: hearing.fixedFor ?? null,
+      newFixedFor: resolvedNextFixedFor,
       changedBy: currentUser.id,
       changedByName: currentUser.name,
       changedAt: now,
@@ -347,6 +368,8 @@ export class MockHearingRepository implements IHearingRepository {
       purpose: nextPurpose.trim(),
       status: 'scheduled',
       outcomeNote: undefined,
+      fixedFor: resolvedNextFixedFor,
+      fixedForNote: nextFixedForNote?.trim() || null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

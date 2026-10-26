@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { HearingRecord } from '../../data/types';
+import { HearingRecord, CaseCategory } from '../../data/types';
+import { useAuth } from '../foundation/AuthContext';
+import { getRepositories } from '../../data/repositories';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Gavel, Calendar, AlertCircle, Save } from 'lucide-react';
+import { getFixedForOptionsForCategory, getFixedForLabel } from '../../data/hearingFixedFor';
 
 interface AdjournHearingModalProps {
   isOpen: boolean;
@@ -13,7 +16,9 @@ interface AdjournHearingModalProps {
     outcomeNote: string,
     nextDate: string,
     nextPurpose: string,
-    reason: string
+    reason: string,
+    nextFixedFor?: string,
+    nextFixedForNote?: string
   ) => Promise<void>;
 }
 
@@ -23,26 +28,54 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
   hearing,
   onAdjournAndScheduleNext,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { currentUser } = useAuth();
+  const repos = getRepositories();
+
   const [outcomeNote, setOutcomeNote] = useState('');
   const [nextDate, setNextDate] = useState('');
+  const [nextFixedFor, setNextFixedFor] = useState('');
+  const [nextFixedForNote, setNextFixedForNote] = useState('');
   const [nextPurpose, setNextPurpose] = useState('');
   const [reason, setReason] = useState('');
+  const [category, setCategory] = useState<CaseCategory | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const fixedForOptions = getFixedForOptionsForCategory(category);
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
+
   useEffect(() => {
-    if (hearing) {
+    if (hearing && isOpen) {
       setOutcomeNote('Time petition allowed on condition; cost imposed. Fixed for step.');
       const future = new Date();
       future.setDate(future.getDate() + 21);
       future.setHours(10, 30, 0, 0);
       setNextDate(future.toISOString().slice(0, 16));
       setNextPurpose(hearing.purpose);
-      setReason("Time petition (Sullah/Hazira) moved by Opposite Party");
+      setNextFixedFor(hearing.fixedFor || 'hearing');
+      setNextFixedForNote(hearing.fixedForNote || '');
+      setReason('Time petition (Sullah/Hazira) moved by Opposite Party');
+
+      if (currentUser) {
+        repos.case
+          .getById({ currentUser }, hearing.caseId)
+          .then((caseRec) => {
+            if (caseRec) {
+              setCategory(caseRec.caseCategory || null);
+              const opts = getFixedForOptionsForCategory(caseRec.caseCategory);
+            if (hearing.fixedFor) {
+              setNextFixedFor(hearing.fixedFor);
+            } else if (opts.length > 0) {
+              setNextFixedFor(opts[0].key);
+            }
+          }
+          })
+          .catch(console.error);
+      }
     }
     setErrorMsg(null);
-  }, [hearing, isOpen]);
+  }, [hearing, isOpen, currentUser]);
 
   if (!hearing) return null;
 
@@ -56,14 +89,20 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
       setErrorMsg('Next hearing date is required');
       return;
     }
-    if (!nextPurpose.trim()) {
-      setErrorMsg('Next hearing step / purpose is required');
+    if (!nextFixedFor) {
+      setErrorMsg(t('hearings.fixedForRequired'));
       return;
     }
     if (!reason.trim()) {
       setErrorMsg('Adjournment reason is required');
       return;
     }
+
+    const computedNextPurpose =
+      nextPurpose.trim() ||
+      nextFixedForNote.trim() ||
+      getFixedForLabel(nextFixedFor, currentLang) ||
+      nextFixedFor;
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -72,8 +111,10 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
         hearing.id,
         outcomeNote.trim(),
         new Date(nextDate).toISOString(),
-        nextPurpose.trim(),
-        reason.trim()
+        computedNextPurpose,
+        reason.trim(),
+        nextFixedFor,
+        nextFixedForNote.trim() || undefined
       );
       onClose();
     } catch (err: unknown) {
@@ -131,7 +172,14 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
           <span className="text-[10px] uppercase font-bold text-slate-400 block">
             Adjourning Current Hearing:
           </span>
-          <div className="font-semibold text-slate-900">{hearing.purpose}</div>
+          <div className="font-semibold text-slate-900">
+            {hearing.purpose}
+            {hearing.fixedFor && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                {getFixedForLabel(hearing.fixedFor, currentLang)}
+              </span>
+            )}
+          </div>
           <div className="text-slate-500 font-mono">
             Scheduled Date: {new Date(hearing.scheduledAt).toLocaleString()}
           </div>
@@ -188,11 +236,42 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('hearings.nextPurpose')} *
+                  {t('hearings.nextFixedFor')} *
+                </label>
+                <select
+                  required
+                  value={nextFixedFor}
+                  onChange={(e) => setNextFixedFor(e.target.value)}
+                  className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                >
+                  {fixedForOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {currentLang === 'bn' ? opt.labelBn : opt.labelEn}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t('hearings.nextFixedForNote')}
                 </label>
                 <input
                   type="text"
-                  required
+                  maxLength={200}
+                  value={nextFixedForNote}
+                  onChange={(e) => setNextFixedForNote(e.target.value)}
+                  placeholder={t('hearings.nextFixedForNotePlaceholder')}
+                  className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t('hearings.nextPurpose')}
+                </label>
+                <input
+                  type="text"
                   value={nextPurpose}
                   onChange={(e) => setNextPurpose(e.target.value)}
                   placeholder={t('hearings.purposePlaceholder')}

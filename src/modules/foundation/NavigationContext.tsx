@@ -727,6 +727,8 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 await repos.hearing.update({ currentUser }, hearingFormState.initialData.id, {
                   appearingLawyerId: data.appearingLawyerId,
                   scheduledAt: data.scheduledAt,
+                  fixedFor: data.fixedFor,
+                  fixedForNote: data.fixedForNote,
                   purpose: data.purpose,
                   outcomeNote: data.outcomeNote,
                   status: data.status,
@@ -742,8 +744,8 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isOpen={Boolean(rescheduleState.hearing)}
             hearing={rescheduleState.hearing}
             onClose={() => setRescheduleState({ hearing: null })}
-            onReschedule={async (hearingId, newDate, reason) => {
-              await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason);
+            onReschedule={async (hearingId, newDate, reason, fixedFor, fixedForNote) => {
+              await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason, fixedFor, fixedForNote);
               triggerRefresh();
             }}
           />
@@ -757,7 +759,9 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               outcomeNote,
               nextDate,
               nextPurpose,
-              reason
+              reason,
+              nextFixedFor,
+              nextFixedForNote
             ) => {
               await repos.hearing.adjournAndScheduleNext(
                 { currentUser },
@@ -765,7 +769,9 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 outcomeNote,
                 nextDate,
                 nextPurpose,
-                reason
+                reason,
+                nextFixedFor,
+                nextFixedForNote
               );
               triggerRefresh();
             }}

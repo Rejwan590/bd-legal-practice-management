@@ -6,6 +6,7 @@ import { CaseRecord, HearingRecord, HearingStatus, UserRecord } from '../../data
 import { isLawyerOrOwner } from '../../rolePresets';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Calendar, Save, AlertCircle, Lock } from 'lucide-react';
+import { getFixedForOptionsForCategory, getFixedForLabel } from '../../data/hearingFixedFor';
 
 interface HearingFormModalProps {
   isOpen: boolean;
@@ -18,23 +19,13 @@ interface HearingFormModalProps {
     caseId: string;
     appearingLawyerId?: string | null;
     scheduledAt: string;
+    fixedFor: string;
+    fixedForNote?: string;
     purpose: string;
     outcomeNote?: string;
     status?: HearingStatus;
   }) => Promise<void>;
 }
-
-const COMMON_PURPOSES = [
-  'Submission of Written Statement (W.S.)',
-  'Framing of Issues',
-  'Hearing on Injunction Application (Order 39)',
-  'Examination-in-Chief of Plaintiff Witness',
-  'Cross Examination of Defendant Witness',
-  'Hearing on Additional Evidence',
-  'Final Arguments on Both Sides',
-  'Pronouncement of Judgment / Decree',
-  'Hearing on Rule Nisi (High Court)',
-];
 
 export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   isOpen,
@@ -45,7 +36,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   initialData,
   onSave,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
@@ -54,12 +45,16 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
   const [caseId, setCaseId] = useState(defaultCaseId || '');
   const [appearingLawyerId, setAppearingLawyerId] = useState<string>('');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [purpose, setPurpose] = useState(COMMON_PURPOSES[0]);
-  const [customPurpose, setCustomPurpose] = useState('');
+  const [fixedFor, setFixedFor] = useState('first_hearing');
+  const [fixedForNote, setFixedForNote] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [outcomeNote, setOutcomeNote] = useState('');
   const [status, setStatus] = useState<HearingStatus>('scheduled');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const selectedCase = cases.find((c) => c.id === caseId);
+  const fixedForOptions = getFixedForOptionsForCategory(selectedCase?.caseCategory);
 
   useEffect(() => {
     if (isOpen) {
@@ -67,12 +62,21 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         .list({ currentUser })
         .then((data) => {
           setCases(data);
+          let targetCaseId = defaultCaseId || '';
           if (initialData) {
-            setCaseId(initialData.caseId);
-          } else if (defaultCaseId) {
-            setCaseId(defaultCaseId);
-          } else if (data.length > 0) {
-            setCaseId(data[0].id);
+            targetCaseId = initialData.caseId;
+          } else if (!targetCaseId && data.length > 0) {
+            targetCaseId = data[0].id;
+          }
+          setCaseId(targetCaseId);
+
+          const foundCase = data.find((c) => c.id === targetCaseId);
+          const opts = getFixedForOptionsForCategory(foundCase?.caseCategory);
+          if (initialData?.fixedFor) {
+            setFixedFor(initialData.fixedFor);
+            setFixedForNote(initialData.fixedForNote || '');
+          } else if (opts.length > 0) {
+            setFixedFor(opts[0].key);
           }
         })
         .catch(console.error);
@@ -91,13 +95,9 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         setCaseId(initialData.caseId);
         setAppearingLawyerId(initialData.appearingLawyerId || '');
         setScheduledAt(initialData.scheduledAt.slice(0, 16));
-        if (COMMON_PURPOSES.includes(initialData.purpose)) {
-          setPurpose(initialData.purpose);
-          setCustomPurpose('');
-        } else {
-          setPurpose('CUSTOM');
-          setCustomPurpose(initialData.purpose);
-        }
+        setFixedFor(initialData.fixedFor || 'first_hearing');
+        setFixedForNote(initialData.fixedForNote || '');
+        setPurpose(initialData.purpose);
         setOutcomeNote(initialData.outcomeNote || '');
         setStatus(initialData.status);
       } else {
@@ -113,14 +113,25 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
           setCaseId(defaultCaseId);
         }
         setAppearingLawyerId('');
-        setPurpose(COMMON_PURPOSES[0]);
-        setCustomPurpose('');
+        setFixedFor('first_hearing');
+        setFixedForNote('');
+        setPurpose('');
         setOutcomeNote('');
         setStatus('scheduled');
       }
       setErrorMsg(null);
     }
   }, [isOpen, currentUser, defaultCaseId, defaultDate, initialData]);
+
+  // When selected case changes, ensure fixedFor is valid for category
+  const handleCaseChange = (newCaseId: string) => {
+    setCaseId(newCaseId);
+    const newCase = cases.find((c) => c.id === newCaseId);
+    const opts = getFixedForOptionsForCategory(newCase?.caseCategory);
+    if (!opts.some((o) => o.key === fixedFor)) {
+      setFixedFor(opts[0]?.key || 'hearing');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,12 +143,17 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
       setErrorMsg('Hearing date & time is required');
       return;
     }
-
-    const finalPurpose = (purpose === 'CUSTOM' ? customPurpose : purpose).trim();
-    if (!finalPurpose) {
-      setErrorMsg('Hearing purpose is required');
+    if (!fixedFor) {
+      setErrorMsg(t('hearings.fixedForRequired'));
       return;
     }
+
+    const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
+    const computedPurpose =
+      purpose.trim() ||
+      fixedForNote.trim() ||
+      getFixedForLabel(fixedFor, currentLang) ||
+      fixedFor;
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -146,7 +162,9 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
         caseId,
         appearingLawyerId: appearingLawyerId || null,
         scheduledAt: new Date(scheduledAt).toISOString(),
-        purpose: finalPurpose,
+        fixedFor,
+        fixedForNote: fixedForNote.trim() || undefined,
+        purpose: computedPurpose,
         outcomeNote: outcomeNote.trim() || undefined,
         status: initialData ? status : undefined,
       });
@@ -157,6 +175,8 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
       setSubmitting(false);
     }
   };
+
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
 
   return (
     <ResponsiveModal
@@ -218,7 +238,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
               required
               disabled={Boolean(lockCaseId || initialData)}
               value={caseId}
-              onChange={(e) => setCaseId(e.target.value)}
+              onChange={(e) => handleCaseChange(e.target.value)}
               className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden disabled:opacity-65 disabled:cursor-not-allowed"
             >
               {cases.map((c) => (
@@ -280,30 +300,47 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t('hearings.purpose')} *
+              {t('hearings.fixedFor')} *
             </label>
             <select
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden mb-2"
+              required
+              value={fixedFor}
+              onChange={(e) => setFixedFor(e.target.value)}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
             >
-              {COMMON_PURPOSES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              {fixedForOptions.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {currentLang === 'bn' ? opt.labelBn : opt.labelEn}
                 </option>
               ))}
-              <option value="CUSTOM">Custom Purpose / Step...</option>
             </select>
-            {purpose === 'CUSTOM' && (
-              <input
-                type="text"
-                required
-                value={customPurpose}
-                onChange={(e) => setCustomPurpose(e.target.value)}
-                placeholder="Specify hearing step..."
-                className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
-              />
-            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('hearings.fixedForNote')}
+            </label>
+            <input
+              type="text"
+              maxLength={200}
+              value={fixedForNote}
+              onChange={(e) => setFixedForNote(e.target.value)}
+              placeholder={t('hearings.fixedForNotePlaceholder')}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('hearings.purpose')}
+            </label>
+            <input
+              type="text"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder={t('hearings.purposePlaceholder')}
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+            />
           </div>
 
           <div>

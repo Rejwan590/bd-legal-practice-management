@@ -11,6 +11,11 @@ import { AdjournHearingModal } from './AdjournHearingModal';
 import { HearingFormModal } from './HearingFormModal';
 import { EntityLink } from '../../components/EntityLink';
 import {
+  CIVIL_FIXED_FOR_OPTIONS,
+  CRIMINAL_FIXED_FOR_OPTIONS,
+  getFixedForLabel,
+} from '../../data/hearingFixedFor';
+import {
   Gavel,
   Calendar,
   Plus,
@@ -27,13 +32,14 @@ import {
 } from 'lucide-react';
 
 export const HearingsScreen: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
   const { refreshVersion, triggerRefresh } = useNavigation();
   const [hearings, setHearings] = useState<HearingRecord[]>([]);
   const [casesMap, setCasesMap] = useState<Record<string, CaseRecord>>({});
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | HearingStatus>('all');
+  const [fixedForFilter, setFixedForFilter] = useState<string>('all');
   const [todayOnly, setTodayOnly] = useState(false);
 
   // Modals state
@@ -48,6 +54,12 @@ export const HearingsScreen: React.FC = () => {
 
   const repos = getRepositories();
   const canUpdate = can('hearings.update');
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
+
+  const allFixedForOptions = [
+    ...CIVIL_FIXED_FOR_OPTIONS,
+    ...CRIMINAL_FIXED_FOR_OPTIONS.filter((c) => !CIVIL_FIXED_FOR_OPTIONS.some((o) => o.key === c.key)),
+  ];
 
   const fetchHearings = async () => {
     setLoading(true);
@@ -58,6 +70,7 @@ export const HearingsScreen: React.FC = () => {
           { currentUser },
           {
             status: statusFilter !== 'all' ? statusFilter : undefined,
+            fixedFor: fixedForFilter !== 'all' ? fixedForFilter : undefined,
           }
         ),
         repos.case.list({ currentUser }),
@@ -84,11 +97,14 @@ export const HearingsScreen: React.FC = () => {
 
   useEffect(() => {
     fetchHearings();
-  }, [currentUser, statusFilter, todayOnly, refreshVersion]);
+  }, [currentUser, statusFilter, fixedForFilter, todayOnly, refreshVersion]);
 
   const handleSaveHearing = async (data: {
     caseId: string;
+    appearingLawyerId?: string | null;
     scheduledAt: string;
+    fixedFor: string;
+    fixedForNote?: string;
     purpose: string;
     outcomeNote?: string;
     status?: HearingStatus;
@@ -96,6 +112,9 @@ export const HearingsScreen: React.FC = () => {
     if (editingHearing) {
       await repos.hearing.update({ currentUser }, editingHearing.id, {
         scheduledAt: data.scheduledAt,
+        appearingLawyerId: data.appearingLawyerId,
+        fixedFor: data.fixedFor,
+        fixedForNote: data.fixedForNote,
         purpose: data.purpose,
         outcomeNote: data.outcomeNote,
         status: data.status,
@@ -124,8 +143,14 @@ export const HearingsScreen: React.FC = () => {
     }
   };
 
-  const handleReschedule = async (hearingId: string, newDate: string, reason: string) => {
-    await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason);
+  const handleReschedule = async (
+    hearingId: string,
+    newDate: string,
+    reason: string,
+    fixedFor?: string,
+    fixedForNote?: string
+  ) => {
+    await repos.hearing.rescheduleDate({ currentUser }, hearingId, newDate, reason, fixedFor, fixedForNote);
     setSuccessMsg(t('hearings.dateRescheduled'));
     await fetchHearings();
     triggerRefresh();
@@ -137,7 +162,9 @@ export const HearingsScreen: React.FC = () => {
     outcomeNote: string,
     nextDate: string,
     nextPurpose: string,
-    reason: string
+    reason: string,
+    nextFixedFor?: string,
+    nextFixedForNote?: string
   ) => {
     await repos.hearing.adjournAndScheduleNext(
       { currentUser },
@@ -145,7 +172,9 @@ export const HearingsScreen: React.FC = () => {
       outcomeNote,
       nextDate,
       nextPurpose,
-      reason
+      reason,
+      nextFixedFor,
+      nextFixedForNote
     );
     setSuccessMsg(t('hearings.hearingAdjourned'));
     await fetchHearings();
@@ -239,6 +268,19 @@ export const HearingsScreen: React.FC = () => {
             <option value="adjourned">{t('hearings.adjourned')}</option>
             <option value="cancelled">{t('hearings.cancelled')}</option>
           </select>
+
+          <select
+            value={fixedForFilter}
+            onChange={(e) => setFixedForFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg px-2.5 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
+          >
+            <option value="all">{t('hearings.allFixedFor')}</option>
+            {allFixedForOptions.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {currentLang === 'bn' ? opt.labelBn : opt.labelEn}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="text-xs font-semibold text-slate-500 px-3 py-1.5 bg-slate-100 rounded-lg shrink-0 self-start sm:self-center">
@@ -295,7 +337,7 @@ export const HearingsScreen: React.FC = () => {
               header: 'Step / Purpose',
               accessor: (h) => (
                 <div className="space-y-1 max-w-md">
-                  <div className="font-semibold text-xs text-slate-900">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <EntityLink
                       type="hearing"
                       id={h.id}
@@ -310,8 +352,14 @@ export const HearingsScreen: React.FC = () => {
                           setHistoryHearing(h);
                         }
                       }}
-                      className="text-xs text-slate-900"
+                      className="text-xs font-semibold text-slate-900"
                     />
+                    {h.fixedFor && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                        {getFixedForLabel(h.fixedFor, currentLang)}
+                        {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                      </span>
+                    )}
                   </div>
                   {h.outcomeNote && (
                     <div className="text-xs text-slate-500 line-clamp-2" title={h.outcomeNote}>
@@ -468,8 +516,8 @@ export const HearingsScreen: React.FC = () => {
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 text-xs space-y-1">
-                  <div className="font-semibold text-slate-900">
-                    Step / Purpose:{' '}
+                  <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                    <span>Step / Purpose:</span>
                     <EntityLink
                       type="hearing"
                       id={h.id}
@@ -486,6 +534,12 @@ export const HearingsScreen: React.FC = () => {
                       }}
                       className="text-xs text-slate-700"
                     />
+                    {h.fixedFor && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                        {getFixedForLabel(h.fixedFor, currentLang)}
+                        {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                      </span>
+                    )}
                   </div>
                   {h.outcomeNote && (
                     <div className="text-slate-600 pt-1 border-t border-slate-200/50">

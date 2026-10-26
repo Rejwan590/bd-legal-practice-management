@@ -5,6 +5,7 @@ import { getRepositories } from '../../data/repositories';
 import { HearingDateHistoryRecord, HearingRecord } from '../../data/types';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { History, Calendar, Clock, ArrowRight, User } from 'lucide-react';
+import { getFixedForLabel } from '../../data/hearingFixedFor';
 
 interface HearingDateHistoryModalProps {
   isOpen: boolean;
@@ -17,12 +18,13 @@ export const HearingDateHistoryModal: React.FC<HearingDateHistoryModalProps> = (
   onClose,
   hearing,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser } = useAuth();
   const [historyList, setHistoryList] = useState<HearingDateHistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const repos = getRepositories();
+  const currentLang = i18n.language === 'bn' ? 'bn' : 'en';
 
   useEffect(() => {
     if (isOpen && hearing) {
@@ -73,6 +75,12 @@ export const HearingDateHistoryModal: React.FC<HearingDateHistoryModalProps> = (
         <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
           <div className="font-semibold text-slate-800">
             {t('hearings.purpose')}: <span className="font-normal">{hearing.purpose}</span>
+            {hearing.fixedFor && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                {getFixedForLabel(hearing.fixedFor, currentLang)}
+                {hearing.fixedForNote ? ` (${hearing.fixedForNote})` : ''}
+              </span>
+            )}
           </div>
           <div className="text-slate-600 flex items-center gap-1.5 font-medium">
             <Calendar className="w-3.5 h-3.5 text-indigo-600" />
@@ -97,12 +105,33 @@ export const HearingDateHistoryModal: React.FC<HearingDateHistoryModalProps> = (
                     <div className="flex items-center gap-2 flex-wrap text-xs font-semibold text-slate-800">
                       <span className="text-rose-700 font-mono line-through bg-rose-50 px-1.5 py-0.5 rounded">
                         {new Date(hist.oldAt).toLocaleDateString()}
+                        {hist.oldFixedFor && (
+                          <span className="ml-1 text-[11px] font-sans font-medium text-rose-600">
+                            ({getFixedForLabel(hist.oldFixedFor, currentLang)})
+                          </span>
+                        )}
                       </span>
                       <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                       <span className="text-emerald-700 font-mono bg-emerald-50 px-1.5 py-0.5 rounded">
                         {new Date(hist.newAt).toLocaleDateString()}
+                        {hist.newFixedFor && (
+                          <span className="ml-1 text-[11px] font-sans font-medium text-emerald-600">
+                            ({getFixedForLabel(hist.newFixedFor, currentLang)})
+                          </span>
+                        )}
                       </span>
                     </div>
+
+                    {(hist.oldFixedFor || hist.newFixedFor) && (
+                      <p className="text-[11px] text-slate-600 font-medium">
+                        {t('hearings.dateChangedFromTo', {
+                          oldDate: new Date(hist.oldAt).toLocaleDateString(),
+                          oldPurpose: hist.oldFixedFor ? getFixedForLabel(hist.oldFixedFor, currentLang) : t('hearings.hearing'),
+                          newDate: new Date(hist.newAt).toLocaleDateString(),
+                          newPurpose: hist.newFixedFor ? getFixedForLabel(hist.newFixedFor, currentLang) : t('hearings.hearing'),
+                        })}
+                      </p>
+                    )}
 
                     <div className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                       <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">

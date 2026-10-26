@@ -305,12 +305,13 @@ export class MockReminderRepository implements IReminderRepository {
 
       if (!existing) {
         const caseRec = (store.cases || []).find((c) => c.id === h.caseId);
+        const fixedPurpose = h.fixedFor ? (h.fixedForNote ? `${h.fixedFor} (${h.fixedForNote})` : h.fixedFor) : h.purpose;
         const title = caseRec
-          ? `Court Hearing: ${caseRec.caseNumber}`
-          : `Court Hearing: ${h.purpose}`;
+          ? `Court Hearing: ${caseRec.caseNumber} [${fixedPurpose}]`
+          : `Court Hearing: ${fixedPurpose}`;
         const description = caseRec
-          ? `${caseRec.court} - ${h.purpose}`
-          : `Scheduled hearing for chamber case matter`;
+          ? `${caseRec.court} - Fixed for: ${fixedPurpose}`
+          : `Scheduled hearing for chamber case matter - Fixed for: ${fixedPurpose}`;
 
         await this.create(context, {
           userId: currentUser.id,

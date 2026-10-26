@@ -108,13 +108,15 @@ export class MockSearchRepository implements ISearchRepository {
           const outcomeMatch = h.outcomeNote ? h.outcomeNote.toLowerCase().includes(q) : false;
           const caseNumMatch = caseRec ? caseRec.caseNumber.toLowerCase().includes(q) : false;
           const courtMatch = caseRec ? caseRec.court.toLowerCase().includes(q) : false;
+          const fixedForMatch = h.fixedFor ? h.fixedFor.toLowerCase().includes(q) : false;
+          const fixedForNoteMatch = h.fixedForNote ? h.fixedForNote.toLowerCase().includes(q) : false;
 
-          if (purposeMatch || outcomeMatch || caseNumMatch || courtMatch) {
+          if (purposeMatch || outcomeMatch || caseNumMatch || courtMatch || fixedForMatch || fixedForNoteMatch) {
             results.push({
               id: `search-hearing-${h.id}`,
               entity: 'hearing',
               title: `${caseRec?.caseNumber || 'Hearing'}: ${h.purpose}`,
-              subtitle: `${caseRec?.court || ''} • Scheduled: ${new Date(h.scheduledAt).toLocaleDateString()}`,
+              subtitle: `${caseRec?.court || ''} • Scheduled: ${new Date(h.scheduledAt).toLocaleDateString()}${h.fixedFor ? ` • ${h.fixedFor}` : ''}`,
               badge: h.status.toUpperCase(),
               details: h.outcomeNote || undefined,
               caseNumber: caseRec?.caseNumber,

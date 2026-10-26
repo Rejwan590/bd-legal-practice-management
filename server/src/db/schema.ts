@@ -201,6 +201,8 @@ export const hearings = pgTable('hearings', {
   purpose: text('purpose'),
   status: text('status').$type<'scheduled' | 'held' | 'adjourned' | 'cancelled'>().default('scheduled').notNull(),
   outcomeNote: text('outcome_note'),
+  fixedFor: text('fixed_for'),
+  fixedForNote: text('fixed_for_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -210,6 +212,26 @@ export const hearings = pgTable('hearings', {
   index('idx_hearings_firm_id').on(table.firmId),
   index('idx_hearings_case_id').on(table.caseId),
   index('idx_hearings_appearing_lawyer').on(table.appearingLawyerId),
+  index('idx_hearings_fixed_for').on(table.fixedFor),
+]);
+
+// Hearing Date History Table
+export const hearingDateHistory = pgTable('hearing_date_history', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  hearingId: text('hearing_id').references(() => hearings.id, { onDelete: 'cascade' }).notNull(),
+  caseId: text('case_id').references(() => cases.id, { onDelete: 'cascade' }).notNull(),
+  oldAt: timestamp('old_at', { withTimezone: true }).notNull(),
+  newAt: timestamp('new_at', { withTimezone: true }).notNull(),
+  reason: text('reason').notNull(),
+  oldFixedFor: text('old_fixed_for'),
+  newFixedFor: text('new_fixed_for'),
+  changedBy: text('changed_by').notNull(),
+  changedAt: timestamp('changed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_hearing_date_history_firm_id').on(table.firmId),
+  index('idx_hearing_date_history_hearing_id').on(table.hearingId),
+  index('idx_hearing_date_history_case_id').on(table.caseId),
 ]);
 
 // Case Shares Table
@@ -405,6 +427,8 @@ export type CaseNote = typeof caseNotes.$inferSelect;
 export type NewCaseNote = typeof caseNotes.$inferInsert;
 export type Hearing = typeof hearings.$inferSelect;
 export type NewHearing = typeof hearings.$inferInsert;
+export type HearingDateHistory = typeof hearingDateHistory.$inferSelect;
+export type NewHearingDateHistory = typeof hearingDateHistory.$inferInsert;
 export type CaseShare = typeof caseShares.$inferSelect;
 export type NewCaseShare = typeof caseShares.$inferInsert;
 export type Appointment = typeof appointments.$inferSelect;

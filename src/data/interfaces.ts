@@ -283,6 +283,7 @@ export interface IHearingRepository {
       status?: HearingStatus;
       fromDate?: string;
       toDate?: string;
+      fixedFor?: string;
     }
   ): Promise<HearingRecord[]>;
   getById(context: SecurityContext, id: string): Promise<HearingRecord | null>;
@@ -295,6 +296,8 @@ export interface IHearingRepository {
       purpose: string;
       court?: string;
       outcomeNote?: string;
+      fixedFor?: string;
+      fixedForNote?: string | null;
     }
   ): Promise<HearingRecord>;
   update(
@@ -306,7 +309,9 @@ export interface IHearingRepository {
     context: SecurityContext,
     hearingId: string,
     newDate: string,
-    reason: string
+    reason: string,
+    fixedFor?: string,
+    fixedForNote?: string | null
   ): Promise<{ hearing: HearingRecord; history: HearingDateHistoryRecord }>;
   adjournAndScheduleNext(
     context: SecurityContext,
@@ -314,7 +319,9 @@ export interface IHearingRepository {
     outcomeNote: string,
     nextDate: string,
     nextPurpose: string,
-    reason: string
+    reason: string,
+    nextFixedFor?: string,
+    nextFixedForNote?: string | null
   ): Promise<{
     adjournedHearing: HearingRecord;
     nextHearing: HearingRecord;

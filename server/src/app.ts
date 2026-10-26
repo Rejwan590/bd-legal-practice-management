@@ -9,6 +9,7 @@ import { auditRouter } from './routes/audit.js';
 import { clientsRouter } from './routes/clients.js';
 import { casesRouter } from './routes/cases.js';
 import { appointmentsRouter } from './routes/appointments.js';
+import { hearingsRouter } from './routes/hearings.js';
 import { adminAuthRouter } from './routes/adminAuth.js';
 import { adminFirmsRouter } from './routes/adminFirms.js';
 import { adminDevicesRouter } from './routes/adminDevices.js';
@@ -79,6 +80,7 @@ export function createApp() {
   app.use('/api/v1/clients', clientsRouter);
   app.use('/api/v1/cases', casesRouter);
   app.use('/api/v1/appointments', appointmentsRouter);
+  app.use('/api/v1/hearings', hearingsRouter);
   app.use('/api/v1/devices', devicesRouter);
   app.use('/api/v1/audit-log', auditRouter);
 

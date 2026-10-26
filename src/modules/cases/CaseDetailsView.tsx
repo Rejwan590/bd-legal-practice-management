@@ -19,6 +19,7 @@ import { EntityLink } from '../../components/EntityLink';
 import { Breadcrumbs } from '../../components/Breadcrumbs';
 import { ClientAvatar } from '../../components/ClientAvatar';
 import { formatCasePartyTitle } from '../../data/caseRoles';
+import { getFixedForLabel } from '../../data/hearingFixedFor';
 import { CaseNotesTab } from './CaseNotesTab';
 import {
   Briefcase,
@@ -65,7 +66,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
   onEdit,
   onDeleteSuccess,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser, can, isReadOnly } = useAuth();
   const {
     route,
@@ -1016,6 +1017,12 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                             <span className="text-xs font-bold text-slate-900">
                               {new Date(h.scheduledAt).toLocaleString()}
                             </span>
+                            {h.fixedFor && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {getFixedForLabel(h.fixedFor, i18n.language as 'en' | 'bn')}
+                                {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm font-semibold text-slate-900 break-words">
                             {h.purpose}

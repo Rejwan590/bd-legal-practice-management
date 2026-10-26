@@ -3,14 +3,38 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Documentation baseline established and unified across the entire project repository. Core standing rules for AI assistants, comprehensive PRD with feature statuses, complete PostgreSQL 16 schema documentation, REST API catalog, design system specification, and updated 14-phase build guide completed without any code regressions.
-- [x] `AGENTS.md` created (< 200 lines): Standing rules for AI tools (read order, invariant rules, frontend rules, engineering process, end-of-task report format, what not to build yet). Pointer added to `README.md`.
-- [x] `PRD.md` created: Authoritative Product Requirements Document detailing user roles, team hierarchy, BD case categories, dynamic party roles, "Date Fixed For" specification, feature matrix (`[BUILT]`, `[PLANNED]`, `[IDEA]`), and verified `MISMATCH` discrepancies.
-- [x] `DATABASE.md` created: Definitive PostgreSQL 16 schema reference with Mermaid ER diagram, compound indexing rules, soft-delete rules, sensitive data protection, and planned columns.
-- [x] `API.md` created: REST API specification detailing `/api/v1` and `/api/admin` catalogs, dual auth systems, rate limits, request/response formats, and planned endpoints.
-- [x] `DESIGN.md` created: Design system and UI/UX specification covering color tokens, typography (Noto Sans Bengali line height protection), breakpoints (360px, 768px, 1280px), touch targets (>=44px), component patterns, and print stylesheet for cause list.
-- [x] `BUILD_GUIDE.md` updated: Authoritative 14-phase ordered roadmap highlighting completed phases and establishing Phase 5 ("Hearings Backend & Date Fixed For") as the recommended next task.
-- [x] All 381 server tests pass, frontend builds cleanly (`npm run build`), admin app builds cleanly (`npm run build --prefix admin-app`), and type checks pass cleanly (`npm run lint`).
+Phase 5: Hearings Backend & "Date Fixed For" completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
+- [x] **Backend & Database**:
+  - `hearings` table updated with `fixed_for` (controlled procedural purpose) and `fixed_for_note` (varchar 200).
+  - `hearing_date_history` table created with `old_fixed_for` and `new_fixed_for` tracking "date changed from X (for hearing) to Y (for evidence)".
+  - Migration `0006_hearings_date_fixed_for.sql` created and registered in `server/drizzle/meta/_journal.json`.
+  - Category validation logic in `server/src/services/hearingFixedFor.ts` and `src/data/hearingFixedFor.ts` (Civil, Criminal GR/CR, Other categories).
+  - Memory & Postgres database implementations updated with rollback transaction support (`getHearingById`, `listHearings`, `insertHearing`, `updateHearing`, `insertHearingDateHistory`, `listHearingDateHistory`).
+  - REST routes in `server/src/routes/hearings.ts` mounted at `/api/v1/hearings` (`GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/reschedule`, `POST /:id/adjourn`, `GET /:id/history`, `DELETE /:id`).
+  - Server test suite `server/tests/hearings.test.ts` (38 assertions) verified: **419 / 419 server tests passing (0 failed)** across all 9 suites (`foundation`, `clients`, `cases`, `hearings`, `postgres`, `adminAuth`, `adminFirms`, `devices`, `teamVisibility`).
+- [x] **Frontend Data & Repositories**:
+  - `RestHearingRepository` created and wired into `src/data/repositories/index.ts` with dual-mode parity (`isRestMode`).
+  - `MockHearingRepository` updated with `fixedFor`, `fixedForNote`, `oldFixedFor`, `newFixedFor`, and category filtering.
+  - `CalendarEventRecord`, `reminder.ts`, and `search.ts` updated to carry and index `fixedFor` and `fixedForNote`.
+- [x] **Bilingual i18n Parity**:
+  - Zero missing keys between `en.json` and `bn.json` for all civil, criminal, and generic `fixedForOptions`, labels, and placeholders.
+- [x] **Modals & UI Components**:
+  - `HearingFormModal.tsx`: category-scoped "Date Fixed For" dropdown + optional note input; validates `fixedFor` requirement.
+  - `RescheduleHearingModal.tsx`: requires new fixture date, purpose (`fixedFor`), optional note, and reason.
+  - `AdjournHearingModal.tsx`: one-step adjournment workflow requiring outcome note, reason, next hearing date, and `nextFixedFor` (defaulting to current purpose).
+  - `HearingDateHistoryModal.tsx`: renders chronological timeline "Date changed from X (for [oldFixedFor]) to Y (for [newFixedFor])".
+  - `HearingsScreen.tsx`: `fixedFor` purpose badges in table and mobile card, plus `fixedFor` filter dropdown in filter bar.
+  - `CaseDetailsView.tsx`: `fixedFor` purpose badges in Dossier Hearings tab.
+  - `DailyCauseListModal.tsx`: `fixedFor` purpose badge in official cause list and print layout.
+  - `CalendarScreen.tsx`: `fixedFor` purpose badges rendered in agenda cards, event cards, and cause list tab.
+  - `DashboardScreen.tsx`: `fixedFor` purpose badges rendered in Today's Cause List docket and Upcoming Hearings widget.
+  - `NavigationContext.tsx`: wired with new hearing modal handlers and reactive refresh.
+- [x] **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm test --prefix server`: PASS (419 assertions passed, 0 failed)
+  - `npm run build`: PASS (1784 modules transformed in 13.14s)
+  - `npm run build --prefix admin-app`: PASS (1672 modules transformed in 7.37s)
+- [x] **Recommended Next Step**: Phase 6 — Tasks & Workflow Automation or Physical File Tracking.
 
 ## Previous status
 Clients, Cases, and Appointments modules completed and fully verified across server (REST API, PostgreSQL schema & migration 0005, memory DB) and frontend mock/data layers with 100% parity. Central visibility, permissions, subscription read-only enforcement, audit logging, firm isolation, and restricted confidentiality strictly preserved.
