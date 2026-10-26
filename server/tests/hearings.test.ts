@@ -320,9 +320,84 @@ async function runTests() {
     assert(staffCreateRes.status === 403, 'Staff without hearings.update cannot create hearing (HTTP 403)');
 
     // Create Firm 2 and test cross-tenant isolation
-    const firm2Case = await db.insertCase({
+    const firm2Id = 'firm-2';
+    const existingFirm2 = await db.getFirm(firm2Id);
+    if (!existingFirm2) {
+      await db.insertFirm({
+        id: firm2Id,
+        firmId: firm2Id,
+        name: 'Firm 2 Legal Chambers',
+        barCouncilReg: null,
+        officeAddress: null,
+        courtAffiliations: null,
+        contact: null,
+        maxDevices: 5,
+        devicePolicy: 'auto-approve',
+        allowOwnerDeviceRemoval: false,
+        visibilityMode: 'open',
+        planId: 'annual-standard',
+        licenseStartsAt: now,
+        licenseExpiresAt: new Date(Date.now() + 86400000 * 30),
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdBy: 'system',
+        updatedBy: 'system',
+      });
+    }
+
+    const existingUserFirm2 = await db.getUserById('user-owner-firm2');
+    if (!existingUserFirm2) {
+      const firm2OwnerPasswordHash = await bcrypt.hash('Firm2OwnerPassword123!', 10);
+      await db.insertUser({
+        id: 'user-owner-firm2',
+        firmId: firm2Id,
+        name: 'Firm 2 Owner Advocate',
+        email: 'owner@firm2.bd',
+        passwordHash: firm2OwnerPasswordHash,
+        role: 'Owner',
+        jobType: 'lawyer_senior',
+        jobTitleLabel: 'Senior Advocate',
+        reportsToUserId: null,
+        permissions: ['cases.view', 'hearings.update'],
+        language: 'en',
+        active: true,
+        mustChangePassword: false,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdBy: 'system',
+        updatedBy: 'system',
+      } as any);
+    }
+
+    const existingClientFirm2 = await db.getClientById('client-firm2', firm2Id);
+    if (!existingClientFirm2) {
+      await db.insertClient({
+        id: 'client-firm2',
+        firmId: firm2Id,
+        name: 'Firm 2 Client',
+        nameBn: 'ফার্ম ২ মক্কেল',
+        phone: '+880 1700-000002',
+        email: 'client@firm2.bd',
+        address: 'Dhaka, Bangladesh',
+        notes: 'Test client for firm isolation',
+        archived: false,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdBy: 'user-owner-firm2',
+        updatedBy: 'user-owner-firm2',
+      });
+    }
+
+    const existingFirm2Case = await db.getCaseById('case-firm2-hearing-1', firm2Id);
+    const firm2Case = existingFirm2Case || await db.insertCase({
       id: 'case-firm2-hearing-1',
-      firmId: 'firm-2',
+      firmId: firm2Id,
       clientId: 'client-firm2',
       fileSerial: 'F-2026-8801',
       caseNumber: 'Firm 2 Case',
@@ -335,16 +410,24 @@ async function runTests() {
       updatedAt: now,
       deletedAt: null,
       nextHearingAt: null,
+      createdBy: 'user-owner-firm2',
+      updatedBy: 'user-owner-firm2',
     } as any);
 
-    const firm2Hearing = await db.insertHearing({
+    const existingFirm2Hearing = await db.getHearingById('hearing-firm2-1', firm2Id);
+    const firm2Hearing = existingFirm2Hearing || await db.insertHearing({
       id: 'hearing-firm2-1',
-      firmId: 'firm-2',
+      firmId: firm2Id,
       caseId: firm2Case.id,
       scheduledAt: new Date('2026-11-20T10:00:00Z'),
       purpose: 'Firm 2 hearing',
       status: 'scheduled',
       fixedFor: 'hearing',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdBy: 'user-owner-firm2',
+      updatedBy: 'user-owner-firm2',
     });
 
     // Firm 1 owner querying Firm 2 hearing directly gets 404
