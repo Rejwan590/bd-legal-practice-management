@@ -6,7 +6,7 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 
 ## Roadmap Overview & Progress Summary
 
-- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Daily Cause List Docket & Bulk Actions, Tasks Module Backend & Assignment, Super Admin & Device Auth).
+- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Accounts Phase 1, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Daily Cause List Docket & Bulk Actions, Tasks Module Backend & Assignment, Accounts & Billing Phase 1, Super Admin & Device Auth).
 - **Recommended Next Task**: **Phase 8 — Physical File Tracking & Custody Backend**.
 
 ---
