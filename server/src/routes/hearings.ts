@@ -59,6 +59,30 @@ const rescheduleHearingSchema = z.object({
   fixedForNote: z.string().max(200).optional().nullable(),
 });
 
+
+const bulkStatusSchema = z.object({
+  hearingIds: z.array(z.string().min(1)).min(1).max(50),
+  status: z.enum(['scheduled', 'held', 'adjourned', 'cancelled']),
+  outcomeNote: z.string().max(2000).optional().nullable(),
+});
+
+const bulkAdjournSchema = z.object({
+  hearingIds: z.array(z.string().min(1)).min(1).max(50),
+  nextDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: 'Invalid nextDate ISO string' }),
+  reason: z.string().min(1, 'reason is required').max(500),
+  nextFixedFor: z.string().min(1).optional(),
+  nextFixedForNote: z.string().max(200).optional().nullable(),
+  outcomeNote: z.string().max(2000).optional().nullable(),
+});
+
+const bulkRescheduleSchema = z.object({
+  hearingIds: z.array(z.string().min(1)).min(1).max(50),
+  newDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: 'Invalid newDate ISO string' }),
+  reason: z.string().min(1, 'reason is required').max(500),
+  fixedFor: z.string().min(1).optional(),
+  fixedForNote: z.string().max(200).optional().nullable(),
+});
+
 const adjournHearingSchema = z.object({
   nextDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: 'Invalid nextDate ISO string' }),
   reason: z.string().min(1, 'reason is required').max(500),
@@ -86,6 +110,273 @@ hearingsRouter.get(
 
     const hearings = await db.listHearings(firmId, filter, req.user);
     res.json(hearings);
+  }
+);
+
+
+// POST /api/v1/hearings/bulk-status - Bulk update status for multiple hearings
+hearingsRouter.post(
+  '/bulk-status',
+  requirePermission('hearings.update'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parseRes = bulkStatusSchema.safeParse(req.body);
+    if (!parseRes.success) {
+      return res.status(400).json({ error: 'ValidationError', details: parseRes.error.flatten() });
+    }
+
+    const { hearingIds, status, outcomeNote } = parseRes.data;
+    const db = getDatabase();
+    const firmId = req.user!.firmId;
+
+    // Verify all hearings exist and user has visibility
+    const hearingsToUpdate: Array<{ hearing: schema.Hearing; caseRecord: schema.Case | null }> = [];
+    for (const id of hearingIds) {
+      const hearing = await db.getHearingById(id, firmId, req.user);
+      if (!hearing) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+      const caseRecord = await db.getCaseById(hearing.caseId, firmId, req.user);
+      if (caseRecord?.restricted && !canAccessRestricted(req)) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+      hearingsToUpdate.push({ hearing, caseRecord });
+    }
+
+    await db.transaction(async (txDb) => {
+      const affectedCaseIds = new Set<string>();
+      for (const item of hearingsToUpdate) {
+        const { hearing } = item;
+        const updates: Partial<schema.Hearing> = {
+          status,
+          updatedBy: req.user!.id,
+        };
+        if (outcomeNote !== undefined) {
+          updates.outcomeNote = outcomeNote;
+        }
+
+        const updated = await txDb.updateHearing(hearing.id, firmId, updates);
+        affectedCaseIds.add(hearing.caseId);
+
+        await recordAudit({
+          firmId,
+          userId: req.user!.id,
+          userName: req.user!.name,
+          entity: 'Hearing',
+          entityId: hearing.id,
+          action: 'UPDATE',
+          oldValue: hearing as unknown as Record<string, unknown>,
+          newValue: updated as unknown as Record<string, unknown>,
+        });
+      }
+
+      for (const caseId of affectedCaseIds) {
+        await syncCaseNextHearing(txDb, firmId, caseId);
+      }
+    });
+
+    res.json({ success: true, updatedCount: hearingIds.length });
+  }
+);
+
+// POST /api/v1/hearings/bulk-adjourn - Bulk adjourn hearings to next date
+hearingsRouter.post(
+  '/bulk-adjourn',
+  requirePermission('hearings.update'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parseRes = bulkAdjournSchema.safeParse(req.body);
+    if (!parseRes.success) {
+      return res.status(400).json({ error: 'ValidationError', details: parseRes.error.flatten() });
+    }
+
+    const { hearingIds, nextDate, reason, nextFixedFor, nextFixedForNote, outcomeNote } = parseRes.data;
+    const db = getDatabase();
+    const firmId = req.user!.firmId;
+
+    const hearingsToAdjourn: Array<{ hearing: schema.Hearing; caseRecord: schema.Case | null }> = [];
+    for (const id of hearingIds) {
+      const hearing = await db.getHearingById(id, firmId, req.user);
+      if (!hearing) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+      const caseRecord = await db.getCaseById(hearing.caseId, firmId, req.user);
+      if (caseRecord?.restricted && !canAccessRestricted(req)) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+
+      // If nextFixedFor provided, validate against category; else validate carry-over
+      const targetFixedFor = nextFixedFor || hearing.fixedFor || 'hearing';
+      const validation = validateFixedFor(caseRecord?.caseCategory, targetFixedFor);
+      if (!validation.valid) {
+        return res.status(400).json({ error: 'ValidationError', message: validation.error });
+      }
+
+      hearingsToAdjourn.push({ hearing, caseRecord });
+    }
+
+    await db.transaction(async (txDb) => {
+      const affectedCaseIds = new Set<string>();
+      for (const item of hearingsToAdjourn) {
+        const { hearing } = item;
+        const targetFixedFor = nextFixedFor || hearing.fixedFor || 'hearing';
+
+        await txDb.insertHearingDateHistory({
+          id: crypto.randomUUID(),
+          firmId,
+          hearingId: hearing.id,
+          caseId: hearing.caseId,
+          oldAt: hearing.scheduledAt,
+          newAt: new Date(nextDate),
+          reason: reason.trim(),
+          oldFixedFor: hearing.fixedFor ?? null,
+          newFixedFor: targetFixedFor,
+          changedBy: req.user!.id,
+        });
+
+        await txDb.updateHearing(hearing.id, firmId, {
+          status: 'adjourned',
+          outcomeNote: outcomeNote !== undefined ? outcomeNote : hearing.outcomeNote,
+          updatedBy: req.user!.id,
+        });
+
+        await txDb.insertHearing({
+          id: crypto.randomUUID(),
+          firmId,
+          caseId: hearing.caseId,
+          appearingLawyerId: hearing.appearingLawyerId,
+          court: hearing.court,
+          scheduledAt: new Date(nextDate),
+          purpose: hearing.purpose,
+          fixedFor: targetFixedFor,
+          fixedForNote: nextFixedForNote || null,
+          outcomeNote: null,
+          status: 'scheduled',
+          createdBy: req.user!.id,
+          updatedBy: req.user!.id,
+        });
+
+        affectedCaseIds.add(hearing.caseId);
+
+        await recordAudit({
+          firmId,
+          userId: req.user!.id,
+          userName: req.user!.name,
+          entity: 'Hearing',
+          entityId: hearing.id,
+          action: 'HEARING_DATE_CHANGE',
+          oldValue: {
+            scheduledAt: hearing.scheduledAt,
+            status: 'scheduled',
+            fixedFor: hearing.fixedFor,
+          },
+          newValue: {
+            scheduledAt: nextDate,
+            status: 'adjourned',
+            reason: reason.trim(),
+            nextFixedFor: targetFixedFor,
+            outcomeNote,
+          },
+        });
+      }
+
+      for (const caseId of affectedCaseIds) {
+        await syncCaseNextHearing(txDb, firmId, caseId);
+      }
+    });
+
+    res.json({ success: true, adjournedCount: hearingIds.length });
+  }
+);
+
+// POST /api/v1/hearings/bulk-reschedule - Bulk reschedule hearing dates
+hearingsRouter.post(
+  '/bulk-reschedule',
+  requirePermission('hearings.update'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parseRes = bulkRescheduleSchema.safeParse(req.body);
+    if (!parseRes.success) {
+      return res.status(400).json({ error: 'ValidationError', details: parseRes.error.flatten() });
+    }
+
+    const { hearingIds, newDate, reason, fixedFor, fixedForNote } = parseRes.data;
+    const db = getDatabase();
+    const firmId = req.user!.firmId;
+
+    const hearingsToReschedule: Array<{ hearing: schema.Hearing; caseRecord: schema.Case | null }> = [];
+    for (const id of hearingIds) {
+      const hearing = await db.getHearingById(id, firmId, req.user);
+      if (!hearing) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+      const caseRecord = await db.getCaseById(hearing.caseId, firmId, req.user);
+      if (caseRecord?.restricted && !canAccessRestricted(req)) {
+        return res.status(404).json({ error: 'NotFound', message: `Hearing ${id} not found` });
+      }
+
+      const targetFixedFor = fixedFor || hearing.fixedFor || 'hearing';
+      const validation = validateFixedFor(caseRecord?.caseCategory, targetFixedFor);
+      if (!validation.valid) {
+        return res.status(400).json({ error: 'ValidationError', message: validation.error });
+      }
+
+      hearingsToReschedule.push({ hearing, caseRecord });
+    }
+
+    await db.transaction(async (txDb) => {
+      const affectedCaseIds = new Set<string>();
+      for (const item of hearingsToReschedule) {
+        const { hearing } = item;
+        const targetFixedFor = fixedFor || hearing.fixedFor || 'hearing';
+
+        await txDb.insertHearingDateHistory({
+          id: crypto.randomUUID(),
+          firmId,
+          hearingId: hearing.id,
+          caseId: hearing.caseId,
+          oldAt: hearing.scheduledAt,
+          newAt: new Date(newDate),
+          reason: reason.trim(),
+          oldFixedFor: hearing.fixedFor ?? null,
+          newFixedFor: targetFixedFor,
+          changedBy: req.user!.id,
+        });
+
+        await txDb.updateHearing(hearing.id, firmId, {
+          scheduledAt: new Date(newDate),
+          fixedFor: targetFixedFor,
+          fixedForNote: fixedForNote !== undefined ? fixedForNote : hearing.fixedForNote,
+          updatedBy: req.user!.id,
+        });
+
+        affectedCaseIds.add(hearing.caseId);
+
+        await recordAudit({
+          firmId,
+          userId: req.user!.id,
+          userName: req.user!.name,
+          entity: 'Hearing',
+          entityId: hearing.id,
+          action: 'HEARING_DATE_CHANGE',
+          oldValue: {
+            scheduledAt: hearing.scheduledAt,
+            fixedFor: hearing.fixedFor,
+          },
+          newValue: {
+            scheduledAt: newDate,
+            fixedFor: targetFixedFor,
+            reason: reason.trim(),
+          },
+        });
+      }
+
+      for (const caseId of affectedCaseIds) {
+        await syncCaseNextHearing(txDb, firmId, caseId);
+      }
+    });
+
+    res.json({ success: true, rescheduledCount: hearingIds.length });
   }
 );
 

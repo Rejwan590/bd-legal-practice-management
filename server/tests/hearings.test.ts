@@ -399,6 +399,108 @@ async function runTests() {
     assert(hearingAudits.some((a) => a.action === 'CREATE'), 'Audit log contains CREATE action for Hearing');
     assert(hearingAudits.some((a) => a.action === 'HEARING_DATE_CHANGE'), 'Audit log contains HEARING_DATE_CHANGE action');
 
+
+    // --- 8. Bulk Operations (Phase 6: Daily Cause List Docket) ---
+    console.log('\n--- 8. Bulk Operations for Cause List Docket ---');
+
+    // Create 2 test hearings for bulk status update
+    const bulkHearing1Res = await fetch(`${baseUrl}/api/v1/hearings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        caseId: civilCase.id,
+        scheduledAt: '2026-11-20T10:00:00Z',
+        purpose: 'Bulk test hearing 1',
+        fixedFor: 'hearing',
+      }),
+    });
+    const bulkH1 = await bulkHearing1Res.json();
+
+    const bulkHearing2Res = await fetch(`${baseUrl}/api/v1/hearings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        caseId: civilCase.id,
+        scheduledAt: '2026-11-20T10:30:00Z',
+        purpose: 'Bulk test hearing 2',
+        fixedFor: 'written_statement',
+      }),
+    });
+    const bulkH2 = await bulkHearing2Res.json();
+
+    // 8.1 Bulk Status: mark both as 'held'
+    const bulkStatusRes = await fetch(`${baseUrl}/api/v1/hearings/bulk-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        hearingIds: [bulkH1.id, bulkH2.id],
+        status: 'held',
+        outcomeNote: 'Held by bench',
+      }),
+    });
+    assert(bulkStatusRes.status === 200, 'POST /bulk-status returns HTTP 200');
+    const bulkStatusJson = await bulkStatusRes.json();
+    assert(bulkStatusJson.updatedCount === 2, 'Bulk status updated 2 hearings');
+
+    const updatedH1 = await db.getHearingById(bulkH1.id, firmId);
+    const updatedH2 = await db.getHearingById(bulkH2.id, firmId);
+    assert(updatedH1?.status === 'held', 'Bulk hearing 1 status is held');
+    assert(updatedH2?.status === 'held', 'Bulk hearing 2 status is held');
+    assert(updatedH1?.outcomeNote === 'Held by bench', 'Bulk hearing 1 outcome note updated');
+
+    // 8.2 Bulk Reschedule: shift dates to 2026-11-25
+    const bulkRescheduleRes = await fetch(`${baseUrl}/api/v1/hearings/bulk-reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        hearingIds: [bulkH1.id, bulkH2.id],
+        newDate: '2026-11-25T10:00:00Z',
+        reason: 'Court vacant due to conference',
+      }),
+    });
+    assert(bulkRescheduleRes.status === 200, 'POST /bulk-reschedule returns HTTP 200');
+    const bulkRescheduleJson = await bulkRescheduleRes.json();
+    assert(bulkRescheduleJson.rescheduledCount === 2, 'Bulk reschedule processed 2 hearings');
+
+    const reschedH1Hist = await db.listHearingDateHistory(bulkH1.id, firmId);
+    assert(reschedH1Hist.length > 0, 'Hearing date history created for bulk reschedule');
+    assert(reschedH1Hist[reschedH1Hist.length - 1].reason === 'Court vacant due to conference', 'Reschedule history reason matches');
+
+    // 8.3 Bulk Adjourn: adjourn both to 2026-12-05 with nextFixedFor = 'argument'
+    const bulkAdjournRes = await fetch(`${baseUrl}/api/v1/hearings/bulk-adjourn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        hearingIds: [bulkH1.id, bulkH2.id],
+        nextDate: '2026-12-05T10:00:00Z',
+        reason: 'Time petition allowed by bench',
+        nextFixedFor: 'argument',
+        outcomeNote: 'Adjourned to argument stage',
+      }),
+    });
+    assert(bulkAdjournRes.status === 200, 'POST /bulk-adjourn returns HTTP 200');
+    const bulkAdjournJson = await bulkAdjournRes.json();
+    assert(bulkAdjournJson.adjournedCount === 2, 'Bulk adjourn processed 2 hearings');
+
+    const adjournedH1 = await db.getHearingById(bulkH1.id, firmId);
+    assert(adjournedH1?.status === 'adjourned', 'Old hearing 1 marked as adjourned');
+
+    // Verify new upcoming hearings created
+    const newUpcomingHearings = await db.listHearings(firmId, { caseId: civilCase.id, status: 'scheduled' });
+    const argumentHearings = newUpcomingHearings.filter((h) => h.fixedFor === 'argument');
+    assert(argumentHearings.length >= 2, 'New hearings created at argument stage');
+
+    // 8.4 Firm Isolation: Firm 1 cannot bulk update Firm 2 hearing
+    const crossTenantBulk = await fetch(`${baseUrl}/api/v1/hearings/bulk-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        hearingIds: [firm2Hearing.id],
+        status: 'cancelled',
+      }),
+    });
+    assert(crossTenantBulk.status === 404, 'Bulk status on foreign firm hearing returns 404 (Firm isolation)');
+
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

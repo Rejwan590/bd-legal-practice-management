@@ -6,8 +6,8 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 
 ## Roadmap Overview & Progress Summary
 
-- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Super Admin & Device Auth).
-- **Recommended Next Task**: **Phase 6 — Daily Cause List Docket & Bulk Actions**.
+- **Phases Completed**: Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 12 (Foundation, Clients, Cases, Appointments, Hearings & "Date Fixed For", Daily Cause List Docket & Bulk Actions, Super Admin & Device Auth).
+- **Recommended Next Task**: **Phase 7 — Tasks Module Backend & Assignment**.
 
 ---
 
@@ -60,12 +60,12 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 - [x] Update frontend to display `fixed_for` in Case Dossier, Hearings list, Calendar, Dashboard, and History modal.
 - [x] Automated tests: invalid category rejection, history recording old/new values, and adjournment carry-over (419/419 passed).
 
-### Phase 6: Daily Cause List Docket & Bulk Actions `[RECOMMENDED NEXT TASK]`
-- [ ] Daily cause list docket view filterable by court, date, appearing lawyer, and `fixed_for`.
-- [ ] Bulk adjournment and step completion from the cause list screen.
-- [ ] High-contrast, printable A4 cause list docket stylesheet.
+### Phase 6: Daily Cause List Docket & Bulk Actions `[COMPLETED]`
+- [x] Daily cause list docket view filterable by court, date, appearing lawyer, and `fixed_for`.
+- [x] Bulk adjournment, bulk reschedule, and bulk status completion from the cause list screen.
+- [x] High-contrast, printable A4 cause list docket stylesheet with clerk signature block.
 
-### Phase 7: Tasks Module Backend & Assignment `[PLANNED]`
+### Phase 7: Tasks Module Backend & Assignment `[RECOMMENDED NEXT TASK]`
 - [ ] Move tasks from frontend mock to PostgreSQL `tasks` table.
 - [ ] Task assignment, priorities (`urgent`, `high`, `medium`, `normal`, `low`), due dates, and status transitions.
 - [ ] Case and client association with overdue date calculations.

@@ -500,4 +500,78 @@ export class MockHearingRepository implements IHearingRepository {
       allHearings: hearings,
     };
   }
+
+  async bulkUpdateStatus(
+    context: SecurityContext,
+    hearingIds: string[],
+    status: HearingStatus,
+    outcomeNote?: string
+  ): Promise<{ updatedCount: number }> {
+    if (!can('hearings.update', context.currentUser)) {
+      throw new Error('Permission denied: hearings.update required');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    let updatedCount = 0;
+    for (const id of hearingIds) {
+      await this.update(context, id, {
+        status,
+        ...(outcomeNote !== undefined ? { outcomeNote } : {}),
+      });
+      updatedCount++;
+    }
+    return { updatedCount };
+  }
+
+  async bulkAdjourn(
+    context: SecurityContext,
+    hearingIds: string[],
+    nextDate: string,
+    reason: string,
+    nextFixedFor?: string,
+    outcomeNote?: string
+  ): Promise<{ adjournedCount: number }> {
+    if (!can('hearings.update', context.currentUser)) {
+      throw new Error('Permission denied: hearings.update required');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    let adjournedCount = 0;
+    for (const id of hearingIds) {
+      const h = await this.getById(context, id);
+      if (!h) continue;
+      const targetFixedFor = nextFixedFor || h.fixedFor || 'hearing';
+      await this.adjournAndScheduleNext(
+        context,
+        id,
+        outcomeNote || h.outcomeNote || 'Adjourned by bench',
+        nextDate,
+        h.purpose,
+        reason,
+        targetFixedFor
+      );
+      adjournedCount++;
+    }
+    return { adjournedCount };
+  }
+
+  async bulkReschedule(
+    context: SecurityContext,
+    hearingIds: string[],
+    newDate: string,
+    reason: string,
+    fixedFor?: string
+  ): Promise<{ rescheduledCount: number }> {
+    if (!can('hearings.update', context.currentUser)) {
+      throw new Error('Permission denied: hearings.update required');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    let rescheduledCount = 0;
+    for (const id of hearingIds) {
+      await this.rescheduleDate(context, id, newDate, reason, fixedFor);
+      rescheduledCount++;
+    }
+    return { rescheduledCount };
+  }
 }

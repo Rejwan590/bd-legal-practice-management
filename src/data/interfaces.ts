@@ -329,6 +329,27 @@ export interface IHearingRepository {
   }>;
   getDateHistory(context: SecurityContext, hearingId: string): Promise<HearingDateHistoryRecord[]>;
   getCaseHearingsOverview(context: SecurityContext, caseId: string): Promise<CaseHearingsOverview>;
+  bulkUpdateStatus(
+    context: SecurityContext,
+    hearingIds: string[],
+    status: HearingStatus,
+    outcomeNote?: string
+  ): Promise<{ updatedCount: number }>;
+  bulkAdjourn(
+    context: SecurityContext,
+    hearingIds: string[],
+    nextDate: string,
+    reason: string,
+    nextFixedFor?: string,
+    outcomeNote?: string
+  ): Promise<{ adjournedCount: number }>;
+  bulkReschedule(
+    context: SecurityContext,
+    hearingIds: string[],
+    newDate: string,
+    reason: string,
+    fixedFor?: string
+  ): Promise<{ rescheduledCount: number }>;
 }
 
 export interface ITaskRepository {

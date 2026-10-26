@@ -3,6 +3,31 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+Phase 6: Daily Cause List Docket & Bulk Actions completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
+- [x] **Backend Bulk Endpoints & Transaction Safety**:
+  - `POST /api/v1/hearings/bulk-status`: bulk update `status` + `outcomeNote`.
+  - `POST /api/v1/hearings/bulk-adjourn`: bulk adjourn hearings with next fixture date, reason, and purpose (`nextFixedFor` or carry-over), automatically creating new hearing records and recording `hearing_date_history`.
+  - `POST /api/v1/hearings/bulk-reschedule`: bulk shift fixture dates with reason, `fixedFor`, and `hearing_date_history` generation.
+  - All 3 routes protected with `requirePermission('hearings.update')`, strict firm isolation, central case visibility, `enforceSubscriptionReadOnly`, and wrapped in atomic `db.transaction` with audit trail.
+  - Server test suite `server/tests/hearings.test.ts` (14 new assertions in Section 8) verified: **433 / 433 server tests passing (0 failed)** across all 9 suites (`foundation`, `clients`, `cases`, `hearings`, `postgres`, `adminAuth`, `adminFirms`, `devices`, `teamVisibility`).
+- [x] **Frontend Data & Repositories**:
+  - `IHearingRepository` updated with `bulkUpdateStatus`, `bulkAdjourn`, and `bulkReschedule`.
+  - `RestHearingRepository` and `MockHearingRepository` implemented with 100% parity.
+- [x] **Cause List Docket & Bulk Actions UI**:
+  - `HearingsScreen.tsx` updated with cause list docket view mode, multi-select checkboxes (desktop table and mobile cards), quick-date switcher (`Yesterday`, `Today`, `Tomorrow`, custom date picker), and multi-filter dropdowns (Court, Appearing Lawyer, Fixed For, Status).
+  - Floating bulk action bar with `Mark Held`, `Adjourn Selected`, and `Reschedule Selected`.
+  - `BulkAdjournModal.tsx` and `BulkRescheduleModal.tsx` components.
+  - High-contrast, printable A4 cause list docket conforming to `DESIGN.md` Section 6 (`@media print`) with advocate notes column and clerk signature block.
+- [x] **Bilingual i18n Parity**:
+  - Added matching keys in `en.json` and `bn.json` with zero discrepancy.
+- [x] **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm test --prefix server`: PASS (433 assertions passed, 0 failed)
+  - `npm run build`: PASS (1,786 modules transformed in 1.43s)
+  - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 961ms)
+- [x] **Recommended Next Step**: Phase 7 — Tasks Module Backend & Assignment.
+
+## Previous status
 Phase 5: Hearings Backend & "Date Fixed For" completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
 - [x] **Backend & Database**:
   - `hearings` table updated with `fixed_for` (controlled procedural purpose) and `fixed_for_note` (varchar 200).
@@ -34,7 +59,7 @@ Phase 5: Hearings Backend & "Date Fixed For" completed and fully verified across
   - `npm test --prefix server`: PASS (419 assertions passed, 0 failed)
   - `npm run build`: PASS (1784 modules transformed in 13.14s)
   - `npm run build --prefix admin-app`: PASS (1672 modules transformed in 7.37s)
-- [x] **Recommended Next Step**: Phase 6 — Tasks & Workflow Automation or Physical File Tracking.
+- [x] **Recommended Next Step**: Phase 6 — Daily Cause List Docket & Bulk Actions.
 
 ## Previous status
 Clients, Cases, and Appointments modules completed and fully verified across server (REST API, PostgreSQL schema & migration 0005, memory DB) and frontend mock/data layers with 100% parity. Central visibility, permissions, subscription read-only enforcement, audit logging, firm isolation, and restricted confidentiality strictly preserved.

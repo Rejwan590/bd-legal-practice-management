@@ -166,4 +166,58 @@ export class RestHearingRepository implements IHearingRepository {
       allHearings: all,
     };
   }
+
+  async bulkUpdateStatus(
+    _context: SecurityContext,
+    hearingIds: string[],
+    status: HearingStatus,
+    outcomeNote?: string
+  ): Promise<{ updatedCount: number }> {
+    return restFetch<{ updatedCount: number }>('/hearings/bulk-status', {
+      method: 'POST',
+      body: JSON.stringify({
+        hearingIds,
+        status,
+        outcomeNote,
+      }),
+    });
+  }
+
+  async bulkAdjourn(
+    _context: SecurityContext,
+    hearingIds: string[],
+    nextDate: string,
+    reason: string,
+    nextFixedFor?: string,
+    outcomeNote?: string
+  ): Promise<{ adjournedCount: number }> {
+    return restFetch<{ adjournedCount: number }>('/hearings/bulk-adjourn', {
+      method: 'POST',
+      body: JSON.stringify({
+        hearingIds,
+        nextDate,
+        reason,
+        nextFixedFor,
+        outcomeNote,
+      }),
+    });
+  }
+
+  async bulkReschedule(
+    _context: SecurityContext,
+    hearingIds: string[],
+    newDate: string,
+    reason: string,
+    fixedFor?: string
+  ): Promise<{ rescheduledCount: number }> {
+    return restFetch<{ rescheduledCount: number }>('/hearings/bulk-reschedule', {
+      method: 'POST',
+      body: JSON.stringify({
+        hearingIds,
+        newDate,
+        reason,
+        fixedFor,
+      }),
+    });
+  }
 }
