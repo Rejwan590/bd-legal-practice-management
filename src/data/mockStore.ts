@@ -17,6 +17,11 @@ import {
   ReminderRecord,
   TaskRecord,
   UserRecord,
+  FeeAgreement,
+  FeeAgreementChange,
+  FeePayment,
+  ExpenseCategory,
+  Expense,
 } from './types';
 
 
@@ -769,6 +774,11 @@ export interface AppStoreData {
   appointmentAttendees?: AppointmentAttendeeRecord[];
   reminders: ReminderRecord[];
   auditLogs: AuditLogRecord[];
+  feeAgreements?: FeeAgreement[];
+  feeAgreementChanges?: FeeAgreementChange[];
+  feePayments?: FeePayment[];
+  expenseCategories?: ExpenseCategory[];
+  expenses?: Expense[];
   customCollections: Record<string, unknown[]>;
 }
 
@@ -878,6 +888,82 @@ class LocalStoreManager {
       appointments: [...INITIAL_APPOINTMENTS],
       appointmentAttendees: [...INITIAL_APPOINTMENT_ATTENDEES],
       reminders: [...INITIAL_REMINDERS],
+      feeAgreements: [
+        {
+          id: 'fa-001',
+          firmId: DEFAULT_FIRM_ID,
+          clientId: 'client-001',
+          caseId: 'case-001',
+          feeType: 'fixed',
+          agreedAmountPaisa: 5000000,
+          agreementDate: '2024-01-15',
+          notes: 'Agreed fixed chamber fee for Title Suit trial up to judgment',
+          status: 'active',
+          createdAt: '2024-01-15T10:00:00.000Z',
+          updatedAt: '2024-01-15T10:00:00.000Z',
+          deletedAt: null,
+          createdBy: 'user-owner-001',
+          updatedBy: 'user-owner-001',
+        },
+      ],
+      feeAgreementChanges: [],
+      feePayments: [
+        {
+          id: 'pay-001',
+          firmId: DEFAULT_FIRM_ID,
+          clientId: 'client-001',
+          caseId: 'case-001',
+          feeAgreementId: 'fa-001',
+          hearingId: null,
+          paymentDate: '2024-01-16',
+          amountPaisa: 2500000,
+          method: 'bank',
+          reference: 'EBL-TRX-98442',
+          receiptNumber: 'R-000001',
+          purposeNote: 'Initial filing retainer fee (First installment)',
+          status: 'posted',
+          voidReason: null,
+          voidedBy: null,
+          voidedAt: null,
+          idempotencyKey: 'idemp-seed-001',
+          createdAt: '2024-01-16T11:00:00.000Z',
+          updatedAt: '2024-01-16T11:00:00.000Z',
+          deletedAt: null,
+          createdBy: 'user-owner-001',
+          updatedBy: 'user-owner-001',
+        },
+      ],
+      expenseCategories: [
+        { id: 'expcat-1', firmId: DEFAULT_FIRM_ID, name: 'Court Fees', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-2', firmId: DEFAULT_FIRM_ID, name: 'Process Server / Notice', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-3', firmId: DEFAULT_FIRM_ID, name: 'Certified Copy', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-4', firmId: DEFAULT_FIRM_ID, name: 'Stamp Duty', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-5', firmId: DEFAULT_FIRM_ID, name: 'Travel / Conveyance', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-6', firmId: DEFAULT_FIRM_ID, name: 'Photocopy & Typing', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'expcat-7', firmId: DEFAULT_FIRM_ID, name: 'Miscellaneous', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+      ],
+      expenses: [
+        {
+          id: 'exp-001',
+          firmId: DEFAULT_FIRM_ID,
+          clientId: 'client-001',
+          caseId: 'case-001',
+          categoryId: 'expcat-1',
+          expenseDate: '2024-01-16',
+          amountPaisa: 150000,
+          description: 'Court fee stamps purchased for plaint presentation',
+          reimbursable: true,
+          status: 'posted',
+          voidReason: null,
+          voidedBy: null,
+          voidedAt: null,
+          createdAt: '2024-01-16T14:00:00.000Z',
+          updatedAt: '2024-01-16T14:00:00.000Z',
+          deletedAt: null,
+          createdBy: 'user-owner-001',
+          updatedBy: 'user-owner-001',
+        },
+      ],
       auditLogs: [
         {
           id: 'audit-init-001',

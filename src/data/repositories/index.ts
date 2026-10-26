@@ -13,6 +13,7 @@ import {
   ISearchRepository,
   ITaskRepository,
   IUserRepository,
+  IAccountsRepository,
 } from '../interfaces';
 import { MockAppointmentRepository } from './appointment';
 import { MockAuditLogRepository } from './audit';
@@ -29,6 +30,7 @@ import { MockReminderRepository } from './reminder';
 import { MockSearchRepository } from './search';
 import { MockTaskRepository } from './task';
 import { MockUserRepository } from './user';
+import { MockAccountsRepository } from './accounts';
 import {
   RestAuditLogRepository,
   RestFirmRepository,
@@ -38,6 +40,7 @@ import {
   RestAppointmentRepository,
   RestHearingRepository,
   RestTaskRepository,
+  RestAccountsRepository,
 } from './rest';
 
 // Export all individual classes, helpers, and types
@@ -85,6 +88,7 @@ export interface Repositories {
   search: ISearchRepository;
   dashboard: IDashboardRepository;
   backup: IBackupRepository;
+  accounts: IAccountsRepository;
 }
 
 const isRestMode =
@@ -128,6 +132,9 @@ const calendarRepo = new MockCalendarRepository();
 const searchRepo = new MockSearchRepository();
 const dashboardRepo = new MockDashboardRepository();
 const backupRepo = new MockBackupRepository(mockAuditLogRepo);
+const accountsRepo: IAccountsRepository = isRestMode
+  ? new RestAccountsRepository()
+  : new MockAccountsRepository(mockAuditLogRepo);
 
 export const repositories: Repositories = {
   auditLog: auditLogRepo,
@@ -144,6 +151,7 @@ export const repositories: Repositories = {
   search: searchRepo,
   dashboard: dashboardRepo,
   backup: backupRepo,
+  accounts: accountsRepo,
 };
 
 export function getRepositories(): Repositories {

@@ -58,10 +58,25 @@ erDiagram
     CASES ||--o{ CASE_SHARES : shares_with
     CASES ||--o{ HEARINGS : schedules
     CASES ||--o{ APPOINTMENTS : relates_to
+    CASES ||--o{ FEE_AGREEMENTS : binds
+    CASES ||--o{ FEE_PAYMENTS : receives
+    CASES ||--o{ EXPENSES : incurs
 
     HEARINGS ||--o{ HEARING_DATE_HISTORY : tracks_reschedules
+    HEARINGS ||--o{ FEE_PAYMENTS : settles
 
     APPOINTMENTS ||--o{ APPOINTMENT_ATTENDEES : includes
+
+    CLIENTS ||--o{ FEE_AGREEMENTS : enters
+    CLIENTS ||--o{ FEE_PAYMENTS : pays
+    CLIENTS ||--o{ EXPENSES : charged_to
+
+    FEE_AGREEMENTS ||--o{ FEE_AGREEMENT_CHANGES : tracks_amount_history
+    FEE_AGREEMENTS ||--o{ FEE_PAYMENTS : satisfies
+
+    FIRMS ||--o{ NUMBER_SEQUENCES : generates
+    FIRMS ||--o{ EXPENSE_CATEGORIES : defines
+    EXPENSE_CATEGORIES ||--o{ EXPENSES : categorizes
 ```
 
 ---
@@ -597,4 +612,138 @@ CREATE TABLE payments (
     updated_by TEXT
 );
 CREATE INDEX idx_payments_firm_id ON payments(firm_id);
+```
+
+---
+
+### 3.10 Accounts & Billing (Tenant Client Accounting) `[BUILT]`
+
+Financial management module for chamber client litigation fees, installments, receipts, and expenses.
+- Money is stored strictly as integer paisa (`BIGINT` or `INTEGER` paisa, 1 BDT = 100 paisa).
+- Posted records are immutable: corrections are executed strictly via `VOID` (with `void_reason`, `voided_by`, `voided_at`).
+- Receipt numbering is strictly gap-safe and unique per firm using `number_sequences`.
+- Idempotency deduplication via `idempotency_key` unique per firm on `fee_payments`.
+
+#### `fee_agreements`
+```sql
+CREATE TABLE fee_agreements (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    client_id TEXT NOT NULL REFERENCES clients(id),
+    case_id TEXT REFERENCES cases(id),
+    fee_type TEXT NOT NULL DEFAULT 'fixed',       -- 'fixed' | 'per_hearing' | 'hourly' | 'retainer' | 'installment'
+    agreed_amount_paisa BIGINT NOT NULL,         -- Integer paisa (e.g. 5000000 = 50,000 BDT)
+    agreement_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'active',       -- 'active' | 'closed' | 'void'
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    updated_by TEXT
+);
+CREATE INDEX idx_fee_agreements_firm_client ON fee_agreements(firm_id, client_id);
+CREATE INDEX idx_fee_agreements_firm_case ON fee_agreements(firm_id, case_id);
+```
+
+#### `fee_agreement_changes`
+```sql
+CREATE TABLE fee_agreement_changes (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    fee_agreement_id TEXT NOT NULL REFERENCES fee_agreements(id),
+    old_amount_paisa BIGINT NOT NULL,
+    new_amount_paisa BIGINT NOT NULL,
+    reason TEXT NOT NULL,
+    changed_by TEXT NOT NULL REFERENCES users(id),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_fee_agreement_changes_agreement ON fee_agreement_changes(fee_agreement_id);
+```
+
+#### `number_sequences`
+```sql
+CREATE TABLE number_sequences (
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    sequence_type TEXT NOT NULL,                 -- e.g. 'receipt'
+    current_val BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (firm_id, sequence_type)
+);
+```
+
+#### `fee_payments`
+```sql
+CREATE TABLE fee_payments (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    client_id TEXT NOT NULL REFERENCES clients(id),
+    case_id TEXT REFERENCES cases(id),
+    fee_agreement_id TEXT REFERENCES fee_agreements(id),
+    hearing_id TEXT REFERENCES hearings(id),
+    payment_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    amount_paisa BIGINT NOT NULL,                -- Integer paisa (> 0)
+    method TEXT NOT NULL DEFAULT 'cash',         -- 'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other'
+    reference TEXT,                              -- Bank Txn ID / bKash trx ID / Cheque #
+    receipt_number TEXT NOT NULL,                -- e.g. 'R-000001'
+    purpose_note TEXT NOT NULL,                  -- Required description of payment purpose (max 500 chars)
+    status TEXT NOT NULL DEFAULT 'posted',       -- 'posted' | 'void'
+    void_reason TEXT,
+    voided_by TEXT REFERENCES users(id),
+    voided_at TIMESTAMPTZ,
+    idempotency_key TEXT,
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    updated_by TEXT
+);
+CREATE INDEX idx_fee_payments_firm_client ON fee_payments(firm_id, client_id);
+CREATE INDEX idx_fee_payments_firm_case ON fee_payments(firm_id, case_id);
+CREATE INDEX idx_fee_payments_firm_agreement ON fee_payments(firm_id, fee_agreement_id);
+CREATE UNIQUE INDEX uidx_fee_payments_firm_idempotency ON fee_payments(firm_id, idempotency_key);
+CREATE UNIQUE INDEX uidx_fee_payments_firm_receipt ON fee_payments(firm_id, receipt_number);
+```
+
+#### `expense_categories`
+```sql
+CREATE TABLE expense_categories (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    name TEXT NOT NULL,
+    name_bn TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+CREATE INDEX idx_expense_categories_firm ON expense_categories(firm_id);
+```
+
+#### `expenses`
+```sql
+CREATE TABLE expenses (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id),
+    client_id TEXT REFERENCES clients(id),
+    case_id TEXT REFERENCES cases(id),
+    category_id TEXT NOT NULL REFERENCES expense_categories(id),
+    expense_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    amount_paisa BIGINT NOT NULL,                -- Integer paisa (> 0)
+    description TEXT NOT NULL,
+    reimbursable BOOLEAN NOT NULL DEFAULT true,
+    status TEXT NOT NULL DEFAULT 'posted',       -- 'posted' | 'void'
+    void_reason TEXT,
+    voided_by TEXT REFERENCES users(id),
+    voided_at TIMESTAMPTZ,
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    updated_by TEXT
+);
+CREATE INDEX idx_expenses_firm_client ON expenses(firm_id, client_id);
+CREATE INDEX idx_expenses_firm_case ON expenses(firm_id, case_id);
+CREATE INDEX idx_expenses_firm_category ON expenses(firm_id, category_id);
+```
 ```

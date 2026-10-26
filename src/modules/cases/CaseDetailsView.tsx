@@ -51,7 +51,9 @@ import {
   RefreshCw,
   Check,
   Shield,
+  CreditCard,
 } from 'lucide-react';
+import { BillingTab } from '../billing/BillingTab';
 
 interface CaseDetailsViewProps {
   caseId: string;
@@ -388,6 +390,15 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
       count: activityLogs.length,
       icon: Activity,
     },
+    ...(can('accounts.view')
+      ? [
+          {
+            id: 'billing' as CaseDossierTab,
+            label: t('nav.billing', 'Billing'),
+            icon: CreditCard,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -1457,6 +1468,13 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
         {activeTab === 'notes' && (
           <div className="p-4 sm:p-6" data-testid="dossier-panel-notes">
             <CaseNotesTab caseId={caseId} canEdit={canEditCase} isReadOnly={isReadOnly} />
+          </div>
+        )}
+
+        {/* TAB: BILLING */}
+        {activeTab === 'billing' && can('accounts.view') && (
+          <div className="p-4 sm:p-6" data-testid="dossier-panel-billing">
+            <BillingTab clientId={caseData.clientId} caseId={caseData.id} />
           </div>
         )}
 

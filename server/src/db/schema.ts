@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
   uuid,
+  bigint,
 } from 'drizzle-orm/pg-core';
 
 // Plans Table
@@ -439,6 +440,137 @@ export const tasks = pgTable('tasks', {
   index('idx_tasks_due_at').on(table.dueAt),
 ]);
 
+// Fee Agreements Table (Accounts Phase 1)
+export const feeAgreements = pgTable('fee_agreements', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  clientId: text('client_id').references(() => clients.id).notNull(),
+  caseId: text('case_id').references(() => cases.id),
+  feeType: text('fee_type').$type<'fixed' | 'per_hearing' | 'hourly' | 'retainer' | 'installment'>().default('fixed').notNull(),
+  agreedAmountPaisa: bigint('agreed_amount_paisa', { mode: 'number' }).notNull(),
+  agreementDate: text('agreement_date').notNull(),
+  notes: text('notes'),
+  status: text('status').$type<'active' | 'closed' | 'void'>().default('active').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_fee_agreements_firm_id').on(table.firmId),
+  index('idx_fee_agreements_client_id').on(table.clientId),
+  index('idx_fee_agreements_case_id').on(table.caseId),
+  index('idx_fee_agreements_status').on(table.status),
+]);
+
+// Fee Agreement Changes (Audit History of Agreed Amount)
+export const feeAgreementChanges = pgTable('fee_agreement_changes', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  feeAgreementId: text('fee_agreement_id').references(() => feeAgreements.id).notNull(),
+  oldAmountPaisa: bigint('old_amount_paisa', { mode: 'number' }).notNull(),
+  newAmountPaisa: bigint('new_amount_paisa', { mode: 'number' }).notNull(),
+  reason: text('reason').notNull(),
+  changedBy: text('changed_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_fee_agreement_changes_firm_id').on(table.firmId),
+  index('idx_fee_agreement_changes_agreement_id').on(table.feeAgreementId),
+]);
+
+// Number Sequences Table (Atomic Unique Receipt Numbering per Firm)
+export const numberSequences = pgTable('number_sequences', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  type: text('type').notNull(),
+  prefix: text('prefix').notNull(),
+  currentVal: integer('current_val').default(0).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_number_sequences_firm_type').on(table.firmId, table.type),
+  index('idx_number_sequences_firm_id').on(table.firmId),
+]);
+
+// Fee Payments (Payments Received) Table
+export const feePayments = pgTable('fee_payments', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  clientId: text('client_id').references(() => clients.id).notNull(),
+  caseId: text('case_id').references(() => cases.id),
+  feeAgreementId: text('fee_agreement_id').references(() => feeAgreements.id),
+  hearingId: text('hearing_id').references(() => hearings.id),
+  paymentDate: text('payment_date').notNull(),
+  amountPaisa: bigint('amount_paisa', { mode: 'number' }).notNull(),
+  method: text('method').$type<'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other'>().notNull(),
+  reference: text('reference'),
+  receiptNumber: text('receipt_number').notNull(),
+  purposeNote: text('purpose_note').notNull(),
+  status: text('status').$type<'posted' | 'void'>().default('posted').notNull(),
+  voidReason: text('void_reason'),
+  voidedBy: text('voided_by'),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  idempotencyKey: text('idempotency_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  uniqueIndex('idx_fee_payments_firm_idempotency').on(table.firmId, table.idempotencyKey),
+  uniqueIndex('idx_fee_payments_firm_receipt').on(table.firmId, table.receiptNumber),
+  index('idx_fee_payments_firm_id').on(table.firmId),
+  index('idx_fee_payments_client_id').on(table.clientId),
+  index('idx_fee_payments_case_id').on(table.caseId),
+  index('idx_fee_payments_fee_agreement_id').on(table.feeAgreementId),
+  index('idx_fee_payments_hearing_id').on(table.hearingId),
+  index('idx_fee_payments_status').on(table.status),
+  index('idx_fee_payments_payment_date').on(table.paymentDate),
+]);
+
+// Expense Categories Table
+export const expenseCategories = pgTable('expense_categories', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  name: text('name').notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_expense_categories_firm_id').on(table.firmId),
+]);
+
+// Expenses Table
+export const expenses = pgTable('expenses', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  clientId: text('client_id').references(() => clients.id),
+  caseId: text('case_id').references(() => cases.id),
+  categoryId: text('category_id').references(() => expenseCategories.id).notNull(),
+  expenseDate: text('expense_date').notNull(),
+  amountPaisa: bigint('amount_paisa', { mode: 'number' }).notNull(),
+  description: text('description').notNull(),
+  reimbursable: boolean('reimbursable').default(true).notNull(),
+  status: text('status').$type<'posted' | 'void'>().default('posted').notNull(),
+  voidReason: text('void_reason'),
+  voidedBy: text('voided_by'),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_expenses_firm_id').on(table.firmId),
+  index('idx_expenses_client_id').on(table.clientId),
+  index('idx_expenses_case_id').on(table.caseId),
+  index('idx_expenses_category_id').on(table.categoryId),
+  index('idx_expenses_status').on(table.status),
+  index('idx_expenses_expense_date').on(table.expenseDate),
+]);
+
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
 export type NewFirm = typeof firms.$inferInsert;
@@ -476,5 +608,17 @@ export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+export type FeeAgreement = typeof feeAgreements.$inferSelect;
+export type NewFeeAgreement = typeof feeAgreements.$inferInsert;
+export type FeeAgreementChange = typeof feeAgreementChanges.$inferSelect;
+export type NewFeeAgreementChange = typeof feeAgreementChanges.$inferInsert;
+export type NumberSequence = typeof numberSequences.$inferSelect;
+export type NewNumberSequence = typeof numberSequences.$inferInsert;
+export type FeePayment = typeof feePayments.$inferSelect;
+export type NewFeePayment = typeof feePayments.$inferInsert;
+export type ExpenseCategory = typeof expenseCategories.$inferSelect;
+export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
+export type Expense = typeof expenses.$inferSelect;
+export type NewExpense = typeof expenses.$inferInsert;
 
 

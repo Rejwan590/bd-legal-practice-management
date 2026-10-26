@@ -35,6 +35,10 @@ const SENIOR_LAWYER_PRESET: RolePreset = {
     'files.manage',
     'billing.view',
     'data.export',
+  'accounts.view',
+  'accounts.manage',
+  'expenses.record',
+  'accounts.export',
   ],
 };
 

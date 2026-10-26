@@ -3,7 +3,77 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Phase 7: Tasks Module Backend & Assignment completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
+Accounts Phase 1: Fee Agreements, Payments & Expenses completed end-to-end (Database + Server REST API + Mock & REST Repositories + UI + Automated Tests) with 100% feature and contract parity.
+- [x] **Integer Paisa & Currency Precision**:
+  - All monetary values stored and calculated strictly as integer paisa (1 BDT = 100 paisa). Zero floating-point arithmetic.
+  - Implemented `src/utils/currency.ts` with South Asian comma grouping (`৳ 1,50,000` / `৳ ১,৫০,০০০`) and English/Bangla digit support (`formatBdt`, `takaToPaisa`, `paisaToTaka`, `toBnDigits`).
+- [x] **Database Schema & Migrations**:
+  - `server/src/db/schema.ts`: Added 6 new tables:
+    - `fee_agreements`: `id`, `firm_id`, `client_id`, `case_id`, `fee_type` (`fixed`, `per_hearing`, `hourly`, `retainer`, `installment`), `agreed_amount_paisa`, `agreement_date`, `notes`, `status` (`active`, `closed`, `void`), `created_by`, timestamps.
+    - `fee_agreement_changes`: History of agreed amount revisions (`old_amount_paisa`, `new_amount_paisa`, `reason`, `changed_by`, `changed_at`).
+    - `number_sequences`: Compound PK `(firm_id, sequence_type)` supporting atomic, gap-safe receipt numbers (`R-000001`).
+    - `fee_payments`: `id`, `firm_id`, `client_id`, `case_id`, `fee_agreement_id`, `hearing_id`, `payment_date`, `amount_paisa`, `method` (`cash`, `bank`, `bkash`, `nagad`, `cheque`, `other`), `reference`, `receipt_number`, `purpose_note` (max 500 chars), `status` (`posted`, `void`), `void_reason`, `voided_by`, `voided_at`, `idempotency_key`, `created_by`, timestamps.
+    - `expense_categories`: `id`, `firm_id`, `name`, `name_bn`, `is_default`, timestamps. Pre-seeded per firm.
+    - `expenses`: `id`, `firm_id`, `client_id`, `case_id`, `category_id`, `expense_date`, `amount_paisa`, `description`, `reimbursable`, `status` (`posted`, `void`), void fields, `created_by`, timestamps.
+  - Migration `0008_accounts_phase1.sql` created and registered in `server/drizzle/meta/_journal.json`.
+- [x] **Database Adapter Layer (`MemoryDatabase` & `PostgresDatabase`)**:
+  - Full transactional atomicity: atomic receipt sequence increment, snapshot/rollback on error.
+  - Idempotency key lookup deduplication (`getFeePaymentByIdempotencyKey`).
+  - Balance math calculation (`agreedPaisa - postedPaymentsPaisa`), overpayment credit computation, void exclusion.
+  - Client balances overview ranking with sort by balance descending/ascending and client name.
+- [x] **Backend REST API Routes**:
+  - `server/src/routes/feeAgreements.ts`: Mounted at `/api/v1/fee-agreements` (`GET /`, `GET /:id`, `GET /:id/changes`, `POST /`, `POST /:id/revise`, `POST /:id/close`, `POST /:id/void`).
+  - `server/src/routes/feePayments.ts`: Mounted at `/api/v1/fee-payments` (`GET /`, `GET /:id`, `POST /`, `POST /:id/void`).
+  - `server/src/routes/expenses.ts`: Mounted at `/api/v1/expenses` (`GET /categories`, `GET /`, `GET /:id`, `POST /`, `POST /:id/void`).
+  - `server/src/routes/accounts.ts`: Mounted at `/api/v1/accounts` (`GET /summary`, `GET /client-balances`).
+  - Hard security invariants strictly enforced:
+    - Firm isolation on all tenant queries (`WHERE firm_id = $firmId`).
+    - Central case visibility (`canUserSeeCase`) and confidentiality (`restricted.view`).
+    - Subscription read-only enforcement on all mutations (`enforceSubscriptionReadOnly`).
+    - Audit logging on every creation, revision, and void mutation.
+    - Strict Zod validation on incoming parameters and request bodies.
+- [x] **Frontend Data & Repositories**:
+  - `IAccountsRepository` interface defined in `src/data/interfaces.ts`.
+  - `MockAccountsRepository` implemented with seed data in `src/data/repositories/accounts.ts`.
+  - `RestAccountsRepository` implemented with 100% parity in `src/data/repositories/rest/restAccounts.ts`.
+  - Registered in `src/data/repositories/index.ts` with dual-mode parity (`isRestMode`).
+- [x] **UI & User Workflows**:
+  - `RecordPaymentModal.tsx`: Records client/case payments with method, reference, required purpose note, and optional hearing selector.
+  - `VoidRecordModal.tsx`: Confirms voiding with mandatory audit reason.
+  - `AddExpenseModal.tsx`: Categorized chamber expense tracking with reimbursable toggle.
+  - `CreateAgreementModal.tsx` & `ReviseAgreementModal.tsx`: Fixed, hourly, hearing, and installment fee agreements with amount revision history tracking.
+  - `BillingTab.tsx`: Embedded in Client Profile (`ClientProfileView.tsx`) and Case Dossier (`CaseDetailsView.tsx`) with KPI cards (Agreed, Received, Outstanding, Expenses), agreement list, payment history with purpose note, and expense tracking.
+  - `BillingScreen.tsx`: Chamber-wide accounts overview showing total fees agreed, total collected, total outstanding, and sortable/filterable client balance rankings.
+  - Navigation: Wired `/billing` screen in `App.tsx`, `AppShell.tsx`, and `NavigationContext.tsx`, visible only with `accounts.view`.
+  - Bilingual i18n: 100% key parity between `en.json` and `bn.json`.
+- [x] **Automated Tests**:
+  - `server/tests/accounts.test.ts` (61 assertions):
+    - Balance math calculation.
+    - Multiple installment payments.
+    - Overpayment flagged as credit.
+    - Void payments excluded from balances.
+    - Duplicate idempotency key deduplication (returns original payment, sequence not incremented).
+    - Concurrent receipt numbering generation uniqueness.
+    - Firm isolation (Firm A cannot access Firm B agreements or payments).
+    - Restricted case confidentiality (unauthorized staff gets 404).
+    - Permission checks (`accounts.view`, `accounts.manage`, `expenses.record`).
+    - Subscription read-only block (HTTP 403 on mutations).
+    - Void operations require reason.
+  - **534 / 534 server tests passing (0 failed)** across all 11 suites.
+- [x] **Verification Summary**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm run test:health`: PASS (87/87 checks passed)
+  - `npm test --prefix server`: PASS (534/534 assertions passed across 11 suites)
+  - `npm run build`: PASS (built cleanly in 3.77s)
+  - `npm run build --prefix admin-app`: PASS (built cleanly in 1.19s)
+- [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
+
+## Previous status
+Phase 7: Tasks Module Backend & TypeScript Build Fixes completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
+- [x] **Tasks Route TypeScript Build Fixes (`server/src/routes/tasks.ts`)**:
+  - Corrected `db.getUserById(id)` invocations (lines 105, 190, 306) to match the 1-argument signature while preserving firm isolation check (`assignee.firmId !== firmId`).
+  - Generated unique task UUID (`id: crypto.randomUUID()`) in `db.insertTask` (line 126) satisfying `schema.NewTask` non-null `id` requirement.
+  - Aligned all `recordAudit` calls (lines 141, 225, 275, 316, 347) with `RecordAuditParams` `{ firmId, userId, userName, entity, entityId, action, oldValue, newValue }`.
 - [x] **Backend & Database**:
   - `tasks` table added to PostgreSQL schema with migration `0007_tasks_module.sql` and journal update.
   - Fields: `id`, `firm_id`, `case_id`, `client_id`, `assigned_to`, `title`, `description`, `priority` (`urgent`, `high`, `medium`, `normal`, `low`), `due_at`, `status` (`pending`, `in_progress`, `completed`, `cancelled`), `completed_at`, `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`.
@@ -27,11 +97,12 @@ Phase 7: Tasks Module Backend & Assignment completed and fully verified across s
 - [x] **Frontend Data & Repositories**:
   - `RestTaskRepository` created and wired into `src/data/repositories/index.ts` with 100% parity with `MockTaskRepository` in REST mode.
 - [x] **Verification Summary**:
+  - `npm run build --prefix server`: PASS (0 errors, exit code 0)
   - `npm run lint`: PASS (0 errors)
   - `npm test --prefix server`: PASS (473 assertions passed, 0 failed across all 10 suites)
   - `npm run test:health`: PASS (87/87 checks passed, 0 failed)
-  - `npm run build`: PASS (1,787 modules transformed in 1.06s)
-  - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 663ms)
+  - `npm run build`: PASS (1,787 modules transformed in 1.23s)
+  - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 740ms)
 - [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
 
 ## Previous status

@@ -221,6 +221,70 @@ export interface IDatabase {
   insertTask(task: schema.NewTask): Promise<schema.Task & { assignedToName?: string }>;
   updateTask(id: string, firmId: string, updates: Partial<schema.Task>): Promise<schema.Task & { assignedToName?: string }>;
   deleteTask(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }>;
+  // Accounts Module (Accounts Phase 1)
+  getAccountsSummary(
+    firmId: string,
+    filter: { clientId?: string; caseId?: string },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalAgreedPaisa: number;
+    totalPaidPaisa: number;
+    balancePaisa: number;
+    isCredit: boolean;
+    creditPaisa: number;
+    outstandingPaisa: number;
+    totalExpensesPaisa: number;
+  }>;
+  getClientBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  >;
+  // Fee Agreements
+  listFeeAgreements(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeeAgreement[]>;
+  getFeeAgreementById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.FeeAgreement | null>;
+  insertFeeAgreement(agreement: schema.NewFeeAgreement): Promise<schema.FeeAgreement>;
+  updateFeeAgreement(id: string, firmId: string, updates: Partial<schema.FeeAgreement>): Promise<schema.FeeAgreement>;
+  insertFeeAgreementChange(change: schema.NewFeeAgreementChange): Promise<schema.FeeAgreementChange>;
+  listFeeAgreementChanges(feeAgreementId: string, firmId: string): Promise<schema.FeeAgreementChange[]>;
+  // Fee Payments & Number Sequences
+  getNextSequenceNumber(firmId: string, type: string, prefix?: string): Promise<{ sequenceNumber: string; currentVal: number }>;
+  listFeePayments(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeePayment[]>;
+  getFeePaymentById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.FeePayment | null>;
+  getFeePaymentByIdempotencyKey(firmId: string, idempotencyKey: string): Promise<schema.FeePayment | null>;
+  insertFeePayment(payment: schema.NewFeePayment): Promise<schema.FeePayment>;
+  updateFeePayment(id: string, firmId: string, updates: Partial<schema.FeePayment>): Promise<schema.FeePayment>;
+  // Expenses & Categories
+  listExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]>;
+  seedDefaultExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]>;
+  listExpenses(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Expense & { categoryName?: string }>>;
+  getExpenseById(id: string, firmId: string, user?: VisibilityUserContext): Promise<(schema.Expense & { categoryName?: string }) | null>;
+  insertExpense(expense: schema.NewExpense): Promise<schema.Expense>;
+  updateExpense(id: string, firmId: string, updates: Partial<schema.Expense>): Promise<schema.Expense>;
   // Platform Admins & Admin Audit (Super Admin for software owner)
   getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null>;
   getPlatformAdminById(id: string): Promise<schema.PlatformAdmin | null>;
@@ -255,6 +319,16 @@ export interface IDatabase {
   transaction<T>(callback: (txDb: IDatabase) => Promise<T>): Promise<T>;
 }
 
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Court Fees',
+  'Process Server / Notice',
+  'Certified Copy',
+  'Stamp Duty',
+  'Travel / Conveyance',
+  'Photocopy & Typing',
+  'Miscellaneous',
+];
+
 // In-Memory Database Adapter (for headless testing and local development without active Docker container)
 class MemoryDatabase implements IDatabase {
   public plans: schema.Plan[] = [];
@@ -277,6 +351,12 @@ class MemoryDatabase implements IDatabase {
   public payments: schema.Payment[] = [];
   public devices: schema.Device[] = [];
   public tasks: schema.Task[] = [];
+  public feeAgreements: schema.FeeAgreement[] = [];
+  public feeAgreementChanges: schema.FeeAgreementChange[] = [];
+  public numberSequences: schema.NumberSequence[] = [];
+  public feePayments: schema.FeePayment[] = [];
+  public expenseCategories: schema.ExpenseCategory[] = [];
+  public expenses: schema.Expense[] = [];
   private initialized = false;
 
   public async init() {
@@ -1400,6 +1480,466 @@ class MemoryDatabase implements IDatabase {
     return { success: true, softDeleted: true };
   }
 
+  // Accounts Methods (Accounts Phase 1)
+  public async getAccountsSummary(
+    firmId: string,
+    filter: { clientId?: string; caseId?: string },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalAgreedPaisa: number;
+    totalPaidPaisa: number;
+    balancePaisa: number;
+    isCredit: boolean;
+    creditPaisa: number;
+    outstandingPaisa: number;
+    totalExpensesPaisa: number;
+  }> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    const agreements = this.feeAgreements.filter((a) => {
+      if (a.firmId !== firmId || a.deletedAt || a.status === 'void') return false;
+      if (a.caseId && !visibleCaseIds.has(a.caseId)) return false;
+      if (filter.clientId && a.clientId !== filter.clientId) return false;
+      if (filter.caseId && a.caseId !== filter.caseId) return false;
+      return true;
+    });
+    const totalAgreedPaisa = agreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+
+    const payments = this.feePayments.filter((p) => {
+      if (p.firmId !== firmId || p.deletedAt || p.status !== 'posted') return false;
+      if (p.caseId && !visibleCaseIds.has(p.caseId)) return false;
+      if (filter.clientId && p.clientId !== filter.clientId) return false;
+      if (filter.caseId && p.caseId !== filter.caseId) return false;
+      return true;
+    });
+    const totalPaidPaisa = payments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+
+    const expenses = this.expenses.filter((e) => {
+      if (e.firmId !== firmId || e.deletedAt || e.status !== 'posted') return false;
+      if (e.caseId && !visibleCaseIds.has(e.caseId)) return false;
+      if (filter.clientId && e.clientId !== filter.clientId) return false;
+      if (filter.caseId && e.caseId !== filter.caseId) return false;
+      return true;
+    });
+    const totalExpensesPaisa = expenses.reduce((sum, e) => sum + Number(e.amountPaisa || 0), 0);
+
+    const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+    const isCredit = balancePaisa < 0;
+    const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
+    const outstandingPaisa = isCredit ? 0 : balancePaisa;
+
+    return {
+      totalAgreedPaisa,
+      totalPaidPaisa,
+      balancePaisa,
+      isCredit,
+      creditPaisa,
+      outstandingPaisa,
+      totalExpensesPaisa,
+    };
+  }
+
+  public async getClientBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  > {
+    await this.init();
+    const clients = await this.listClients(firmId, undefined, user);
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    return clients.map((c) => {
+      const agreements = this.feeAgreements.filter((a) => {
+        if (a.firmId !== firmId || a.deletedAt || a.status === 'void' || a.clientId !== c.id) return false;
+        if (a.caseId && !visibleCaseIds.has(a.caseId)) return false;
+        return true;
+      });
+      const totalAgreedPaisa = agreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+
+      const payments = this.feePayments.filter((p) => {
+        if (p.firmId !== firmId || p.deletedAt || p.status !== 'posted' || p.clientId !== c.id) return false;
+        if (p.caseId && !visibleCaseIds.has(p.caseId)) return false;
+        return true;
+      });
+      const totalPaidPaisa = payments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+
+      const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+      const isCredit = balancePaisa < 0;
+      const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
+      const outstandingPaisa = isCredit ? 0 : balancePaisa;
+
+      return {
+        clientId: c.id,
+        clientName: c.name,
+        clientNameBn: c.nameBn,
+        clientPhone: c.phone,
+        totalAgreedPaisa,
+        totalPaidPaisa,
+        balancePaisa,
+        isCredit,
+        creditPaisa,
+        outstandingPaisa,
+      };
+    });
+  }
+
+  // Fee Agreements
+  public async listFeeAgreements(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeeAgreement[]> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    let list = this.feeAgreements.filter((a) => {
+      if (a.firmId !== firmId || a.deletedAt) return false;
+      if (a.caseId && !visibleCaseIds.has(a.caseId)) return false;
+      if (filter?.clientId && a.clientId !== filter.clientId) return false;
+      if (filter?.caseId && a.caseId !== filter.caseId) return false;
+      if (filter?.status && a.status !== filter.status) return false;
+      return true;
+    });
+
+    return list
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((a) => ({ ...a }));
+  }
+
+  public async getFeeAgreementById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.FeeAgreement | null> {
+    await this.init();
+    const agreement = this.feeAgreements.find((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (!agreement) return null;
+
+    if (user && agreement.caseId) {
+      const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+      if (!visibleCaseIds.has(agreement.caseId)) return null;
+    }
+    return { ...agreement };
+  }
+
+  public async insertFeeAgreement(agreement: schema.NewFeeAgreement): Promise<schema.FeeAgreement> {
+    await this.init();
+    const created: schema.FeeAgreement = {
+      id: agreement.id || `fa-${crypto.randomUUID()}`,
+      firmId: agreement.firmId,
+      clientId: agreement.clientId,
+      caseId: agreement.caseId ?? null,
+      feeType: agreement.feeType ?? 'fixed',
+      agreedAmountPaisa: agreement.agreedAmountPaisa,
+      agreementDate: agreement.agreementDate,
+      notes: agreement.notes ?? null,
+      status: agreement.status ?? 'active',
+      createdAt: agreement.createdAt || new Date(),
+      updatedAt: agreement.updatedAt || new Date(),
+      deletedAt: null,
+      createdBy: agreement.createdBy ?? null,
+      updatedBy: agreement.updatedBy ?? null,
+    };
+    this.feeAgreements.push(created);
+    return { ...created };
+  }
+
+  public async updateFeeAgreement(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.FeeAgreement>
+  ): Promise<schema.FeeAgreement> {
+    await this.init();
+    const idx = this.feeAgreements.findIndex((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (idx === -1) throw new Error(`Fee agreement not found: ${id}`);
+    const updated = {
+      ...this.feeAgreements[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.feeAgreements[idx] = updated;
+    return { ...updated };
+  }
+
+  public async insertFeeAgreementChange(change: schema.NewFeeAgreementChange): Promise<schema.FeeAgreementChange> {
+    await this.init();
+    const created: schema.FeeAgreementChange = {
+      id: change.id || `fac-${crypto.randomUUID()}`,
+      firmId: change.firmId,
+      feeAgreementId: change.feeAgreementId,
+      oldAmountPaisa: change.oldAmountPaisa,
+      newAmountPaisa: change.newAmountPaisa,
+      reason: change.reason,
+      changedBy: change.changedBy,
+      createdAt: change.createdAt || new Date(),
+    };
+    this.feeAgreementChanges.push(created);
+    return { ...created };
+  }
+
+  public async listFeeAgreementChanges(feeAgreementId: string, firmId: string): Promise<schema.FeeAgreementChange[]> {
+    await this.init();
+    return this.feeAgreementChanges
+      .filter((c) => c.firmId === firmId && c.feeAgreementId === feeAgreementId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((c) => ({ ...c }));
+  }
+
+  // Number Sequences & Fee Payments
+  public async getNextSequenceNumber(
+    firmId: string,
+    type: string,
+    prefix = 'R-'
+  ): Promise<{ sequenceNumber: string; currentVal: number }> {
+    await this.init();
+    let seq = this.numberSequences.find((s) => s.firmId === firmId && s.type === type);
+    if (!seq) {
+      seq = {
+        id: `seq-${crypto.randomUUID()}`,
+        firmId,
+        type,
+        prefix,
+        currentVal: 1,
+        updatedAt: new Date(),
+      };
+      this.numberSequences.push(seq);
+    } else {
+      seq.currentVal += 1;
+      seq.updatedAt = new Date();
+    }
+    const sequenceNumber = `${seq.prefix}${String(seq.currentVal).padStart(6, '0')}`;
+    return { sequenceNumber, currentVal: seq.currentVal };
+  }
+
+  public async listFeePayments(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeePayment[]> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    let list = this.feePayments.filter((p) => {
+      if (p.firmId !== firmId || p.deletedAt) return false;
+      if (p.caseId && !visibleCaseIds.has(p.caseId)) return false;
+      if (filter?.clientId && p.clientId !== filter.clientId) return false;
+      if (filter?.caseId && p.caseId !== filter.caseId) return false;
+      if (filter?.feeAgreementId && p.feeAgreementId !== filter.feeAgreementId) return false;
+      if (filter?.status && p.status !== filter.status) return false;
+      return true;
+    });
+
+    return list
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((p) => ({ ...p }));
+  }
+
+  public async getFeePaymentById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.FeePayment | null> {
+    await this.init();
+    const payment = this.feePayments.find((p) => p.id === id && p.firmId === firmId && !p.deletedAt);
+    if (!payment) return null;
+
+    if (user && payment.caseId) {
+      const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+      if (!visibleCaseIds.has(payment.caseId)) return null;
+    }
+    return { ...payment };
+  }
+
+  public async getFeePaymentByIdempotencyKey(
+    firmId: string,
+    idempotencyKey: string
+  ): Promise<schema.FeePayment | null> {
+    await this.init();
+    const payment = this.feePayments.find(
+      (p) => p.firmId === firmId && p.idempotencyKey === idempotencyKey && !p.deletedAt
+    );
+    return payment ? { ...payment } : null;
+  }
+
+  public async insertFeePayment(payment: schema.NewFeePayment): Promise<schema.FeePayment> {
+    await this.init();
+    const created: schema.FeePayment = {
+      id: payment.id || `pay-${crypto.randomUUID()}`,
+      firmId: payment.firmId,
+      clientId: payment.clientId,
+      caseId: payment.caseId ?? null,
+      feeAgreementId: payment.feeAgreementId ?? null,
+      hearingId: payment.hearingId ?? null,
+      paymentDate: payment.paymentDate,
+      amountPaisa: payment.amountPaisa,
+      method: payment.method,
+      reference: payment.reference ?? null,
+      receiptNumber: payment.receiptNumber,
+      purposeNote: payment.purposeNote,
+      status: payment.status ?? 'posted',
+      voidReason: payment.voidReason ?? null,
+      voidedBy: payment.voidedBy ?? null,
+      voidedAt: payment.voidedAt ?? null,
+      idempotencyKey: payment.idempotencyKey,
+      createdAt: payment.createdAt || new Date(),
+      updatedAt: payment.updatedAt || new Date(),
+      deletedAt: null,
+      createdBy: payment.createdBy ?? null,
+      updatedBy: payment.updatedBy ?? null,
+    };
+    this.feePayments.push(created);
+    return { ...created };
+  }
+
+  public async updateFeePayment(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.FeePayment>
+  ): Promise<schema.FeePayment> {
+    await this.init();
+    const idx = this.feePayments.findIndex((p) => p.id === id && p.firmId === firmId && !p.deletedAt);
+    if (idx === -1) throw new Error(`Fee payment not found: ${id}`);
+    const updated = {
+      ...this.feePayments[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.feePayments[idx] = updated;
+    return { ...updated };
+  }
+
+  // Expenses & Categories
+  public async listExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]> {
+    await this.init();
+    let categories = this.expenseCategories.filter((c) => c.firmId === firmId && !c.deletedAt);
+    if (categories.length === 0) {
+      categories = await this.seedDefaultExpenseCategories(firmId);
+    }
+    return categories.map((c) => ({ ...c }));
+  }
+
+  public async seedDefaultExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]> {
+    await this.init();
+    const seeded: schema.ExpenseCategory[] = DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
+      id: `expcat-${crypto.randomUUID()}`,
+      firmId,
+      name,
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: null,
+      updatedBy: null,
+    }));
+    this.expenseCategories.push(...seeded);
+    return seeded.map((c) => ({ ...c }));
+  }
+
+  public async listExpenses(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Expense & { categoryName?: string }>> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+
+    let list = this.expenses.filter((e) => {
+      if (e.firmId !== firmId || e.deletedAt) return false;
+      if (e.caseId && !visibleCaseIds.has(e.caseId)) return false;
+      if (filter?.clientId && e.clientId !== filter.clientId) return false;
+      if (filter?.caseId && e.caseId !== filter.caseId) return false;
+      if (filter?.categoryId && e.categoryId !== filter.categoryId) return false;
+      if (filter?.status && e.status !== filter.status) return false;
+      return true;
+    });
+
+    return list
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((e) => {
+        const cat = this.expenseCategories.find((c) => c.id === e.categoryId);
+        return {
+          ...e,
+          categoryName: cat ? cat.name : 'Unknown Category',
+        };
+      });
+  }
+
+  public async getExpenseById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Expense & { categoryName?: string }) | null> {
+    await this.init();
+    const expense = this.expenses.find((e) => e.id === id && e.firmId === firmId && !e.deletedAt);
+    if (!expense) return null;
+
+    if (user && expense.caseId) {
+      const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+      if (!visibleCaseIds.has(expense.caseId)) return null;
+    }
+    const cat = this.expenseCategories.find((c) => c.id === expense.categoryId);
+    return {
+      ...expense,
+      categoryName: cat ? cat.name : 'Unknown Category',
+    };
+  }
+
+  public async insertExpense(expense: schema.NewExpense): Promise<schema.Expense> {
+    await this.init();
+    const created: schema.Expense = {
+      id: expense.id || `exp-${crypto.randomUUID()}`,
+      firmId: expense.firmId,
+      clientId: expense.clientId ?? null,
+      caseId: expense.caseId ?? null,
+      categoryId: expense.categoryId,
+      expenseDate: expense.expenseDate,
+      amountPaisa: expense.amountPaisa,
+      description: expense.description,
+      reimbursable: expense.reimbursable ?? true,
+      status: expense.status ?? 'posted',
+      voidReason: expense.voidReason ?? null,
+      voidedBy: expense.voidedBy ?? null,
+      voidedAt: expense.voidedAt ?? null,
+      createdAt: expense.createdAt || new Date(),
+      updatedAt: expense.updatedAt || new Date(),
+      deletedAt: null,
+      createdBy: expense.createdBy ?? null,
+      updatedBy: expense.updatedBy ?? null,
+    };
+    this.expenses.push(created);
+    return { ...created };
+  }
+
+  public async updateExpense(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Expense>
+  ): Promise<schema.Expense> {
+    await this.init();
+    const idx = this.expenses.findIndex((e) => e.id === id && e.firmId === firmId && !e.deletedAt);
+    if (idx === -1) throw new Error(`Expense not found: ${id}`);
+    const updated = {
+      ...this.expenses[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.expenses[idx] = updated;
+    return { ...updated };
+  }
+
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
     await this.init();
     const admin = this.platformAdmins.find(
@@ -1906,6 +2446,12 @@ class MemoryDatabase implements IDatabase {
       payments: [...this.payments],
       devices: [...this.devices],
       tasks: [...this.tasks],
+      feeAgreements: [...this.feeAgreements],
+      feeAgreementChanges: [...this.feeAgreementChanges],
+      numberSequences: [...this.numberSequences],
+      feePayments: [...this.feePayments],
+      expenseCategories: [...this.expenseCategories],
+      expenses: [...this.expenses],
     };
 
     try {
@@ -1932,6 +2478,12 @@ class MemoryDatabase implements IDatabase {
       this.payments = snapshot.payments;
       this.devices = snapshot.devices;
       this.tasks = snapshot.tasks;
+      this.feeAgreements = snapshot.feeAgreements;
+      this.feeAgreementChanges = snapshot.feeAgreementChanges;
+      this.numberSequences = snapshot.numberSequences;
+      this.feePayments = snapshot.feePayments;
+      this.expenseCategories = snapshot.expenseCategories;
+      this.expenses = snapshot.expenses;
       throw err;
     }
   }
@@ -3112,6 +3664,471 @@ class PostgresDatabase implements IDatabase {
       .where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firmId), isNull(schema.tasks.deletedAt)));
 
     return { success: true, softDeleted: true };
+  }
+
+  // Accounts Methods (Accounts Phase 1)
+  public async getAccountsSummary(
+    firmId: string,
+    filter: { clientId?: string; caseId?: string },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalAgreedPaisa: number;
+    totalPaidPaisa: number;
+    balancePaisa: number;
+    isCredit: boolean;
+    creditPaisa: number;
+    outstandingPaisa: number;
+    totalExpensesPaisa: number;
+  }> {
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+
+    // Fee Agreements
+    const agConditions = [
+      eq(schema.feeAgreements.firmId, firmId),
+      isNull(schema.feeAgreements.deletedAt),
+      ne(schema.feeAgreements.status, 'void'),
+    ];
+    if (filter.clientId) agConditions.push(eq(schema.feeAgreements.clientId, filter.clientId));
+    if (filter.caseId) agConditions.push(eq(schema.feeAgreements.caseId, filter.caseId));
+    if (user) {
+      agConditions.push(sql`(${schema.feeAgreements.caseId} IS NULL OR ${schema.feeAgreements.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    const agRows = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(${schema.feeAgreements.agreedAmountPaisa}), 0)` })
+      .from(schema.feeAgreements)
+      .where(and(...agConditions));
+    const totalAgreedPaisa = Number(agRows[0]?.total || 0);
+
+    // Fee Payments
+    const payConditions = [
+      eq(schema.feePayments.firmId, firmId),
+      isNull(schema.feePayments.deletedAt),
+      eq(schema.feePayments.status, 'posted'),
+    ];
+    if (filter.clientId) payConditions.push(eq(schema.feePayments.clientId, filter.clientId));
+    if (filter.caseId) payConditions.push(eq(schema.feePayments.caseId, filter.caseId));
+    if (user) {
+      payConditions.push(sql`(${schema.feePayments.caseId} IS NULL OR ${schema.feePayments.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    const payRows = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(${schema.feePayments.amountPaisa}), 0)` })
+      .from(schema.feePayments)
+      .where(and(...payConditions));
+    const totalPaidPaisa = Number(payRows[0]?.total || 0);
+
+    // Expenses
+    const expConditions = [
+      eq(schema.expenses.firmId, firmId),
+      isNull(schema.expenses.deletedAt),
+      eq(schema.expenses.status, 'posted'),
+    ];
+    if (filter.clientId) expConditions.push(eq(schema.expenses.clientId, filter.clientId));
+    if (filter.caseId) expConditions.push(eq(schema.expenses.caseId, filter.caseId));
+    if (user) {
+      expConditions.push(sql`(${schema.expenses.caseId} IS NULL OR ${schema.expenses.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    const expRows = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(${schema.expenses.amountPaisa}), 0)` })
+      .from(schema.expenses)
+      .where(and(...expConditions));
+    const totalExpensesPaisa = Number(expRows[0]?.total || 0);
+
+    const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+    const isCredit = balancePaisa < 0;
+    const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
+    const outstandingPaisa = isCredit ? 0 : balancePaisa;
+
+    return {
+      totalAgreedPaisa,
+      totalPaidPaisa,
+      balancePaisa,
+      isCredit,
+      creditPaisa,
+      outstandingPaisa,
+      totalExpensesPaisa,
+    };
+  }
+
+  public async getClientBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  > {
+    const clients = await this.listClients(firmId, undefined, user);
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+
+    const result = [];
+    for (const c of clients) {
+      const agConditions = [
+        eq(schema.feeAgreements.firmId, firmId),
+        eq(schema.feeAgreements.clientId, c.id),
+        isNull(schema.feeAgreements.deletedAt),
+        ne(schema.feeAgreements.status, 'void'),
+      ];
+      if (user) {
+        agConditions.push(sql`(${schema.feeAgreements.caseId} IS NULL OR ${schema.feeAgreements.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+      }
+      const agRows = await this.db
+        .select({ total: sql<string>`COALESCE(SUM(${schema.feeAgreements.agreedAmountPaisa}), 0)` })
+        .from(schema.feeAgreements)
+        .where(and(...agConditions));
+      const totalAgreedPaisa = Number(agRows[0]?.total || 0);
+
+      const payConditions = [
+        eq(schema.feePayments.firmId, firmId),
+        eq(schema.feePayments.clientId, c.id),
+        isNull(schema.feePayments.deletedAt),
+        eq(schema.feePayments.status, 'posted'),
+      ];
+      if (user) {
+        payConditions.push(sql`(${schema.feePayments.caseId} IS NULL OR ${schema.feePayments.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+      }
+      const payRows = await this.db
+        .select({ total: sql<string>`COALESCE(SUM(${schema.feePayments.amountPaisa}), 0)` })
+        .from(schema.feePayments)
+        .where(and(...payConditions));
+      const totalPaidPaisa = Number(payRows[0]?.total || 0);
+
+      const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+      const isCredit = balancePaisa < 0;
+      const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
+      const outstandingPaisa = isCredit ? 0 : balancePaisa;
+
+      result.push({
+        clientId: c.id,
+        clientName: c.name,
+        clientNameBn: c.nameBn,
+        clientPhone: c.phone,
+        totalAgreedPaisa,
+        totalPaidPaisa,
+        balancePaisa,
+        isCredit,
+        creditPaisa,
+        outstandingPaisa,
+      });
+    }
+    return result;
+  }
+
+  // Fee Agreements
+  public async listFeeAgreements(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeeAgreement[]> {
+    const conditions = [
+      eq(schema.feeAgreements.firmId, firmId),
+      isNull(schema.feeAgreements.deletedAt),
+    ];
+    if (filter?.clientId) conditions.push(eq(schema.feeAgreements.clientId, filter.clientId));
+    if (filter?.caseId) conditions.push(eq(schema.feeAgreements.caseId, filter.caseId));
+    if (filter?.status) conditions.push(eq(schema.feeAgreements.status, filter.status as any));
+
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.feeAgreements.caseId} IS NULL OR ${schema.feeAgreements.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    return await this.db
+      .select()
+      .from(schema.feeAgreements)
+      .where(and(...conditions))
+      .orderBy(desc(schema.feeAgreements.createdAt));
+  }
+
+  public async getFeeAgreementById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.FeeAgreement | null> {
+    const conditions = [
+      eq(schema.feeAgreements.id, id),
+      eq(schema.feeAgreements.firmId, firmId),
+      isNull(schema.feeAgreements.deletedAt),
+    ];
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.feeAgreements.caseId} IS NULL OR ${schema.feeAgreements.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.feeAgreements)
+      .where(and(...conditions))
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async insertFeeAgreement(agreement: schema.NewFeeAgreement): Promise<schema.FeeAgreement> {
+    const id = agreement.id || `fa-${crypto.randomUUID()}`;
+    const rows = await this.db
+      .insert(schema.feeAgreements)
+      .values({ ...agreement, id })
+      .returning();
+    return rows[0];
+  }
+
+  public async updateFeeAgreement(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.FeeAgreement>
+  ): Promise<schema.FeeAgreement> {
+    const rows = await this.db
+      .update(schema.feeAgreements)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(schema.feeAgreements.id, id), eq(schema.feeAgreements.firmId, firmId), isNull(schema.feeAgreements.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Fee agreement not found: ${id}`);
+    return rows[0];
+  }
+
+  public async insertFeeAgreementChange(change: schema.NewFeeAgreementChange): Promise<schema.FeeAgreementChange> {
+    const id = change.id || `fac-${crypto.randomUUID()}`;
+    const rows = await this.db
+      .insert(schema.feeAgreementChanges)
+      .values({ ...change, id })
+      .returning();
+    return rows[0];
+  }
+
+  public async listFeeAgreementChanges(feeAgreementId: string, firmId: string): Promise<schema.FeeAgreementChange[]> {
+    return await this.db
+      .select()
+      .from(schema.feeAgreementChanges)
+      .where(and(eq(schema.feeAgreementChanges.feeAgreementId, feeAgreementId), eq(schema.feeAgreementChanges.firmId, firmId)))
+      .orderBy(asc(schema.feeAgreementChanges.createdAt));
+  }
+
+  // Number Sequences & Fee Payments
+  public async getNextSequenceNumber(
+    firmId: string,
+    type: string,
+    prefix = 'R-'
+  ): Promise<{ sequenceNumber: string; currentVal: number }> {
+    const result = await (this.db as any).execute(sql`
+      INSERT INTO number_sequences (id, firm_id, type, prefix, current_val, updated_at)
+      VALUES (gen_random_uuid(), ${firmId}, ${type}, ${prefix}, 1, NOW())
+      ON CONFLICT (firm_id, type)
+      DO UPDATE SET current_val = number_sequences.current_val + 1, updated_at = NOW()
+      RETURNING prefix, current_val;
+    `);
+    const row = result.rows[0];
+    const currentVal = Number(row.current_val);
+    const pfx = String(row.prefix);
+    const sequenceNumber = `${pfx}${String(currentVal).padStart(6, '0')}`;
+    return { sequenceNumber, currentVal };
+  }
+
+  public async listFeePayments(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<schema.FeePayment[]> {
+    const conditions = [
+      eq(schema.feePayments.firmId, firmId),
+      isNull(schema.feePayments.deletedAt),
+    ];
+    if (filter?.clientId) conditions.push(eq(schema.feePayments.clientId, filter.clientId));
+    if (filter?.caseId) conditions.push(eq(schema.feePayments.caseId, filter.caseId));
+    if (filter?.feeAgreementId) conditions.push(eq(schema.feePayments.feeAgreementId, filter.feeAgreementId));
+    if (filter?.status) conditions.push(eq(schema.feePayments.status, filter.status as any));
+
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.feePayments.caseId} IS NULL OR ${schema.feePayments.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    return await this.db
+      .select()
+      .from(schema.feePayments)
+      .where(and(...conditions))
+      .orderBy(desc(schema.feePayments.createdAt));
+  }
+
+  public async getFeePaymentById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<schema.FeePayment | null> {
+    const conditions = [
+      eq(schema.feePayments.id, id),
+      eq(schema.feePayments.firmId, firmId),
+      isNull(schema.feePayments.deletedAt),
+    ];
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.feePayments.caseId} IS NULL OR ${schema.feePayments.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.feePayments)
+      .where(and(...conditions))
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async getFeePaymentByIdempotencyKey(
+    firmId: string,
+    idempotencyKey: string
+  ): Promise<schema.FeePayment | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.feePayments)
+      .where(and(eq(schema.feePayments.firmId, firmId), eq(schema.feePayments.idempotencyKey, idempotencyKey), isNull(schema.feePayments.deletedAt)))
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async insertFeePayment(payment: schema.NewFeePayment): Promise<schema.FeePayment> {
+    const id = payment.id || `pay-${crypto.randomUUID()}`;
+    const rows = await this.db
+      .insert(schema.feePayments)
+      .values({ ...payment, id })
+      .returning();
+    return rows[0];
+  }
+
+  public async updateFeePayment(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.FeePayment>
+  ): Promise<schema.FeePayment> {
+    const rows = await this.db
+      .update(schema.feePayments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(schema.feePayments.id, id), eq(schema.feePayments.firmId, firmId), isNull(schema.feePayments.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Fee payment not found: ${id}`);
+    return rows[0];
+  }
+
+  // Expenses & Categories
+  public async listExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.expenseCategories)
+      .where(and(eq(schema.expenseCategories.firmId, firmId), isNull(schema.expenseCategories.deletedAt)))
+      .orderBy(asc(schema.expenseCategories.name));
+    if (rows.length === 0) {
+      return await this.seedDefaultExpenseCategories(firmId);
+    }
+    return rows;
+  }
+
+  public async seedDefaultExpenseCategories(firmId: string): Promise<schema.ExpenseCategory[]> {
+    const entries = DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
+      id: `expcat-${crypto.randomUUID()}`,
+      firmId,
+      name,
+      isDefault: true,
+    }));
+    return await this.db
+      .insert(schema.expenseCategories)
+      .values(entries)
+      .returning();
+  }
+
+  public async listExpenses(
+    firmId: string,
+    filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Expense & { categoryName?: string }>> {
+    const conditions = [
+      eq(schema.expenses.firmId, firmId),
+      isNull(schema.expenses.deletedAt),
+    ];
+    if (filter?.clientId) conditions.push(eq(schema.expenses.clientId, filter.clientId));
+    if (filter?.caseId) conditions.push(eq(schema.expenses.caseId, filter.caseId));
+    if (filter?.categoryId) conditions.push(eq(schema.expenses.categoryId, filter.categoryId));
+    if (filter?.status) conditions.push(eq(schema.expenses.status, filter.status as any));
+
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.expenses.caseId} IS NULL OR ${schema.expenses.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+
+    const rows = await this.db
+      .select({
+        expense: schema.expenses,
+        categoryName: schema.expenseCategories.name,
+      })
+      .from(schema.expenses)
+      .leftJoin(schema.expenseCategories, eq(schema.expenses.categoryId, schema.expenseCategories.id))
+      .where(and(...conditions))
+      .orderBy(desc(schema.expenses.createdAt));
+
+    return rows.map((r) => ({
+      ...r.expense,
+      categoryName: r.categoryName || 'Unknown Category',
+    }));
+  }
+
+  public async getExpenseById(
+    id: string,
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.Expense & { categoryName?: string }) | null> {
+    const conditions = [
+      eq(schema.expenses.id, id),
+      eq(schema.expenses.firmId, firmId),
+      isNull(schema.expenses.deletedAt),
+    ];
+    if (user) {
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+      conditions.push(sql`(${schema.expenses.caseId} IS NULL OR ${schema.expenses.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`);
+    }
+    const rows = await this.db
+      .select({
+        expense: schema.expenses,
+        categoryName: schema.expenseCategories.name,
+      })
+      .from(schema.expenses)
+      .leftJoin(schema.expenseCategories, eq(schema.expenses.categoryId, schema.expenseCategories.id))
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].expense,
+      categoryName: rows[0].categoryName || 'Unknown Category',
+    };
+  }
+
+  public async insertExpense(expense: schema.NewExpense): Promise<schema.Expense> {
+    const id = expense.id || `exp-${crypto.randomUUID()}`;
+    const rows = await this.db
+      .insert(schema.expenses)
+      .values({ ...expense, id })
+      .returning();
+    return rows[0];
+  }
+
+  public async updateExpense(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Expense>
+  ): Promise<schema.Expense> {
+    const rows = await this.db
+      .update(schema.expenses)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(schema.expenses.id, id), eq(schema.expenses.firmId, firmId), isNull(schema.expenses.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Expense not found: ${id}`);
+    return rows[0];
   }
 
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {

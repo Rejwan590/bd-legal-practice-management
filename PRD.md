@@ -99,7 +99,7 @@ A user can view a case if and only if:
 - Immutable date change tracking in `hearing_date_history` (`old_at`, `new_at`, `reason`, `changed_by`).
 - Automatic synchronization of `cases.next_hearing_at`.
 
-#### B. "Date Fixed For" (*Kharjja / Agami Tarikh*) `[PLANNED]`
+#### B. "Date Fixed For" (*Kharjja / Agami Tarikh*) `[BUILT]`
 In Bangladesh courts, every scheduled hearing date has a legally defined procedural purpose recorded in the court order sheet.
 - **Controlled Category Lists**:
   - **Civil**: `first_hearing`, `written_statement`, `framing_of_issues`, `hearing`, `plaintiff_evidence`, `defendant_evidence`, `argument`, `order`, `judgment`, `compliance`, `ex_parte_hearing`, `peremptory_hearing`, `other`.
@@ -114,11 +114,11 @@ In Bangladesh courts, every scheduled hearing date has a legally defined procedu
   - Adjournment requires next date + next date's `fixed_for` (default: copied from current date) + adjournment reason. Old hearing preserves its original `fixed_for`.
   - Displayed alongside date across Case Dossier, Hearings List, Calendar, Dashboard, Daily Cause List docket, Print View, Global Search, and History modals.
 
-### 3.4 Daily Cause List Docket `[BUILT (UI)]` / `[PLANNED (Bulk Ops)]`
+### 3.4 Daily Cause List Docket `[BUILT]`
 - Chronological list of hearings scheduled for today or selected date across courts.
 - Filterable by court, appearing lawyer, and `fixed_for` purpose.
 - Printable A4 cause list docket supporting Bangla font rendering.
-- `[PLANNED]`: Bulk adjournment and bulk status updates directly from cause list view.
+- Bulk adjournment, bulk rescheduling, and bulk status updates directly from cause list view with multi-select checkboxes.
 
 ### 3.5 Appointments Module `[BUILT]`
 - Dedicated module for client consultations, court visits, phone calls, and internal conferences.
@@ -126,10 +126,12 @@ In Bangladesh courts, every scheduled hearing date has a legally defined procedu
 - Non-blocking overlap warning for attendees and organizers.
 - Filterable list view, dashboard section ("Today's Appointments"), client profile tab, and full reschedule audit trail.
 
-### 3.6 Tasks Module `[BUILT (Mock Layer)]` / `[PLANNED (Postgres API)]`
+### 3.6 Tasks Module `[BUILT]`
 - Tasks assigned to staff members with priorities (`urgent`, `high`, `medium`, `normal`, `low`) and due dates.
 - Linkable to clients and cases.
 - Overdue computation, task reassignments, completion modals, and automatic reminder clearance.
+- Staff partitioning: staff without `tasks.assign` can only view and complete tasks assigned to them.
+- Full Postgres + REST + Mock dual-mode parity with audit trail.
 
 ### 3.7 Physical File Tracking `[BUILT (Mock Layer)]` / `[PLANNED (Postgres API)]`
 - Unique sequential physical file serials (`F-000001`) per firm.
@@ -153,6 +155,31 @@ In Bangladesh courts, every scheduled hearing date has a legally defined procedu
 - Payment recording (bKash, Nagad, Bank transfer).
 - Device authorization management.
 - Subscription read-only enforcement: expired or suspended firms are restricted to read and backup operations only (`SUBSCRIPTION_READ_ONLY`).
+
+### 3.11 Accounts & Billing Module (Phase 1) `[BUILT]`
+- **Integer Paisa Precision**: All monetary values stored strictly as integer paisa (no floating point, 1 BDT = 100 paisa).
+- **South Asian Formatting**: Dynamic currency formatter rendering Bangla and English numerals with Bangladeshi grouping (`৳ 1,50,000` / `৳ ১,৫০,০০০`).
+- **Fee Agreements & Changes**:
+  - Types: `fixed`, `per_hearing`, `hourly`, `retainer`, `installment`.
+  - Amount changes strictly preserved in `fee_agreement_changes` with mandatory reason.
+- **Fee Payments Received**:
+  - Payment methods: `cash`, `bank`, `bkash`, `nagad`, `cheque`, `other`.
+  - Mandatory purpose note (max 500 chars).
+  - Atomic, gap-safe receipt numbering (`R-000001`) via `number_sequences`.
+  - Duplicate idempotency key protection per firm.
+  - Optional link to hearing date in the same firm.
+  - Immutable posted records: voiding requires reason, recording operator and timestamp; void records excluded from balances.
+- **Chamber Expenses**:
+  - Seedable categories per firm with English/Bangla names.
+  - Linkable to client and case; reimbursable flag.
+  - Voiding with reason.
+- **Client & Case Balance Computation**:
+  - Balance = Agreed Amount − Posted Payments.
+  - Overpayment supported and flagged as credit.
+- **UI & Dual-Mode Repositories**:
+  - Billing tab on Client Profile and Case Dossier with KPI summary cards, agreement lists, payment records with purpose notes, and expense lists.
+  - Chamber-wide Billing screen (`/billing`) with sortable client balance rankings.
+  - 100% bilingual i18n parity (`en.json`, `bn.json`).
 
 ---
 
@@ -180,10 +207,11 @@ In Bangladesh courts, every scheduled hearing date has a legally defined procedu
 | Case Notes & History | `[BUILT]` | Postgres + REST + Mock |
 | Appointments Module & Attendee Linkage | `[BUILT]` | Postgres + REST + Mock |
 | Hearings Basic Scheduling & Date History | `[BUILT]` | Postgres + REST + Mock |
-| Hearings "Date Fixed For" Controlled Lists | `[PLANNED]` | Specification ready for Phase 2 |
+| Hearings "Date Fixed For" Controlled Lists | `[BUILT]` | Postgres + REST + Mock |
 | Cause List Daily Docket & Print View | `[BUILT]` | Frontend UI & Mock |
-| Cause List Bulk Status Operations | `[PLANNED]` | Backend endpoint + UI |
-| Tasks Module | `[BUILT]` (Mock) / `[PLANNED]` (DB) | Frontend Mock active |
+| Cause List Bulk Status Operations | `[BUILT]` | Postgres + REST + Mock |
+| Tasks Module | `[BUILT]` | Postgres + REST + Mock |
+| Accounts & Billing Phase 1 (Agreements, Payments, Expenses) | `[BUILT]` | Postgres + REST + Mock |
 | Physical File Tracking | `[BUILT]` (Mock) / `[PLANNED]` (DB) | Frontend Mock active |
 | Calendar & In-App Reminders | `[BUILT]` (Mock) / `[PLANNED]` (DB) | Frontend Mock active |
 | Super Admin Portal & Device Authorization | `[BUILT]` | Postgres + REST + Admin SPA |

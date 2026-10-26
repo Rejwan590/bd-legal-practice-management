@@ -38,6 +38,15 @@ import {
   TaskRecord,
   TaskStatus,
   UserRecord,
+  AccountsSummary,
+  ClientBalanceOverview,
+  Expense,
+  ExpenseCategory,
+  FeeAgreement,
+  FeeAgreementChange,
+  FeePayment,
+  FeeType,
+  PaymentMethod,
 } from './types';
 
 
@@ -551,6 +560,65 @@ export interface IBackupRepository {
     }
   ): Promise<RestoreResult>;
 }
+
+export interface IAccountsRepository {
+  getSummary(context: SecurityContext, filter: { clientId?: string; caseId?: string }): Promise<AccountsSummary>;
+  getClientBalances(context: SecurityContext): Promise<ClientBalanceOverview[]>;
+  listAgreements(context: SecurityContext, filter?: { clientId?: string; caseId?: string; status?: string }): Promise<FeeAgreement[]>;
+  getAgreementById(context: SecurityContext, id: string): Promise<FeeAgreement | null>;
+  createAgreement(
+    context: SecurityContext,
+    agreement: {
+      clientId: string;
+      caseId?: string | null;
+      feeType: FeeType;
+      agreedAmountPaisa: number;
+      agreementDate: string;
+      notes?: string | null;
+    }
+  ): Promise<FeeAgreement>;
+  reviseAgreement(context: SecurityContext, id: string, newAmountPaisa: number, reason: string): Promise<FeeAgreement>;
+  closeAgreement(context: SecurityContext, id: string): Promise<FeeAgreement>;
+  voidAgreement(context: SecurityContext, id: string, reason: string): Promise<FeeAgreement>;
+  listAgreementChanges(context: SecurityContext, agreementId: string): Promise<FeeAgreementChange[]>;
+
+  listPayments(context: SecurityContext, filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string }): Promise<FeePayment[]>;
+  getPaymentById(context: SecurityContext, id: string): Promise<FeePayment | null>;
+  recordPayment(
+    context: SecurityContext,
+    payment: {
+      clientId: string;
+      caseId?: string | null;
+      feeAgreementId?: string | null;
+      hearingId?: string | null;
+      paymentDate: string;
+      amountPaisa: number;
+      method: PaymentMethod;
+      reference?: string | null;
+      purposeNote: string;
+      idempotencyKey: string;
+    }
+  ): Promise<FeePayment>;
+  voidPayment(context: SecurityContext, id: string, reason: string): Promise<FeePayment>;
+
+  listExpenseCategories(context: SecurityContext): Promise<ExpenseCategory[]>;
+  listExpenses(context: SecurityContext, filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string }): Promise<Array<Expense & { categoryName?: string }>>;
+  getExpenseById(context: SecurityContext, id: string): Promise<(Expense & { categoryName?: string }) | null>;
+  recordExpense(
+    context: SecurityContext,
+    expense: {
+      clientId?: string | null;
+      caseId?: string | null;
+      categoryId: string;
+      expenseDate: string;
+      amountPaisa: number;
+      description: string;
+      reimbursable?: boolean;
+    }
+  ): Promise<Expense>;
+  voidExpense(context: SecurityContext, id: string, reason: string): Promise<Expense>;
+}
+
 
 
 

@@ -31,6 +31,7 @@ export type NavTab =
   | 'tasks'
   | 'files'
   | 'hearings'
+  | 'billing'
   | 'search'
   | 'backup'
   | 'auditLog'
@@ -38,8 +39,8 @@ export type NavTab =
   | 'health';
 
 export type ScreenId = NavTab;
-export type CaseDossierTab = 'overview' | 'hearings' | 'notes' | 'appointments' | 'tasks' | 'files' | 'activity';
-export type ClientProfileTab = 'cases' | 'appointments' | 'tasks' | 'files';
+export type CaseDossierTab = 'overview' | 'hearings' | 'notes' | 'appointments' | 'tasks' | 'files' | 'activity' | 'billing';
+export type ClientProfileTab = 'cases' | 'appointments' | 'tasks' | 'files' | 'billing';
 
 export interface RouteState {
   screen: NavTab;
@@ -49,8 +50,8 @@ export interface RouteState {
   clientTab: ClientProfileTab;
 }
 
-const VALID_CASE_TABS: CaseDossierTab[] = ['overview', 'hearings', 'notes', 'appointments', 'tasks', 'files', 'activity'];
-const VALID_CLIENT_TABS: ClientProfileTab[] = ['cases', 'appointments', 'tasks', 'files'];
+const VALID_CASE_TABS: CaseDossierTab[] = ['overview', 'hearings', 'notes', 'appointments', 'tasks', 'files', 'activity', 'billing'];
+const VALID_CLIENT_TABS: ClientProfileTab[] = ['cases', 'appointments', 'tasks', 'files', 'billing'];
 
 export function parseUrlRoute(pathname: string, hash: string = ''): RouteState {
   const cleanHash = hash.replace(/^#\/?/, '').trim();
@@ -103,6 +104,7 @@ export function parseUrlRoute(pathname: string, hash: string = ''): RouteState {
   if (root === 'tasks') return { ...defaultState, screen: 'tasks' };
   if (root === 'files') return { ...defaultState, screen: 'files' };
   if (root === 'hearings') return { ...defaultState, screen: 'hearings' };
+  if (root === 'billing' || root === 'accounts') return { ...defaultState, screen: 'billing' };
   if (root === 'search') return { ...defaultState, screen: 'search' };
   if (root === 'backup') return { ...defaultState, screen: 'backup' };
   if (root === 'audit' || root === 'auditLog' || root === 'audit-log') {
@@ -141,6 +143,8 @@ export function buildUrlFromRoute(route: RouteState): string {
       return '/files';
     case 'hearings':
       return '/hearings';
+    case 'billing':
+      return '/billing';
     case 'search':
       return '/search';
     case 'backup':

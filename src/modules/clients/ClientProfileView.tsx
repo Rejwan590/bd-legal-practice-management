@@ -40,7 +40,9 @@ import {
   Trash2,
   Clock,
   Calendar as CalendarIcon,
+  CreditCard,
 } from 'lucide-react';
+import { BillingTab } from '../billing/BillingTab';
 
 interface ClientProfileViewProps {
   clientId: string;
@@ -270,6 +272,16 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
       count: files.length,
       icon: FolderArchive,
     },
+    ...(can('accounts.view')
+      ? [
+          {
+            id: 'billing' as ClientProfileTab,
+            label: t('nav.billing', 'Billing'),
+            count: 0,
+            icon: CreditCard,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -868,6 +880,12 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
         )}
 
         {/* TAB 4: FILES */}
+        {activeTab === 'billing' && can('accounts.view') && (
+          <div className="pt-2">
+            <BillingTab clientId={client.id} />
+          </div>
+        )}
+
         {activeTab === 'files' && (
           <div className="p-4 sm:p-6 space-y-4" data-testid="client-panel-files">
             <div className="flex flex-wrap items-center justify-between gap-2">

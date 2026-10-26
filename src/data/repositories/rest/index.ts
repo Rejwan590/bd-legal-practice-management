@@ -7,3 +7,4 @@ export * from './restCase';
 export * from './restAppointment';
 export * from './restHearing';
 export * from './restTask';
+export * from './restAccounts';

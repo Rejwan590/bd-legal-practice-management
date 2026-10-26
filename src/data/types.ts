@@ -445,5 +445,95 @@ export interface RestoreResult {
   message: string;
 }
 
+// Accounts Phase 1 Types
+export type FeeType = 'fixed' | 'per_hearing' | 'hourly' | 'retainer' | 'installment';
+export type FeeAgreementStatus = 'active' | 'closed' | 'void';
+export type PaymentMethod = 'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other';
+export type PaymentStatus = 'posted' | 'void';
+export type ExpenseStatus = 'posted' | 'void';
+
+export interface FeeAgreement extends BaseRecord {
+  clientId: string;
+  caseId: string | null;
+  feeType: FeeType;
+  agreedAmountPaisa: number;
+  agreementDate: string;
+  notes: string | null;
+  status: FeeAgreementStatus;
+}
+
+export interface FeeAgreementChange {
+  id: string;
+  firmId: string;
+  feeAgreementId: string;
+  oldAmountPaisa: number;
+  newAmountPaisa: number;
+  reason: string;
+  changedBy: string;
+  createdAt: string;
+}
+
+export interface FeePayment extends BaseRecord {
+  clientId: string;
+  caseId: string | null;
+  feeAgreementId: string | null;
+  hearingId: string | null;
+  paymentDate: string;
+  amountPaisa: number;
+  method: PaymentMethod;
+  reference: string | null;
+  receiptNumber: string;
+  purposeNote: string;
+  status: PaymentStatus;
+  voidReason: string | null;
+  voidedBy: string | null;
+  voidedAt: string | null;
+  idempotencyKey: string;
+}
+
+export interface ExpenseCategory extends BaseRecord {
+  name: string;
+  isDefault: boolean;
+}
+
+export interface Expense extends BaseRecord {
+  clientId: string | null;
+  caseId: string | null;
+  categoryId: string;
+  categoryName?: string;
+  expenseDate: string;
+  amountPaisa: number;
+  description: string;
+  reimbursable: boolean;
+  status: ExpenseStatus;
+  voidReason: string | null;
+  voidedBy: string | null;
+  voidedAt: string | null;
+}
+
+export interface AccountsSummary {
+  totalAgreedPaisa: number;
+  totalPaidPaisa: number;
+  balancePaisa: number;
+  isCredit: boolean;
+  creditPaisa: number;
+  outstandingPaisa: number;
+  totalExpensesPaisa: number;
+}
+
+export interface ClientBalanceOverview {
+  clientId: string;
+  clientName: string;
+  clientNameBn?: string | null;
+  clientPhone: string;
+  totalAgreedPaisa: number;
+  totalPaidPaisa: number;
+  balancePaisa: number;
+  isCredit: boolean;
+  creditPaisa: number;
+  outstandingPaisa: number;
+}
+
+
 
 

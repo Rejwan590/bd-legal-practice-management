@@ -203,7 +203,7 @@ Standard status codes:
   ```
 - Updates `cases.next_hearing_at`.
 
-#### `POST /api/v1/hearings/:id/reschedule` `[BUILT]` / `[PLANNED with fixed_for]`
+#### `POST /api/v1/hearings/:id/reschedule` `[BUILT]`
 - **Body**:
   ```json
   {
@@ -215,7 +215,7 @@ Standard status codes:
   ```
 - Creates `hearing_date_history` row recording old date, new date, old `fixed_for`, new `fixed_for`, and reason.
 
-#### `POST /api/v1/hearings/:id/adjourn` `[BUILT]` / `[PLANNED with fixed_for]`
+#### `POST /api/v1/hearings/:id/adjourn` `[BUILT]`
 - **Body**:
   ```json
   {
@@ -254,10 +254,75 @@ Standard status codes:
 
 ---
 
-### 2.8 Planned Modules (`/tasks`, `/files`, `/reminders`) `[PLANNED]`
+### 2.8 Tasks Module (`/api/v1/tasks`) `[BUILT]`
+
+#### `GET /api/v1/tasks` `[BUILT]`
+- Query params: `caseId`, `clientId`, `assignedTo`, `status`, `priority`, `search`, `limit`, `offset`.
+- Enforces staff partitioning (staff without `tasks.assign` see only tasks assigned to them).
+
+#### `GET /api/v1/tasks/:id` `[BUILT]`
+
+#### `POST /api/v1/tasks` `[BUILT]`
+- **Guard**: `requirePermission('tasks.assign')`, `enforceSubscriptionReadOnly`.
+- Records audit `TASK_ASSIGN`.
+
+#### `PATCH /api/v1/tasks/:id` `[BUILT]`
+- Reopening requires `tasks.complete`, metadata changes require `tasks.assign`.
+
+#### `POST /api/v1/tasks/:id/complete` `[BUILT]`
+- **Guard**: `requirePermission('tasks.complete')`.
+- Appends optional completion note and timestamps completion.
+
+#### `POST /api/v1/tasks/:id/reassign` `[BUILT]`
+- **Guard**: `requirePermission('tasks.assign')`.
+
+#### `DELETE /api/v1/tasks/:id` `[BUILT]`
+- Soft delete with audit log.
+
+---
+
+### 2.9 Accounts & Billing Module (`/api/v1/fee-agreements`, `/api/v1/fee-payments`, `/api/v1/expenses`, `/api/v1/accounts`) `[BUILT]`
+
+Financial management module for chamber client litigation fees and expenses.
+All monetary amounts are stored strictly as integer paisa (1 BDT = 100 paisa).
+Enforces central case visibility, confidentiality (`restricted.view`), firm isolation, idempotency, atomic receipt numbering, soft-deletes, and subscription read-only guards.
+
+#### 2.9.1 Fee Agreements (`/api/v1/fee-agreements`)
+- `GET /api/v1/fee-agreements`: Lists agreements with filters (`clientId`, `caseId`, `status`, `feeType`). Gated by `accounts.view`.
+- `GET /api/v1/fee-agreements/:id`: Returns agreement details with client and case metadata.
+- `GET /api/v1/fee-agreements/:id/changes`: Returns revision history (`fee_agreement_changes`).
+- `POST /api/v1/fee-agreements`: Creates fee agreement. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
+  - Body: `{ "clientId": "...", "caseId": "...", "feeType": "fixed"|"per_hearing"|"hourly"|"retainer"|"installment", "agreedAmountPaisa": 5000000, "agreementDate": "2026-10-26T00:00:00Z", "notes": "..." }`
+- `POST /api/v1/fee-agreements/:id/revise`: Modifies agreed fee amount, recording revision history with required `reason`.
+- `POST /api/v1/fee-agreements/:id/close`: Closes agreement.
+- `POST /api/v1/fee-agreements/:id/void`: Voids agreement with required `reason`.
+
+#### 2.9.2 Fee Payments Received (`/api/v1/fee-payments`)
+- `GET /api/v1/fee-payments`: Lists payments with filters (`clientId`, `caseId`, `feeAgreementId`, `status`, `limit`, `offset`).
+- `GET /api/v1/fee-payments/:id`: Returns payment record.
+- `POST /api/v1/fee-payments`: Records payment received. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
+  - Body: `{ "clientId": "...", "caseId": "...", "feeAgreementId": "...", "hearingId": "...", "paymentDate": "2026-10-26T12:00:00Z", "amountPaisa": 2500000, "method": "cash"|"bank"|"bkash"|"nagad"|"cheque"|"other", "reference": "TRX-12345", "purposeNote": "Advance for filing", "idempotencyKey": "uuid" }`
+  - Atomically increments and assigns receipt number (e.g. `R-000001`) from `number_sequences`.
+  - Enforces duplicate idempotency key deduplication (returns existing record without duplicate receipt number).
+- `POST /api/v1/fee-payments/:id/void`: Voids payment with required `voidReason`. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`. Excludes payment from balances.
+
+#### 2.9.3 Expenses (`/api/v1/expenses`)
+- `GET /api/v1/expenses/categories`: Lists firm expense categories (`expense_categories`).
+- `GET /api/v1/expenses`: Lists chamber expenses with filters (`clientId`, `caseId`, `categoryId`, `status`).
+- `GET /api/v1/expenses/:id`: Returns expense record.
+- `POST /api/v1/expenses`: Records an expense. Gated by `expenses.record`, `enforceSubscriptionReadOnly`.
+  - Body: `{ "clientId": "...", "caseId": "...", "categoryId": "...", "expenseDate": "2026-10-26T00:00:00Z", "amountPaisa": 150000, "description": "Court filing fee & stamp", "reimbursable": true }`
+- `POST /api/v1/expenses/:id/void`: Voids expense with required `voidReason`. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
+
+#### 2.9.4 Accounts Summary & Client Balances (`/api/v1/accounts`)
+- `GET /api/v1/accounts/summary`: Returns chamber-wide, client-specific, or case-specific financial summary (`agreedPaisa`, `receivedPaisa`, `balancePaisa`, `isOverpaid`, `creditPaisa`, `expensesPaisa`). Query params: `clientId`, `caseId`. Gated by `accounts.view`.
+- `GET /api/v1/accounts/client-balances`: Returns sortable list of all clients with outstanding balances and payment metrics. Query params: `search`, `sortBy` (`balance_desc`, `balance_asc`, `name`), `limit`, `offset`. Gated by `accounts.view`.
+
+---
+
+### 2.10 Planned Modules (`/files`, `/reminders`) `[PLANNED]`
 
 Target endpoints for upcoming phases:
-- `GET /api/v1/tasks` & `POST /api/v1/tasks`: Task assignment and status transitions.
 - `GET /api/v1/files` & `POST /api/v1/files/:id/checkout` / `checkin`: Physical custody movement.
 - `GET /api/v1/reminders`: Chamber deadline notification center.
 

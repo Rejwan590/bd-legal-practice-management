@@ -22,7 +22,11 @@ export type PermissionKey =
   | 'settings.manage'
   | 'users.manage'
   | 'restricted.view'
-  | 'data.export';
+  | 'data.export'
+  | 'accounts.view'
+  | 'accounts.manage'
+  | 'expenses.record'
+  | 'accounts.export';
 
 export type UserRole = 'Owner' | 'Staff';
 
@@ -60,6 +64,10 @@ export const ALL_PERMISSIONS: PermissionKey[] = [
   'users.manage',
   'restricted.view',
   'data.export',
+  'accounts.view',
+  'accounts.manage',
+  'expenses.record',
+  'accounts.export',
 ];
 
 export const DEFAULT_STAFF_PERMISSIONS: PermissionKey[] = [

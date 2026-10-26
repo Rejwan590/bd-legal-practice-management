@@ -16,6 +16,7 @@ import { AppointmentsScreen } from './modules/appointments/AppointmentsScreen';
 import { DashboardScreen } from './modules/dashboard/DashboardScreen';
 import { BackupScreen } from './modules/backup/BackupScreen';
 import { GlobalSearchModal } from './modules/search/GlobalSearchModal';
+import { BillingScreen } from './modules/billing/BillingScreen';
 
 function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -51,6 +52,7 @@ function MainApp() {
       {currentTab === 'files' && <FilesScreen />}
       {currentTab === 'appointments' && <AppointmentsScreen />}
       {currentTab === 'calendar' && <CalendarScreen />}
+      {currentTab === 'billing' && <BillingScreen />}
       {currentTab === 'search' && (
         <GlobalSearchModal
           isOpen={true}

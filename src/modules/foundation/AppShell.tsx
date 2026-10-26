@@ -31,6 +31,7 @@ import {
   Mail,
   Plus,
   MoreHorizontal,
+  CreditCard,
 } from 'lucide-react';
 
 export type ActiveTab = ScreenId;
@@ -134,6 +135,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare, stage: 1 },
     { id: 'files', label: t('nav.files'), icon: FolderArchive, stage: 1 },
     { id: 'calendar', label: t('nav.calendar'), icon: Calendar, stage: 1 },
+    { id: 'billing', label: t('nav.billing', 'Billing'), icon: CreditCard, stage: 1, hide: !can('accounts.view') },
     { id: 'search', label: t('common.search'), icon: Search, stage: 1 },
     {
       id: 'backup',
