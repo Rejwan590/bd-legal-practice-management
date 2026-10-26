@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
@@ -102,7 +103,7 @@ tasksRouter.post(
     const firmId = req.user!.firmId;
 
     // Validate assignee belongs to the same firm
-    const assignee = await db.getUserById(parsed.data.assignedTo, firmId);
+    const assignee = await db.getUserById(parsed.data.assignedTo);
     if (!assignee || assignee.firmId !== firmId) {
       return res.status(400).json({ error: 'ValidationError', message: 'Assigned user does not exist in this firm' });
     }
@@ -124,6 +125,7 @@ tasksRouter.post(
     }
 
     const newTask = await db.insertTask({
+      id: crypto.randomUUID(),
       firmId,
       caseId: parsed.data.caseId || null,
       clientId: parsed.data.clientId || null,
@@ -138,12 +140,15 @@ tasksRouter.post(
       updatedBy: req.user!.id,
     });
 
-    await recordAudit(req, {
+    await recordAudit({
+      firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
       entity: 'Task',
       entityId: newTask.id,
       action: 'TASK_ASSIGN',
       oldValue: null,
-      newValue: newTask,
+      newValue: newTask as unknown as Record<string, unknown>,
     });
 
     res.status(201).json(newTask);
@@ -187,7 +192,7 @@ tasksRouter.patch(
 
     // Validate assignee if being updated
     if (parsed.data.assignedTo && parsed.data.assignedTo !== existing.assignedTo) {
-      const assignee = await db.getUserById(parsed.data.assignedTo, firmId);
+      const assignee = await db.getUserById(parsed.data.assignedTo);
       if (!assignee || assignee.firmId !== firmId) {
         return res.status(400).json({ error: 'ValidationError', message: 'Assigned user does not exist in this firm' });
       }
@@ -222,12 +227,15 @@ tasksRouter.patch(
 
     const updated = await db.updateTask(req.params.id, firmId, updates);
 
-    await recordAudit(req, {
+    await recordAudit({
+      firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
       entity: 'Task',
       entityId: req.params.id,
       action: 'UPDATE',
-      oldValue: existing,
-      newValue: updated,
+      oldValue: existing as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
     });
 
     res.json(updated);
@@ -272,12 +280,15 @@ tasksRouter.post(
       updatedBy: req.user!.id,
     });
 
-    await recordAudit(req, {
+    await recordAudit({
+      firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
       entity: 'Task',
       entityId: req.params.id,
       action: 'TASK_COMPLETE',
-      oldValue: existing,
-      newValue: updated,
+      oldValue: existing as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
     });
 
     res.json(updated);
@@ -303,7 +314,7 @@ tasksRouter.post(
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const newAssignee = await db.getUserById(parsed.data.newAssignedTo, firmId);
+    const newAssignee = await db.getUserById(parsed.data.newAssignedTo);
     if (!newAssignee || newAssignee.firmId !== firmId) {
       return res.status(400).json({ error: 'ValidationError', message: 'Target assignee not found' });
     }
@@ -313,13 +324,16 @@ tasksRouter.post(
       updatedBy: req.user!.id,
     });
 
-    await recordAudit(req, {
+    await recordAudit({
+      firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
       entity: 'Task',
       entityId: req.params.id,
       action: 'TASK_ASSIGN',
-      oldValue: existing,
+      oldValue: existing as unknown as Record<string, unknown>,
       newValue: {
-        ...updated,
+        ...(updated as unknown as Record<string, unknown>),
         reassignmentReason: parsed.data.reason || undefined,
       },
     });
@@ -344,11 +358,14 @@ tasksRouter.delete(
 
     await db.deleteTask(req.params.id, firmId, req.user!.id);
 
-    await recordAudit(req, {
+    await recordAudit({
+      firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
       entity: 'Task',
       entityId: req.params.id,
       action: 'DELETE',
-      oldValue: existing,
+      oldValue: existing as unknown as Record<string, unknown>,
       newValue: { deletedAt: new Date().toISOString(), softDeleted: true },
     });
 
