@@ -748,6 +748,7 @@ async function runTests() {
       firmId: 'firm-bd-001',
       name: 'Closed Agreement Client',
       phone: '+880 1700-112233',
+      address: 'Motijheel, Dhaka',
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
