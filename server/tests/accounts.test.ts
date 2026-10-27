@@ -64,6 +64,7 @@ async function runTests() {
     const staffPass = 'ChamberStaff_2026_Secured!';
     const hashedStaffPass = await bcrypt.hash(staffPass, 10);
     const staffUser = await db.insertUser({
+      id: 'user-accounts-staff-001',
       firmId: 'firm-bd-001',
       name: 'Accounts Test Junior',
       email: 'staff.accounts@firm.bd',
@@ -403,9 +404,10 @@ async function runTests() {
     });
 
     const ownerBUser = await db.insertUser({
+      id: 'user-accounts-owner-b',
       firmId: firmB.id,
       name: 'Owner B',
-      email: 'owner@firmb.bd',
+      email: 'owner.accounts@firmb.bd',
       passwordHash: await bcrypt.hash('FirmBOwnerPass_2026!', 10),
       role: 'Owner',
       permissions: ['accounts.view', 'accounts.manage'],
