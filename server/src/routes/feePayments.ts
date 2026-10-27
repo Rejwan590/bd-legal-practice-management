@@ -209,7 +209,15 @@ feePaymentsRouter.post(
         err.message?.includes('unique constraint') ||
         err.message?.includes('idx_fee_payments_firm_idempotency')
       ) {
-        const original = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
+        let original = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
+        if (!original) {
+          // Allow in-flight concurrent transaction to finish committing
+          for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise((r) => setTimeout(r, 50));
+            original = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
+            if (original) break;
+          }
+        }
         if (original) {
           const isVisible = await checkPaymentVisibility(original);
           if (!isVisible) {
