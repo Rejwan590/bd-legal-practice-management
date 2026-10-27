@@ -15,7 +15,7 @@ feeAgreementsRouter.use(enforceFirmIsolation);
 
 const createFeeAgreementSchema = z.object({
   clientId: z.string().min(1, 'clientId is required'),
-  caseId: z.string().optional().nullable(),
+  caseId: z.string().min(1, 'caseId is required'), // NOT NULL for new agreements
   feeType: z.enum(['fixed', 'per_hearing', 'hourly', 'retainer', 'installment']).default('fixed'),
   agreedAmountPaisa: z.number().int().positive('Agreed amount must be greater than 0'),
   agreementDate: z.string().min(1, 'agreementDate is required'),
@@ -108,19 +108,22 @@ feeAgreementsRouter.post(
       return res.status(404).json({ error: 'NotFound', message: 'Client not found or access denied' });
     }
 
-    // Validate case visibility if caseId is provided
-    if (parsed.data.caseId) {
-      const caseRec = await db.getCaseById(parsed.data.caseId, firmId, req.user);
-      if (!caseRec || caseRec.firmId !== firmId) {
-        return res.status(404).json({ error: 'NotFound', message: 'Case not found or access denied' });
-      }
+    // Validate case visibility (caseId is required)
+    const caseRec = await db.getCaseById(parsed.data.caseId, firmId, req.user);
+    if (!caseRec || caseRec.firmId !== firmId) {
+      return res.status(404).json({ error: 'NotFound', message: 'Case not found or access denied' });
+    }
+
+    // Validate case belongs to the client
+    if (caseRec.clientId !== parsed.data.clientId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Case does not belong to the agreement client' });
     }
 
     const created = await db.insertFeeAgreement({
       id: crypto.randomUUID(),
       firmId,
       clientId: parsed.data.clientId,
-      caseId: parsed.data.caseId || null,
+      caseId: parsed.data.caseId,
       feeType: parsed.data.feeType,
       agreedAmountPaisa: parsed.data.agreedAmountPaisa,
       agreementDate: parsed.data.agreementDate,

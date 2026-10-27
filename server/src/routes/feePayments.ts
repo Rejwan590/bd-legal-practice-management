@@ -14,9 +14,7 @@ feePaymentsRouter.use(authMiddleware);
 feePaymentsRouter.use(enforceFirmIsolation);
 
 const recordPaymentSchema = z.object({
-  clientId: z.string().min(1, 'clientId is required'),
-  caseId: z.string().optional().nullable(),
-  feeAgreementId: z.string().optional().nullable(),
+  feeAgreementId: z.string().min(1, 'feeAgreementId is required'),
   hearingId: z.string().optional().nullable(),
   paymentDate: z.string().min(1, 'paymentDate is required'),
   amountPaisa: z.number().int().positive('Payment amount must be greater than 0'),
@@ -24,10 +22,16 @@ const recordPaymentSchema = z.object({
   reference: z.string().trim().max(100).optional().nullable(),
   purposeNote: z.string().trim().min(1, 'purposeNote is required').max(500, 'purposeNote too long'),
   idempotencyKey: z.string().trim().min(1, 'idempotencyKey is required').max(128, 'idempotencyKey too long'),
+  clientId: z.string().optional().nullable(),
+  caseId: z.string().optional().nullable(),
 });
 
 const voidPaymentSchema = z.object({
   reason: z.string().trim().min(3, 'Reason must be at least 3 characters').max(500, 'Reason too long'),
+});
+
+const attachAgreementSchema = z.object({
+  feeAgreementId: z.string().min(1, 'feeAgreementId is required'),
 });
 
 // GET /api/v1/fee-payments - List fee payments
@@ -45,6 +49,7 @@ feePaymentsRouter.get(
         caseId: req.query.caseId as string | undefined,
         feeAgreementId: req.query.feeAgreementId as string | undefined,
         status: req.query.status as string | undefined,
+        legacyUnassigned: req.query.legacyUnassigned !== undefined ? req.query.legacyUnassigned === 'true' : undefined,
       },
       req.user
     );
@@ -84,68 +89,178 @@ feePaymentsRouter.post(
     const db = getDatabase();
     const firmId = req.user!.firmId;
 
-    // Idempotency deduplication check: duplicate key returns original record without duplicate write
+    // Helper to check user visibility before exposing any payment
+    const checkPaymentVisibility = async (p: { caseId: string | null; clientId: string }): Promise<boolean> => {
+      if (p.caseId) {
+        const c = await db.getCaseById(p.caseId, firmId, req.user);
+        if (!c || c.firmId !== firmId) return false;
+      }
+      if (p.clientId) {
+        const cl = await db.getClientById(p.clientId, firmId, req.user);
+        if (!cl || cl.firmId !== firmId) return false;
+      }
+      return true;
+    };
+
+    // Idempotency deduplication check: check visibility BEFORE returning idempotent duplicate
     const existing = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
     if (existing) {
+      const isVisible = await checkPaymentVisibility(existing);
+      if (!isVisible) {
+        return res.status(400).json({ error: 'BadRequest', message: 'Cannot access payment for hidden or restricted case' });
+      }
       return res.status(200).json(existing);
     }
 
-    // Validate client visibility
-    const client = await db.getClientById(parsed.data.clientId, firmId, req.user);
-    if (!client || client.firmId !== firmId) {
-      return res.status(404).json({ error: 'NotFound', message: 'Client not found or access denied' });
+    // Validate fee agreement (required)
+    const agreement = await db.getFeeAgreementById(parsed.data.feeAgreementId, firmId, req.user);
+    if (!agreement || agreement.firmId !== firmId) {
+      return res.status(404).json({ error: 'NotFound', message: 'Fee agreement not found' });
     }
 
-    // Validate case visibility if caseId is provided
-    if (parsed.data.caseId) {
-      const caseRec = await db.getCaseById(parsed.data.caseId, firmId, req.user);
-      if (!caseRec || caseRec.firmId !== firmId) {
-        return res.status(404).json({ error: 'NotFound', message: 'Case not found or access denied' });
-      }
+    // Reject (400) if agreement is closed or void
+    if (agreement.status === 'closed' || agreement.status === 'void') {
+      return res.status(400).json({ error: 'BadRequest', message: 'Fee agreement is closed or void' });
     }
 
-    // Validate fee agreement if provided
-    if (parsed.data.feeAgreementId) {
-      const ag = await db.getFeeAgreementById(parsed.data.feeAgreementId, firmId, req.user);
-      if (!ag || ag.firmId !== firmId) {
-        return res.status(404).json({ error: 'NotFound', message: 'Fee agreement not found' });
-      }
+    if (!agreement.caseId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Fee agreement must reference a case' });
     }
 
-    // Validate hearing if provided
+    // Check central case visibility + restricted.view on the agreement's case
+    const caseRec = await db.getCaseById(agreement.caseId, firmId, req.user);
+    if (!caseRec || caseRec.firmId !== firmId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'User cannot see the case (central visibility or restricted)' });
+    }
+
+    // Reject (400) if the case is not the client's
+    if (caseRec.clientId !== agreement.clientId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Case does not belong to the agreement client' });
+    }
+
+    // Reject (400) if hearingId is provided and is not a hearing of that case
     if (parsed.data.hearingId) {
       const h = await db.getHearingById(parsed.data.hearingId, firmId, req.user);
-      if (!h || h.firmId !== firmId) {
-        return res.status(404).json({ error: 'NotFound', message: 'Hearing not found' });
+      if (!h || h.firmId !== firmId || h.caseId !== agreement.caseId) {
+        return res.status(400).json({ error: 'BadRequest', message: 'Hearing is not a hearing of this case' });
       }
     }
 
-    // Atomic transaction for receipt number generation and payment insertion
-    const created = await db.transaction(async (txDb) => {
-      // Check idempotency again within transaction snapshot
-      const duplicate = await txDb.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
-      if (duplicate) return duplicate;
+    // Server derives client_id and case_id from the agreement
+    const derivedClientId = agreement.clientId;
+    const derivedCaseId = agreement.caseId;
 
-      const { sequenceNumber } = await txDb.getNextSequenceNumber(firmId, 'receipt', 'R-');
+    try {
+      // Atomic transaction for receipt number generation and payment insertion
+      const created = await db.transaction(async (txDb) => {
+        // Check idempotency again within transaction snapshot
+        const duplicate = await txDb.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
+        if (duplicate) return duplicate;
 
-      return await txDb.insertFeePayment({
-        id: crypto.randomUUID(),
-        firmId,
-        clientId: parsed.data.clientId,
-        caseId: parsed.data.caseId || null,
-        feeAgreementId: parsed.data.feeAgreementId || null,
-        hearingId: parsed.data.hearingId || null,
-        paymentDate: parsed.data.paymentDate,
-        amountPaisa: parsed.data.amountPaisa,
-        method: parsed.data.method,
-        reference: parsed.data.reference || null,
-        receiptNumber: sequenceNumber,
-        purposeNote: parsed.data.purposeNote,
-        status: 'posted',
-        idempotencyKey: parsed.data.idempotencyKey,
-        createdBy: req.user!.id,
-        updatedBy: req.user!.id,
+        const { sequenceNumber } = await txDb.getNextSequenceNumber(firmId, 'receipt', 'R-');
+
+        return await txDb.insertFeePayment({
+          id: crypto.randomUUID(),
+          firmId,
+          clientId: derivedClientId,
+          caseId: derivedCaseId,
+          feeAgreementId: agreement.id,
+          hearingId: parsed.data.hearingId || null,
+          paymentDate: parsed.data.paymentDate,
+          amountPaisa: parsed.data.amountPaisa,
+          method: parsed.data.method,
+          reference: parsed.data.reference || null,
+          receiptNumber: sequenceNumber,
+          purposeNote: parsed.data.purposeNote,
+          status: 'posted',
+          idempotencyKey: parsed.data.idempotencyKey,
+          legacyUnassigned: false,
+          createdBy: req.user!.id,
+          updatedBy: req.user!.id,
+        });
       });
+
+      // If duplicate was returned from transaction
+      if (created.idempotencyKey === parsed.data.idempotencyKey && created.createdBy !== req.user!.id) {
+        const isVisible = await checkPaymentVisibility(created);
+        if (!isVisible) {
+          return res.status(400).json({ error: 'BadRequest', message: 'Cannot access payment for hidden or restricted case' });
+        }
+        return res.status(200).json(created);
+      }
+
+      await recordAudit({
+        firmId,
+        userId: req.user!.id,
+        userName: req.user!.name,
+        entity: 'FeePayment',
+        entityId: created.id,
+        action: 'RECORD_FEE_PAYMENT',
+        oldValue: null,
+        newValue: created as unknown as Record<string, unknown>,
+      });
+
+      return res.status(201).json(created);
+    } catch (err: any) {
+      // Catch unique-index idempotency race and return the original record
+      if (
+        err.code === '23505' ||
+        err.message?.includes('duplicate key') ||
+        err.message?.includes('unique constraint') ||
+        err.message?.includes('idx_fee_payments_firm_idempotency')
+      ) {
+        const original = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
+        if (original) {
+          const isVisible = await checkPaymentVisibility(original);
+          if (!isVisible) {
+            return res.status(400).json({ error: 'BadRequest', message: 'Cannot access payment for hidden or restricted case' });
+          }
+          return res.status(200).json(original);
+        }
+      }
+      throw err;
+    }
+  }
+);
+
+// POST /api/v1/fee-payments/:id/attach - Attach legacy unassigned payment to an agreement
+feePaymentsRouter.post(
+  '/:id/attach',
+  requirePermission('accounts.manage'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parsed = attachAgreementSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'ValidationError', details: parsed.error.issues });
+    }
+
+    const db = getDatabase();
+    const firmId = req.user!.firmId;
+
+    const payment = await db.getFeePaymentById(req.params.id, firmId, req.user);
+    if (!payment || payment.firmId !== firmId) {
+      return res.status(404).json({ error: 'NotFound', message: 'Fee payment not found' });
+    }
+
+    const agreement = await db.getFeeAgreementById(parsed.data.feeAgreementId, firmId, req.user);
+    if (!agreement || agreement.firmId !== firmId) {
+      return res.status(404).json({ error: 'NotFound', message: 'Fee agreement not found' });
+    }
+
+    if (agreement.status !== 'active') {
+      return res.status(400).json({ error: 'BadRequest', message: 'Cannot attach to closed or void agreement' });
+    }
+
+    if (!agreement.caseId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Fee agreement must be linked to a case' });
+    }
+
+    const updated = await db.updateFeePayment(payment.id, firmId, {
+      feeAgreementId: agreement.id,
+      caseId: agreement.caseId,
+      clientId: agreement.clientId,
+      legacyUnassigned: false,
+      updatedBy: req.user!.id,
     });
 
     await recordAudit({
@@ -153,13 +268,13 @@ feePaymentsRouter.post(
       userId: req.user!.id,
       userName: req.user!.name,
       entity: 'FeePayment',
-      entityId: created.id,
-      action: 'RECORD_FEE_PAYMENT',
-      oldValue: null,
-      newValue: created as unknown as Record<string, unknown>,
+      entityId: updated.id,
+      action: 'ATTACH_PAYMENT_AGREEMENT',
+      oldValue: payment as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
     });
 
-    res.status(201).json(created);
+    res.json(updated);
   }
 );
 

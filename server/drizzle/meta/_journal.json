@@ -64,6 +64,13 @@
       "when": 1791260000000,
       "tag": "0008_accounts_phase1",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0009_accounts_per_case",
+      "breakpoints": true
     }
   ]
 }

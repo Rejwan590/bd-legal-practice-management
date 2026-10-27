@@ -160,24 +160,36 @@ In Bangladesh courts, every scheduled hearing date has a legally defined procedu
 - **Integer Paisa Precision**: All monetary values stored strictly as integer paisa (no floating point, 1 BDT = 100 paisa).
 - **South Asian Formatting**: Dynamic currency formatter rendering Bangla and English numerals with Bangladeshi grouping (`৳ 1,50,000` / `৳ ১,৫০,০০০`).
 - **Fee Agreements & Changes**:
+  - Every agreement MUST reference one client and one case (`case_id` NOT NULL for new agreements).
   - Types: `fixed`, `per_hearing`, `hourly`, `retainer`, `installment`.
   - Amount changes strictly preserved in `fee_agreement_changes` with mandatory reason.
-- **Fee Payments Received**:
+- **Fee Payments Received (Tracked Per Client and Per Case)**:
+  - Every payment references a fee agreement; server derives `client_id` and `case_id` directly from the agreement.
+  - Rejection guards (HTTP 400): closed or void agreement; mismatched client/case; mismatched hearing; unauthorized case access under central visibility or `restricted.view`.
+  - Central case visibility verified BEFORE returning an idempotent duplicate.
+  - Unique-index idempotency collision race condition caught and handled safely.
   - Payment methods: `cash`, `bank`, `bkash`, `nagad`, `cheque`, `other`.
   - Mandatory purpose note (max 500 chars).
   - Atomic, gap-safe receipt numbering (`R-000001`) via `number_sequences`.
   - Duplicate idempotency key protection per firm.
-  - Optional link to hearing date in the same firm.
+  - Optional link to hearing date of that case.
   - Immutable posted records: voiding requires reason, recording operator and timestamp; void records excluded from balances.
+- **Legacy Unassigned Handling & Non-Destructive Migration**:
+  - Legacy payments without fee agreement or case marked `legacy_unassigned = true`.
+  - Displayed in a distinct "Legacy Unassigned" UI block with an admin action to attach them to an active case agreement.
 - **Chamber Expenses**:
   - Seedable categories per firm with English/Bangla names.
   - Linkable to client and case; reimbursable flag.
   - Voiding with reason.
 - **Client & Case Balance Computation**:
-  - Balance = Agreed Amount − Posted Payments.
+  - Per agreement = Agreed Amount − Posted Payments.
+  - Per case = Sum of its agreements.
+  - Per client = Sum of its cases.
   - Overpayment supported and flagged as credit.
 - **UI & Dual-Mode Repositories**:
-  - Billing tab on Client Profile and Case Dossier with KPI summary cards, agreement lists, payment records with purpose notes, and expense lists.
+  - Client Billing tab displays grand total KPI summary cards on top, followed by ONE BLOCK PER CASE (case number/title, agreed, received, outstanding, payments with purpose notes, expenses) plus an unassigned records block.
+  - Case Billing tab isolates ledger strictly to that specific case.
+  - `RecordPaymentModal` features reactive Case and Agreement selectors (prefilled and locked when opened from a case).
   - Chamber-wide Billing screen (`/billing`) with sortable client balance rankings.
   - 100% bilingual i18n parity (`en.json`, `bn.json`).
 

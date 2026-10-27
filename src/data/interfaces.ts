@@ -570,7 +570,7 @@ export interface IAccountsRepository {
     context: SecurityContext,
     agreement: {
       clientId: string;
-      caseId?: string | null;
+      caseId: string;
       feeType: FeeType;
       agreedAmountPaisa: number;
       agreementDate: string;
@@ -582,24 +582,25 @@ export interface IAccountsRepository {
   voidAgreement(context: SecurityContext, id: string, reason: string): Promise<FeeAgreement>;
   listAgreementChanges(context: SecurityContext, agreementId: string): Promise<FeeAgreementChange[]>;
 
-  listPayments(context: SecurityContext, filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string }): Promise<FeePayment[]>;
+  listPayments(context: SecurityContext, filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean }): Promise<FeePayment[]>;
   getPaymentById(context: SecurityContext, id: string): Promise<FeePayment | null>;
   recordPayment(
     context: SecurityContext,
     payment: {
-      clientId: string;
-      caseId?: string | null;
-      feeAgreementId?: string | null;
-      hearingId?: string | null;
+      feeAgreementId: string;
       paymentDate: string;
       amountPaisa: number;
       method: PaymentMethod;
-      reference?: string | null;
       purposeNote: string;
       idempotencyKey: string;
+      hearingId?: string | null;
+      reference?: string | null;
+      clientId?: string;
+      caseId?: string | null;
     }
   ): Promise<FeePayment>;
   voidPayment(context: SecurityContext, id: string, reason: string): Promise<FeePayment>;
+  attachPaymentToAgreement(context: SecurityContext, paymentId: string, feeAgreementId: string): Promise<FeePayment>;
 
   listExpenseCategories(context: SecurityContext): Promise<ExpenseCategory[]>;
   listExpenses(context: SecurityContext, filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string }): Promise<Array<Expense & { categoryName?: string }>>;

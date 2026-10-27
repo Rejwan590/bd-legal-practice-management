@@ -67,6 +67,47 @@ export class MockAccountsRepository implements IAccountsRepository {
     const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
     const outstandingPaisa = isCredit ? 0 : balancePaisa;
 
+    // Build per-case breakdown
+    let caseSummaries: AccountsSummary['caseSummaries'] = undefined;
+    if (filter.clientId) {
+      const caseMap = new Map<string, { agreedPaisa: number; paidPaisa: number; expensesPaisa: number }>();
+      for (const a of agreements) {
+        if (a.caseId) {
+          const cur = caseMap.get(a.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.agreedPaisa += Number(a.agreedAmountPaisa || 0);
+          caseMap.set(a.caseId, cur);
+        }
+      }
+      for (const p of payments) {
+        if (p.caseId) {
+          const cur = caseMap.get(p.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.paidPaisa += Number(p.amountPaisa || 0);
+          caseMap.set(p.caseId, cur);
+        }
+      }
+      for (const e of expenses) {
+        if (e.caseId) {
+          const cur = caseMap.get(e.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.expensesPaisa += Number(e.amountPaisa || 0);
+          caseMap.set(e.caseId, cur);
+        }
+      }
+      caseSummaries = Array.from(caseMap.entries()).map(([cid, data]) => {
+        const bPaisa = data.agreedPaisa - data.paidPaisa;
+        const credit = bPaisa < 0;
+        return {
+          caseId: cid,
+          agreedPaisa: data.agreedPaisa,
+          paidPaisa: data.paidPaisa,
+          balancePaisa: bPaisa,
+          isCredit: credit,
+          creditPaisa: credit ? Math.abs(bPaisa) : 0,
+          outstandingPaisa: credit ? 0 : bPaisa,
+          expensesPaisa: data.expensesPaisa,
+        };
+      });
+    }
+
     return {
       totalAgreedPaisa,
       totalPaidPaisa,
@@ -75,6 +116,7 @@ export class MockAccountsRepository implements IAccountsRepository {
       creditPaisa,
       outstandingPaisa,
       totalExpensesPaisa,
+      caseSummaries,
     };
   }
 
@@ -177,7 +219,7 @@ export class MockAccountsRepository implements IAccountsRepository {
     context: SecurityContext,
     agreement: {
       clientId: string;
-      caseId?: string | null;
+      caseId: string;
       feeType: FeeType;
       agreedAmountPaisa: number;
       agreementDate: string;
@@ -377,7 +419,7 @@ export class MockAccountsRepository implements IAccountsRepository {
 
   async listPayments(
     context: SecurityContext,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string }
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean }
   ): Promise<FeePayment[]> {
     if (!can('accounts.view', context.currentUser)) {
       throw new Error('Permission denied: accounts.view required');
@@ -394,6 +436,10 @@ export class MockAccountsRepository implements IAccountsRepository {
       if (filter?.caseId && p.caseId !== filter.caseId) return false;
       if (filter?.feeAgreementId && p.feeAgreementId !== filter.feeAgreementId) return false;
       if (filter?.status && p.status !== filter.status) return false;
+      if (filter?.legacyUnassigned !== undefined) {
+        const isLegacy = Boolean(p.legacyUnassigned || !p.feeAgreementId || !p.caseId);
+        if (filter.legacyUnassigned !== isLegacy) return false;
+      }
       return true;
     });
 
@@ -422,16 +468,16 @@ export class MockAccountsRepository implements IAccountsRepository {
   async recordPayment(
     context: SecurityContext,
     payment: {
-      clientId: string;
-      caseId?: string | null;
-      feeAgreementId?: string | null;
-      hearingId?: string | null;
+      feeAgreementId: string;
       paymentDate: string;
       amountPaisa: number;
       method: PaymentMethod;
-      reference?: string | null;
       purposeNote: string;
       idempotencyKey: string;
+      hearingId?: string | null;
+      reference?: string | null;
+      clientId?: string;
+      caseId?: string | null;
     }
   ): Promise<FeePayment> {
     if (!can('accounts.manage', context.currentUser)) {
@@ -441,14 +487,56 @@ export class MockAccountsRepository implements IAccountsRepository {
 
     const { currentUser } = context;
     const store = localStore.getData();
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
 
-    // Idempotency check
+    // Idempotency check with visibility verification
     const existing = (store.feePayments || []).find(
       (p) => p.firmId === currentUser.firmId && p.idempotencyKey === payment.idempotencyKey && p.deletedAt === null
     );
     if (existing) {
+      if (existing.caseId && !visibleCaseIds.has(existing.caseId)) {
+        throw new Error('Cannot access payment for hidden or restricted case');
+      }
       return existing;
     }
+
+    // Agreement lookup & validation
+    const agreement = (store.feeAgreements || []).find(
+      (a) => a.id === payment.feeAgreementId && a.firmId === currentUser.firmId && a.deletedAt === null
+    );
+    if (!agreement) {
+      throw new Error('Fee agreement not found');
+    }
+    if (agreement.status === 'closed' || agreement.status === 'void') {
+      throw new Error('Cannot record payment for closed or void fee agreement');
+    }
+    if (!agreement.caseId) {
+      throw new Error('Fee agreement does not have a linked case');
+    }
+    if (!visibleCaseIds.has(agreement.caseId)) {
+      throw new Error('Cannot access payment for hidden or restricted case');
+    }
+
+    // Verify case belongs to agreement client
+    const caseRec = (store.cases || []).find(
+      (c) => c.id === agreement.caseId && c.firmId === currentUser.firmId && c.deletedAt === null
+    );
+    if (!caseRec || caseRec.clientId !== agreement.clientId) {
+      throw new Error('Case does not belong to agreement client');
+    }
+
+    // Verify hearing belongs to case if provided
+    if (payment.hearingId) {
+      const hearing = (store.hearings || []).find(
+        (h) => h.id === payment.hearingId && h.firmId === currentUser.firmId && h.deletedAt === null
+      );
+      if (!hearing || hearing.caseId !== agreement.caseId) {
+        throw new Error('Hearing does not belong to this case');
+      }
+    }
+
+    const clientId = agreement.clientId;
+    const caseId = agreement.caseId;
 
     // Sequence calculation
     const existingReceipts = (store.feePayments || [])
@@ -464,9 +552,9 @@ export class MockAccountsRepository implements IAccountsRepository {
     const newPayment: FeePayment = {
       id: `pay-${generateUUID()}`,
       firmId: currentUser.firmId,
-      clientId: payment.clientId,
-      caseId: payment.caseId || null,
-      feeAgreementId: payment.feeAgreementId || null,
+      clientId,
+      caseId,
+      feeAgreementId: agreement.id,
       hearingId: payment.hearingId || null,
       paymentDate: payment.paymentDate,
       amountPaisa: payment.amountPaisa,
@@ -479,6 +567,7 @@ export class MockAccountsRepository implements IAccountsRepository {
       voidedBy: null,
       voidedAt: null,
       idempotencyKey: payment.idempotencyKey,
+      legacyUnassigned: false,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -500,6 +589,62 @@ export class MockAccountsRepository implements IAccountsRepository {
     });
 
     return newPayment;
+  }
+
+  async attachPaymentToAgreement(
+    context: SecurityContext,
+    paymentId: string,
+    feeAgreementId: string
+  ): Promise<FeePayment> {
+    if (!can('accounts.manage', context.currentUser)) {
+      throw new Error('Permission denied: accounts.manage required');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const { currentUser } = context;
+    const store = localStore.getData();
+    const payment = (store.feePayments || []).find(
+      (p) => p.id === paymentId && p.firmId === currentUser.firmId && p.deletedAt === null
+    );
+    if (!payment) {
+      throw new Error('Fee payment not found');
+    }
+    const agreement = (store.feeAgreements || []).find(
+      (a) => a.id === feeAgreementId && a.firmId === currentUser.firmId && a.deletedAt === null
+    );
+    if (!agreement) {
+      throw new Error('Fee agreement not found');
+    }
+    if (agreement.status !== 'active') {
+      throw new Error('Cannot attach to closed or void agreement');
+    }
+    if (!agreement.caseId) {
+      throw new Error('Agreement must be linked to a case');
+    }
+
+    const updated: FeePayment = {
+      ...payment,
+      feeAgreementId: agreement.id,
+      caseId: agreement.caseId,
+      clientId: agreement.clientId,
+      legacyUnassigned: false,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.id,
+    };
+
+    localStore.mutate((data) => {
+      data.feePayments = (data.feePayments || []).map((p) => (p.id === paymentId ? updated : p));
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'FeePayment',
+      entityId: updated.id,
+      action: 'UPDATE',
+      oldValue: payment as unknown as Record<string, unknown>,
+      newValue: updated as unknown as Record<string, unknown>,
+    });
+
+    return updated;
   }
 
   async voidPayment(context: SecurityContext, id: string, reason: string): Promise<FeePayment> {

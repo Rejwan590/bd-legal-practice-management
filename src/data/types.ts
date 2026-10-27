@@ -489,6 +489,7 @@ export interface FeePayment extends BaseRecord {
   voidedBy: string | null;
   voidedAt: string | null;
   idempotencyKey: string;
+  legacyUnassigned?: boolean;
 }
 
 export interface ExpenseCategory extends BaseRecord {
@@ -519,6 +520,16 @@ export interface AccountsSummary {
   creditPaisa: number;
   outstandingPaisa: number;
   totalExpensesPaisa: number;
+  caseSummaries?: Array<{
+    caseId: string;
+    agreedPaisa: number;
+    paidPaisa: number;
+    balancePaisa: number;
+    isCredit: boolean;
+    creditPaisa: number;
+    outstandingPaisa: number;
+    expensesPaisa: number;
+  }>;
 }
 
 export interface ClientBalanceOverview {

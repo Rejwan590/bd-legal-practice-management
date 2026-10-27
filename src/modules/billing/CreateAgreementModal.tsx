@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { FeeType } from '../../data/types';
-import { FileText, AlertCircle } from 'lucide-react';
+import { CaseRecord, FeeType } from '../../data/types';
+import { FileText, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa } from '../../utils/currency';
 
@@ -26,27 +26,49 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
+  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || '');
   const [feeType, setFeeType] = useState<FeeType>('fixed');
   const [takaAmount, setTakaAmount] = useState('');
   const [agreementDate, setAgreementDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [loadingCases, setLoadingCases] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && currentUser && clientId) {
       setFeeType('fixed');
       setTakaAmount('');
       setAgreementDate(new Date().toISOString().slice(0, 10));
       setNotes('');
       setErrorMsg(null);
+
+      const initialCaseId = caseId || '';
+      setSelectedCaseId(initialCaseId);
+
+      setLoadingCases(true);
+      repos.case.list({ currentUser }, { clientId })
+        .then((caseList) => {
+          setCases(caseList);
+          if (!initialCaseId && caseList.length === 1) {
+            setSelectedCaseId(caseList[0].id);
+          }
+        })
+        .catch(() => setCases([]))
+        .finally(() => setLoadingCases(false));
     }
-  }, [isOpen]);
+  }, [isOpen, clientId, caseId, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    if (!selectedCaseId) {
+      setErrorMsg(t('billing.errors.caseRequired', 'Please select a case for this fee agreement'));
+      return;
+    }
 
     const paisa = takaToPaisa(takaAmount);
     if (paisa <= 0) {
@@ -62,7 +84,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
         { currentUser },
         {
           clientId,
-          caseId: caseId || null,
+          caseId: selectedCaseId,
           feeType,
           agreedAmountPaisa: paisa,
           agreementDate,
@@ -77,6 +99,8 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
       setSaving(false);
     }
   };
+
+  const isCaseLocked = Boolean(caseId);
 
   return (
     <ResponsiveModal
@@ -99,10 +123,10 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
           <button
             type="submit"
             form="create-agreement-form"
-            className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg min-h-[44px] flex items-center gap-2 disabled:opacity-50"
-            disabled={saving}
+            className="px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg min-h-[44px] flex items-center gap-2 disabled:opacity-50"
+            disabled={saving || !selectedCaseId}
           >
-            {saving ? t('common.saving', 'Saving...') : t('billing.saveAgreement', 'Save Agreement')}
+            {saving ? t('common.saving', 'Saving...') : t('billing.createAgreement', 'Create Agreement')}
           </button>
         </div>
       }
@@ -115,27 +139,52 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
           </div>
         )}
 
+        {/* Case Selector */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <span>{t('cases.case', 'Case')} *</span>
+            {isCaseLocked && <Lock className="w-3 h-3 text-slate-400" />}
+          </label>
+          <select
+            value={selectedCaseId}
+            onChange={(e) => setSelectedCaseId(e.target.value)}
+            disabled={isCaseLocked || loadingCases}
+            required
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            <option value="">{t('billing.selectCase', '-- Select Case --')}</option>
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.caseNumber} - {c.matterType || c.court} {c.fileSerial ? `(${c.fileSerial})` : ''}
+              </option>
+            ))}
+          </select>
+          {cases.length === 0 && !loadingCases && (
+            <p className="text-xs text-amber-600 mt-1">{t('billing.noCasesFound', 'No active visible cases found for this client.')}</p>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {t('billing.feeType', 'Fee Structure')} *
+              {t('billing.feeType', 'Fee Type')} *
             </label>
             <select
               value={feeType}
               onChange={(e) => setFeeType(e.target.value as FeeType)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
             >
               <option value="fixed">{t('billing.feeTypes.fixed', 'Fixed Fee')}</option>
-              <option value="per_hearing">{t('billing.feeTypes.per_hearing', 'Per Hearing')}</option>
+              <option value="installment">{t('billing.feeTypes.installment', 'Installment Fee')}</option>
+              <option value="per_hearing">{t('billing.feeTypes.per_hearing', 'Per Hearing Appearance')}</option>
               <option value="retainer">{t('billing.feeTypes.retainer', 'Retainer')}</option>
-              <option value="installment">{t('billing.feeTypes.installment', 'Installment')}</option>
-              <option value="hourly">{t('billing.feeTypes.hourly', 'Hourly')}</option>
+              <option value="hourly">{t('billing.feeTypes.hourly', 'Hourly Rate')}</option>
             </select>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {t('billing.agreedAmount', 'Agreed Amount (৳ Taka)')} *
+              {t('billing.agreedAmountBdt', 'Agreed Amount (৳ Taka)')} *
             </label>
             <input
               type="number"
@@ -143,9 +192,9 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
               min="1"
               value={takaAmount}
               onChange={(e) => setTakaAmount(e.target.value)}
-              placeholder="e.g. 50000"
+              placeholder="e.g. 150000"
               required
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
             />
           </div>
         </div>
@@ -159,21 +208,21 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
             value={agreementDate}
             onChange={(e) => setAgreementDate(e.target.value)}
             required
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
           />
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-            {t('billing.agreementNotes', 'Terms / Notes')}
+            {t('billing.notes', 'Notes / Scope of Representation')}
           </label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. 50% upon filing, balance 50% prior to final argument"
+            placeholder="e.g. Covers trial up to argument and judgment; does not cover appeal."
             rows={3}
-            maxLength={1000}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            maxLength={2000}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
       </form>

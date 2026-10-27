@@ -56,7 +56,7 @@ export class RestAccountsRepository implements IAccountsRepository {
     _context: SecurityContext,
     agreement: {
       clientId: string;
-      caseId?: string | null;
+      caseId: string;
       feeType: FeeType;
       agreedAmountPaisa: number;
       agreementDate: string;
@@ -100,13 +100,14 @@ export class RestAccountsRepository implements IAccountsRepository {
 
   async listPayments(
     _context: SecurityContext,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string }
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean }
   ): Promise<FeePayment[]> {
     const params = new URLSearchParams();
     if (filter?.clientId) params.set('clientId', filter.clientId);
     if (filter?.caseId) params.set('caseId', filter.caseId);
     if (filter?.feeAgreementId) params.set('feeAgreementId', filter.feeAgreementId);
     if (filter?.status) params.set('status', filter.status);
+    if (filter?.legacyUnassigned !== undefined) params.set('legacyUnassigned', String(filter.legacyUnassigned));
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<FeePayment[]>(`/fee-payments${qs}`);
   }
@@ -125,16 +126,16 @@ export class RestAccountsRepository implements IAccountsRepository {
   async recordPayment(
     _context: SecurityContext,
     payment: {
-      clientId: string;
-      caseId?: string | null;
-      feeAgreementId?: string | null;
-      hearingId?: string | null;
+      feeAgreementId: string;
       paymentDate: string;
       amountPaisa: number;
       method: PaymentMethod;
-      reference?: string | null;
       purposeNote: string;
       idempotencyKey: string;
+      hearingId?: string | null;
+      reference?: string | null;
+      clientId?: string;
+      caseId?: string | null;
     }
   ): Promise<FeePayment> {
     return restFetch<FeePayment>('/fee-payments', {
@@ -147,6 +148,17 @@ export class RestAccountsRepository implements IAccountsRepository {
     return restFetch<FeePayment>(`/fee-payments/${id}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+    });
+  }
+
+  async attachPaymentToAgreement(
+    _context: SecurityContext,
+    paymentId: string,
+    feeAgreementId: string
+  ): Promise<FeePayment> {
+    return restFetch<FeePayment>(`/fee-payments/${paymentId}/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ feeAgreementId }),
     });
   }
 

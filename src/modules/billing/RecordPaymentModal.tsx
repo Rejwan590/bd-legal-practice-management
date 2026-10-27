@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { HearingRecord, PaymentMethod } from '../../data/types';
-import { CreditCard, AlertCircle } from 'lucide-react';
+import { CaseRecord, FeeAgreement, HearingRecord, PaymentMethod } from '../../data/types';
+import { CreditCard, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
-import { takaToPaisa } from '../../utils/currency';
+import { takaToPaisa, formatBdt } from '../../utils/currency';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -24,23 +24,31 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser } = useAuth();
   const repos = getRepositories();
+
+  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || '');
+  const [agreements, setAgreements] = useState<FeeAgreement[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = useState<string>(feeAgreementId || '');
+  const [hearings, setHearings] = useState<HearingRecord[]>([]);
+  const [selectedHearingId, setSelectedHearingId] = useState<string>('');
 
   const [takaAmount, setTakaAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [reference, setReference] = useState('');
   const [purposeNote, setPurposeNote] = useState('');
-  const [selectedHearingId, setSelectedHearingId] = useState<string>('');
-  const [hearings, setHearings] = useState<HearingRecord[]>([]);
 
   const [saving, setSaving] = useState(false);
+  const [loadingCases, setLoadingCases] = useState(false);
+  const [loadingAgreements, setLoadingAgreements] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Load client's visible cases on open
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && currentUser && clientId) {
       setTakaAmount('');
       setPaymentDate(new Date().toISOString().slice(0, 10));
       setMethod('cash');
@@ -49,19 +57,67 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       setSelectedHearingId('');
       setErrorMsg(null);
 
-      if (caseId && currentUser) {
-        repos.hearing.list({ currentUser }, { caseId })
-          .then((list) => setHearings(list))
-          .catch(() => setHearings([]));
-      } else {
-        setHearings([]);
-      }
+      const initialCaseId = caseId || '';
+      setSelectedCaseId(initialCaseId);
+      setSelectedAgreementId(feeAgreementId || '');
+
+      setLoadingCases(true);
+      repos.case.list({ currentUser }, { clientId })
+        .then((caseList) => {
+          setCases(caseList);
+          if (!initialCaseId && caseList.length === 1) {
+            setSelectedCaseId(caseList[0].id);
+          }
+        })
+        .catch(() => setCases([]))
+        .finally(() => setLoadingCases(false));
     }
-  }, [isOpen, caseId, currentUser]);
+  }, [isOpen, clientId, caseId, feeAgreementId, currentUser]);
+
+  // Load active agreements and hearings when selectedCaseId changes
+  useEffect(() => {
+    if (isOpen && currentUser && selectedCaseId) {
+      setLoadingAgreements(true);
+      Promise.all([
+        repos.accounts.listAgreements({ currentUser }, { caseId: selectedCaseId, status: 'active' }),
+        repos.hearing.list({ currentUser }, { caseId: selectedCaseId }),
+      ])
+        .then(([agList, hList]) => {
+          setAgreements(agList);
+          setHearings(hList);
+          if (feeAgreementId && agList.some((a) => a.id === feeAgreementId)) {
+            setSelectedAgreementId(feeAgreementId);
+          } else if (agList.length === 1) {
+            setSelectedAgreementId(agList[0].id);
+          } else if (!agList.some((a) => a.id === selectedAgreementId)) {
+            setSelectedAgreementId('');
+          }
+        })
+        .catch(() => {
+          setAgreements([]);
+          setHearings([]);
+        })
+        .finally(() => setLoadingAgreements(false));
+    } else {
+      setAgreements([]);
+      setHearings([]);
+      if (!feeAgreementId) setSelectedAgreementId('');
+    }
+  }, [isOpen, selectedCaseId, feeAgreementId, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    if (!selectedCaseId) {
+      setErrorMsg(t('billing.errors.caseRequired', 'Please select a case'));
+      return;
+    }
+
+    if (!selectedAgreementId) {
+      setErrorMsg(t('billing.errors.agreementRequired', 'Every payment must reference an active fee agreement'));
+      return;
+    }
 
     const paisa = takaToPaisa(takaAmount);
     if (paisa <= 0) {
@@ -82,9 +138,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       await repos.accounts.recordPayment(
         { currentUser },
         {
+          feeAgreementId: selectedAgreementId,
           clientId,
-          caseId: caseId || null,
-          feeAgreementId: feeAgreementId || null,
+          caseId: selectedCaseId,
           hearingId: selectedHearingId || null,
           paymentDate,
           amountPaisa: paisa,
@@ -102,6 +158,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       setSaving(false);
     }
   };
+
+  const isCaseLocked = Boolean(caseId);
+  const isAgreementLocked = Boolean(feeAgreementId);
 
   return (
     <ResponsiveModal
@@ -125,7 +184,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             type="submit"
             form="record-payment-form"
             className="px-5 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg min-h-[44px] flex items-center gap-2 disabled:opacity-50"
-            disabled={saving}
+            disabled={saving || !selectedAgreementId || agreements.length === 0}
           >
             {saving ? t('common.saving', 'Recording...') : t('billing.recordPayment', 'Record Payment')}
           </button>
@@ -139,6 +198,58 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <span>{errorMsg}</span>
           </div>
         )}
+
+        {/* Case Selector */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <span>{t('cases.case', 'Case')} *</span>
+            {isCaseLocked && <Lock className="w-3 h-3 text-slate-400" />}
+          </label>
+          <select
+            value={selectedCaseId}
+            onChange={(e) => setSelectedCaseId(e.target.value)}
+            disabled={isCaseLocked || loadingCases}
+            required
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            <option value="">{t('billing.selectCase', '-- Select Case --')}</option>
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.caseNumber} - {c.matterType || c.court} {c.fileSerial ? `(${c.fileSerial})` : ''}
+              </option>
+            ))}
+          </select>
+          {cases.length === 0 && !loadingCases && (
+            <p className="text-xs text-amber-600 mt-1">{t('billing.noCasesFound', 'No active visible cases found for this client.')}</p>
+          )}
+        </div>
+
+        {/* Agreement Selector */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <span>{t('billing.feeAgreement', 'Fee Agreement')} *</span>
+            {isAgreementLocked && <Lock className="w-3 h-3 text-slate-400" />}
+          </label>
+          <select
+            value={selectedAgreementId}
+            onChange={(e) => setSelectedAgreementId(e.target.value)}
+            disabled={isAgreementLocked || loadingAgreements || agreements.length === 0}
+            required
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            <option value="">{t('billing.selectAgreement', '-- Select Fee Agreement --')}</option>
+            {agreements.map((a) => (
+              <option key={a.id} value={a.id}>
+                {t(`billing.feeTypes.${a.feeType}`, a.feeType)} - {formatBdt(a.agreedAmountPaisa, { lang: i18n.language })} ({a.agreementDate})
+              </option>
+            ))}
+          </select>
+          {selectedCaseId && agreements.length === 0 && !loadingAgreements && (
+            <p className="text-xs text-amber-600 mt-1">
+              {t('billing.noAgreementsForCase', 'No active fee agreement exists for this case. Create a fee agreement first to track payments.')}
+            </p>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -205,7 +316,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </div>
         </div>
 
-        {caseId && hearings.length > 0 && (
+        {selectedCaseId && hearings.length > 0 && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               {t('billing.linkedHearing', 'Link to Hearing (Optional)')}

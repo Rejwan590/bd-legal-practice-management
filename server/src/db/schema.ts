@@ -510,6 +510,7 @@ export const feePayments = pgTable('fee_payments', {
   voidedBy: text('voided_by'),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   idempotencyKey: text('idempotency_key').notNull(),
+  legacyUnassigned: boolean('legacy_unassigned').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -525,6 +526,7 @@ export const feePayments = pgTable('fee_payments', {
   index('idx_fee_payments_hearing_id').on(table.hearingId),
   index('idx_fee_payments_status').on(table.status),
   index('idx_fee_payments_payment_date').on(table.paymentDate),
+  index('idx_fee_payments_legacy_unassigned').on(table.legacyUnassigned),
 ]);
 
 // Expense Categories Table

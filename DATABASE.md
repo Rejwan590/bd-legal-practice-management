@@ -630,7 +630,7 @@ CREATE TABLE fee_agreements (
     id TEXT PRIMARY KEY,
     firm_id TEXT NOT NULL REFERENCES firms(id),
     client_id TEXT NOT NULL REFERENCES clients(id),
-    case_id TEXT REFERENCES cases(id),
+    case_id TEXT REFERENCES cases(id),           -- NOT NULL for new agreements (application enforced)
     fee_type TEXT NOT NULL DEFAULT 'fixed',       -- 'fixed' | 'per_hearing' | 'hourly' | 'retainer' | 'installment'
     agreed_amount_paisa BIGINT NOT NULL,         -- Integer paisa (e.g. 5000000 = 50,000 BDT)
     agreement_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -692,6 +692,7 @@ CREATE TABLE fee_payments (
     voided_by TEXT REFERENCES users(id),
     voided_at TIMESTAMPTZ,
     idempotency_key TEXT,
+    legacy_unassigned BOOLEAN NOT NULL DEFAULT false, -- Flag for legacy rows without case/agreement
     created_by TEXT NOT NULL REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -703,6 +704,7 @@ CREATE INDEX idx_fee_payments_firm_case ON fee_payments(firm_id, case_id);
 CREATE INDEX idx_fee_payments_firm_agreement ON fee_payments(firm_id, fee_agreement_id);
 CREATE UNIQUE INDEX uidx_fee_payments_firm_idempotency ON fee_payments(firm_id, idempotency_key);
 CREATE UNIQUE INDEX uidx_fee_payments_firm_receipt ON fee_payments(firm_id, receipt_number);
+CREATE INDEX idx_fee_payments_legacy_unassigned ON fee_payments(firm_id, legacy_unassigned);
 ```
 
 #### `expense_categories`

@@ -1,7 +1,7 @@
 import pg from 'pg';
 import crypto from 'crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, and, isNull, desc, asc, gte, lte, or, ilike, ne, sql, SQL } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, desc, asc, gte, lte, or, ilike, ne, sql, SQL } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
@@ -234,6 +234,16 @@ export interface IDatabase {
     creditPaisa: number;
     outstandingPaisa: number;
     totalExpensesPaisa: number;
+    caseSummaries?: Array<{
+      caseId: string;
+      agreedPaisa: number;
+      paidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+      expensesPaisa: number;
+    }>;
   }>;
   getClientBalancesOverview(
     firmId: string,
@@ -267,7 +277,7 @@ export interface IDatabase {
   getNextSequenceNumber(firmId: string, type: string, prefix?: string): Promise<{ sequenceNumber: string; currentVal: number }>;
   listFeePayments(
     firmId: string,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean },
     user?: VisibilityUserContext
   ): Promise<schema.FeePayment[]>;
   getFeePaymentById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.FeePayment | null>;
@@ -1493,6 +1503,16 @@ class MemoryDatabase implements IDatabase {
     creditPaisa: number;
     outstandingPaisa: number;
     totalExpensesPaisa: number;
+    caseSummaries?: Array<{
+      caseId: string;
+      agreedPaisa: number;
+      paidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+      expensesPaisa: number;
+    }>;
   }> {
     await this.init();
     const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
@@ -1529,6 +1549,57 @@ class MemoryDatabase implements IDatabase {
     const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
     const outstandingPaisa = isCredit ? 0 : balancePaisa;
 
+    // Build per-case breakdown
+    let caseSummaries: Array<{
+      caseId: string;
+      agreedPaisa: number;
+      paidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+      expensesPaisa: number;
+    }> = [];
+
+    if (filter.clientId) {
+      const caseMap = new Map<string, { agreedPaisa: number; paidPaisa: number; expensesPaisa: number }>();
+      for (const a of agreements) {
+        if (a.caseId) {
+          const cur = caseMap.get(a.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.agreedPaisa += Number(a.agreedAmountPaisa || 0);
+          caseMap.set(a.caseId, cur);
+        }
+      }
+      for (const p of payments) {
+        if (p.caseId) {
+          const cur = caseMap.get(p.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.paidPaisa += Number(p.amountPaisa || 0);
+          caseMap.set(p.caseId, cur);
+        }
+      }
+      for (const e of expenses) {
+        if (e.caseId) {
+          const cur = caseMap.get(e.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.expensesPaisa += Number(e.amountPaisa || 0);
+          caseMap.set(e.caseId, cur);
+        }
+      }
+      caseSummaries = Array.from(caseMap.entries()).map(([cid, data]) => {
+        const bPaisa = data.agreedPaisa - data.paidPaisa;
+        const credit = bPaisa < 0;
+        return {
+          caseId: cid,
+          agreedPaisa: data.agreedPaisa,
+          paidPaisa: data.paidPaisa,
+          balancePaisa: bPaisa,
+          isCredit: credit,
+          creditPaisa: credit ? Math.abs(bPaisa) : 0,
+          outstandingPaisa: credit ? 0 : bPaisa,
+          expensesPaisa: data.expensesPaisa,
+        };
+      });
+    }
+
     return {
       totalAgreedPaisa,
       totalPaidPaisa,
@@ -1537,6 +1608,7 @@ class MemoryDatabase implements IDatabase {
       creditPaisa,
       outstandingPaisa,
       totalExpensesPaisa,
+      caseSummaries,
     };
   }
 
@@ -1726,7 +1798,7 @@ class MemoryDatabase implements IDatabase {
 
   public async listFeePayments(
     firmId: string,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean },
     user?: VisibilityUserContext
   ): Promise<schema.FeePayment[]> {
     await this.init();
@@ -1739,6 +1811,10 @@ class MemoryDatabase implements IDatabase {
       if (filter?.caseId && p.caseId !== filter.caseId) return false;
       if (filter?.feeAgreementId && p.feeAgreementId !== filter.feeAgreementId) return false;
       if (filter?.status && p.status !== filter.status) return false;
+      if (filter?.legacyUnassigned !== undefined) {
+        const isLegacy = Boolean(p.legacyUnassigned || !p.feeAgreementId || !p.caseId);
+        if (filter.legacyUnassigned !== isLegacy) return false;
+      }
       return true;
     });
 
@@ -1776,6 +1852,23 @@ class MemoryDatabase implements IDatabase {
 
   public async insertFeePayment(payment: schema.NewFeePayment): Promise<schema.FeePayment> {
     await this.init();
+    const existingKey = this.feePayments.find(
+      (p) => p.firmId === payment.firmId && p.idempotencyKey === payment.idempotencyKey && !p.deletedAt
+    );
+    if (existingKey) {
+      const err: any = new Error('duplicate key value violates unique constraint "idx_fee_payments_firm_idempotency"');
+      err.code = '23505';
+      throw err;
+    }
+    const existingReceipt = this.feePayments.find(
+      (p) => p.firmId === payment.firmId && p.receiptNumber === payment.receiptNumber && !p.deletedAt
+    );
+    if (existingReceipt) {
+      const err: any = new Error('duplicate key value violates unique constraint "idx_fee_payments_firm_receipt"');
+      err.code = '23505';
+      throw err;
+    }
+    const isLegacy = payment.legacyUnassigned ?? (!payment.feeAgreementId || !payment.caseId);
     const created: schema.FeePayment = {
       id: payment.id || `pay-${crypto.randomUUID()}`,
       firmId: payment.firmId,
@@ -1794,6 +1887,7 @@ class MemoryDatabase implements IDatabase {
       voidedBy: payment.voidedBy ?? null,
       voidedAt: payment.voidedAt ?? null,
       idempotencyKey: payment.idempotencyKey,
+      legacyUnassigned: isLegacy,
       createdAt: payment.createdAt || new Date(),
       updatedAt: payment.updatedAt || new Date(),
       deletedAt: null,
@@ -3679,6 +3773,16 @@ class PostgresDatabase implements IDatabase {
     creditPaisa: number;
     outstandingPaisa: number;
     totalExpensesPaisa: number;
+    caseSummaries?: Array<{
+      caseId: string;
+      agreedPaisa: number;
+      paidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+      expensesPaisa: number;
+    }>;
   }> {
     const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
 
@@ -3741,6 +3845,84 @@ class PostgresDatabase implements IDatabase {
     const creditPaisa = isCredit ? Math.abs(balancePaisa) : 0;
     const outstandingPaisa = isCredit ? 0 : balancePaisa;
 
+    // Build per-case breakdown
+    let caseSummaries: Array<{
+      caseId: string;
+      agreedPaisa: number;
+      paidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+      expensesPaisa: number;
+    }> = [];
+
+    if (filter.clientId) {
+      const caseAgs = await this.db
+        .select({
+          caseId: schema.feeAgreements.caseId,
+          total: sql<string>`COALESCE(SUM(${schema.feeAgreements.agreedAmountPaisa}), 0)`
+        })
+        .from(schema.feeAgreements)
+        .where(and(...agConditions, isNotNull(schema.feeAgreements.caseId)))
+        .groupBy(schema.feeAgreements.caseId);
+
+      const casePays = await this.db
+        .select({
+          caseId: schema.feePayments.caseId,
+          total: sql<string>`COALESCE(SUM(${schema.feePayments.amountPaisa}), 0)`
+        })
+        .from(schema.feePayments)
+        .where(and(...payConditions, isNotNull(schema.feePayments.caseId)))
+        .groupBy(schema.feePayments.caseId);
+
+      const caseExps = await this.db
+        .select({
+          caseId: schema.expenses.caseId,
+          total: sql<string>`COALESCE(SUM(${schema.expenses.amountPaisa}), 0)`
+        })
+        .from(schema.expenses)
+        .where(and(...expConditions, isNotNull(schema.expenses.caseId)))
+        .groupBy(schema.expenses.caseId);
+
+      const caseMap = new Map<string, { agreedPaisa: number; paidPaisa: number; expensesPaisa: number }>();
+      for (const row of caseAgs) {
+        if (row.caseId) {
+          const cur = caseMap.get(row.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.agreedPaisa += Number(row.total);
+          caseMap.set(row.caseId, cur);
+        }
+      }
+      for (const row of casePays) {
+        if (row.caseId) {
+          const cur = caseMap.get(row.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.paidPaisa += Number(row.total);
+          caseMap.set(row.caseId, cur);
+        }
+      }
+      for (const row of caseExps) {
+        if (row.caseId) {
+          const cur = caseMap.get(row.caseId) || { agreedPaisa: 0, paidPaisa: 0, expensesPaisa: 0 };
+          cur.expensesPaisa += Number(row.total);
+          caseMap.set(row.caseId, cur);
+        }
+      }
+      caseSummaries = Array.from(caseMap.entries()).map(([cid, data]) => {
+        const bPaisa = data.agreedPaisa - data.paidPaisa;
+        const credit = bPaisa < 0;
+        return {
+          caseId: cid,
+          agreedPaisa: data.agreedPaisa,
+          paidPaisa: data.paidPaisa,
+          balancePaisa: bPaisa,
+          isCredit: credit,
+          creditPaisa: credit ? Math.abs(bPaisa) : 0,
+          outstandingPaisa: credit ? 0 : bPaisa,
+          expensesPaisa: data.expensesPaisa,
+        };
+      });
+    }
+
     return {
       totalAgreedPaisa,
       totalPaidPaisa,
@@ -3749,6 +3931,7 @@ class PostgresDatabase implements IDatabase {
       creditPaisa,
       outstandingPaisa,
       totalExpensesPaisa,
+      caseSummaries,
     };
   }
 
@@ -3935,7 +4118,7 @@ class PostgresDatabase implements IDatabase {
 
   public async listFeePayments(
     firmId: string,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string },
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean },
     user?: VisibilityUserContext
   ): Promise<schema.FeePayment[]> {
     const conditions = [
@@ -3946,6 +4129,13 @@ class PostgresDatabase implements IDatabase {
     if (filter?.caseId) conditions.push(eq(schema.feePayments.caseId, filter.caseId));
     if (filter?.feeAgreementId) conditions.push(eq(schema.feePayments.feeAgreementId, filter.feeAgreementId));
     if (filter?.status) conditions.push(eq(schema.feePayments.status, filter.status as any));
+    if (filter?.legacyUnassigned !== undefined) {
+      if (filter.legacyUnassigned) {
+        conditions.push(sql`(${schema.feePayments.legacyUnassigned} = true OR ${schema.feePayments.feeAgreementId} IS NULL OR ${schema.feePayments.caseId} IS NULL)`);
+      } else {
+        conditions.push(sql`(${schema.feePayments.legacyUnassigned} = false AND ${schema.feePayments.feeAgreementId} IS NOT NULL AND ${schema.feePayments.caseId} IS NOT NULL)`);
+      }
+    }
 
     if (user) {
       const visCond = await this.buildPostgresCaseCondition(firmId, user, true);

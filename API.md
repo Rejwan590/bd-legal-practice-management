@@ -298,12 +298,21 @@ Enforces central case visibility, confidentiality (`restricted.view`), firm isol
 - `POST /api/v1/fee-agreements/:id/void`: Voids agreement with required `reason`.
 
 #### 2.9.2 Fee Payments Received (`/api/v1/fee-payments`)
-- `GET /api/v1/fee-payments`: Lists payments with filters (`clientId`, `caseId`, `feeAgreementId`, `status`, `limit`, `offset`).
+- `GET /api/v1/fee-payments`: Lists payments with filters (`clientId`, `caseId`, `feeAgreementId`, `status`, `legacyUnassigned`, `limit`, `offset`).
 - `GET /api/v1/fee-payments/:id`: Returns payment record.
-- `POST /api/v1/fee-payments`: Records payment received. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
-  - Body: `{ "clientId": "...", "caseId": "...", "feeAgreementId": "...", "hearingId": "...", "paymentDate": "2026-10-26T12:00:00Z", "amountPaisa": 2500000, "method": "cash"|"bank"|"bkash"|"nagad"|"cheque"|"other", "reference": "TRX-12345", "purposeNote": "Advance for filing", "idempotencyKey": "uuid" }`
+- `POST /api/v1/fee-payments`: Records payment received against an active agreement. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
+  - Body: `{ "feeAgreementId": "...", "hearingId": "...", "paymentDate": "2026-10-26T12:00:00Z", "amountPaisa": 2500000, "method": "cash"|"bank"|"bkash"|"nagad"|"cheque"|"other", "reference": "TRX-12345", "purposeNote": "Advance for filing", "idempotencyKey": "uuid" }`
+  - Client sends only `feeAgreementId`. Server derives `clientId` and `caseId` directly from the fee agreement.
+  - Reject (400) conditions:
+    - Agreement is closed or void.
+    - Linked case does not belong to the agreement client.
+    - `hearingId` does not belong to the agreement case.
+    - User cannot see the case (central visibility + `restricted.view`).
+  - Visibility is checked BEFORE returning an idempotent duplicate record.
+  - Unique-index race conditions on `idempotencyKey` are caught and safely return the original record.
   - Atomically increments and assigns receipt number (e.g. `R-000001`) from `number_sequences`.
-  - Enforces duplicate idempotency key deduplication (returns existing record without duplicate receipt number).
+- `POST /api/v1/fee-payments/:id/attach`: Attaches a legacy unassigned payment to an active fee agreement. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
+  - Body: `{ "feeAgreementId": "..." }`
 - `POST /api/v1/fee-payments/:id/void`: Voids payment with required `voidReason`. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`. Excludes payment from balances.
 
 #### 2.9.3 Expenses (`/api/v1/expenses`)
@@ -315,7 +324,7 @@ Enforces central case visibility, confidentiality (`restricted.view`), firm isol
 - `POST /api/v1/expenses/:id/void`: Voids expense with required `voidReason`. Gated by `accounts.manage`, `enforceSubscriptionReadOnly`.
 
 #### 2.9.4 Accounts Summary & Client Balances (`/api/v1/accounts`)
-- `GET /api/v1/accounts/summary`: Returns chamber-wide, client-specific, or case-specific financial summary (`agreedPaisa`, `receivedPaisa`, `balancePaisa`, `isOverpaid`, `creditPaisa`, `expensesPaisa`). Query params: `clientId`, `caseId`. Gated by `accounts.view`.
+- `GET /api/v1/accounts/summary`: Returns chamber-wide, client-specific, or case-specific financial summary (`agreedPaisa`, `receivedPaisa`, `balancePaisa`, `isOverpaid`, `creditPaisa`, `expensesPaisa`). When querying for a client, returns `caseSummaries` array breaking down finances per case (`caseId`, `agreedPaisa`, `paidPaisa`, `balancePaisa`, `isCredit`, `creditPaisa`, `outstandingPaisa`, `expensesPaisa`). Query params: `clientId`, `caseId`. Gated by `accounts.view`.
 - `GET /api/v1/accounts/client-balances`: Returns sortable list of all clients with outstanding balances and payment metrics. Query params: `search`, `sortBy` (`balance_desc`, `balance_asc`, `name`), `limit`, `offset`. Gated by `accounts.view`.
 
 ---

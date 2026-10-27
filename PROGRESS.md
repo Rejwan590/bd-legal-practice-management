@@ -3,7 +3,22 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-Accounts Phase 1: Fee Agreements, Payments & Expenses completed end-to-end (Database + Server REST API + Mock & REST Repositories + UI + Automated Tests) with 100% feature and contract parity.
+Accounts Module: Payments Tracked Per Client and Per Case completed end-to-end (Database + Server REST API + Mock & REST Repositories + UI + Automated Tests) with 100% feature and contract parity.
+- [x] **Per-Client & Per-Case Linkage & Validation Rules**:
+  - Every `fee_payment` MUST reference a `fee_agreement`, and every `fee_agreement` MUST reference one client and one case (`case_id` NOT NULL for new agreements enforced via Zod schema & application validation).
+  - Server derives `client_id` and `case_id` of a payment strictly from its agreement; the client sends only `feeAgreementId`.
+  - Rejection guards (HTTP 400):
+    - Agreement is closed or void.
+    - Linked case does not belong to the agreement client.
+    - `hearingId` is not a hearing belonging to that case.
+    - User cannot see the case under central visibility (`canUserSeeCase`) or lacks `restricted.view` for confidential cases.
+  - Case visibility is checked BEFORE returning an idempotent duplicate.
+  - Caught unique-index idempotency race condition (`23505`) on concurrent inserts and returns the original record after visibility check.
+- [x] **Non-Destructive Migration & Legacy Records (`legacy_unassigned`)**:
+  - `server/src/db/schema.ts`: Added `legacyUnassigned: boolean('legacy_unassigned').default(false).notNull()` to `feePayments` with index `idx_fee_payments_legacy_unassigned`.
+  - Migration `0009_accounts_per_case.sql` created and registered in `server/drizzle/meta/_journal.json`.
+  - Legacy records with no agreement or case are flagged `legacy_unassigned = true`.
+  - Added endpoint `POST /api/v1/fee-payments/:id/attach` allowing admins to attach legacy unassigned payments to active fee agreements, deriving case and client automatically.
 - [x] **Integer Paisa & Currency Precision**:
   - All monetary values stored and calculated strictly as integer paisa (1 BDT = 100 paisa). Zero floating-point arithmetic.
   - Implemented `src/utils/currency.ts` with South Asian comma grouping (`৳ 1,50,000` / `৳ ১,৫০,০০০`) and English/Bangla digit support (`formatBdt`, `takaToPaisa`, `paisaToTaka`, `toBnDigits`).
@@ -38,16 +53,17 @@ Accounts Phase 1: Fee Agreements, Payments & Expenses completed end-to-end (Data
   - `RestAccountsRepository` implemented with 100% parity in `src/data/repositories/rest/restAccounts.ts`.
   - Registered in `src/data/repositories/index.ts` with dual-mode parity (`isRestMode`).
 - [x] **UI & User Workflows**:
-  - `RecordPaymentModal.tsx`: Records client/case payments with method, reference, required purpose note, and optional hearing selector.
+  - `RecordPaymentModal.tsx`: Added Case selector (client's visible cases) and Agreement selector (case's active agreements), prefilled and locked when opened from a case or agreement.
+  - `AttachPaymentModal.tsx`: Allows admins to attach legacy unassigned payments to active fee agreements.
   - `VoidRecordModal.tsx`: Confirms voiding with mandatory audit reason.
   - `AddExpenseModal.tsx`: Categorized chamber expense tracking with reimbursable toggle.
-  - `CreateAgreementModal.tsx` & `ReviseAgreementModal.tsx`: Fixed, hourly, hearing, and installment fee agreements with amount revision history tracking.
-  - `BillingTab.tsx`: Embedded in Client Profile (`ClientProfileView.tsx`) and Case Dossier (`CaseDetailsView.tsx`) with KPI cards (Agreed, Received, Outstanding, Expenses), agreement list, payment history with purpose note, and expense tracking.
+  - `CreateAgreementModal.tsx` & `ReviseAgreementModal.tsx`: Requires case selection (`caseId` NOT NULL); fixed, hourly, hearing, and installment fee agreements with amount revision history tracking.
+  - `BillingTab.tsx`: Embedded in Client Profile (`ClientProfileView.tsx`) and Case Dossier (`CaseDetailsView.tsx`). Client Billing tab shows ONE BLOCK PER CASE (case number/title, agreed, received, outstanding, payments with purpose notes, expenses) plus a grand total KPI summary on top and an unassigned records block. Case Billing tab isolates ledger to that case.
   - `BillingScreen.tsx`: Chamber-wide accounts overview showing total fees agreed, total collected, total outstanding, and sortable/filterable client balance rankings.
   - Navigation: Wired `/billing` screen in `App.tsx`, `AppShell.tsx`, and `NavigationContext.tsx`, visible only with `accounts.view`.
   - Bilingual i18n: 100% key parity between `en.json` and `bn.json`.
 - [x] **Automated Tests**:
-  - `server/tests/accounts.test.ts` (61 assertions):
+  - `server/tests/accounts.test.ts` (89 assertions):
     - Balance math calculation.
     - Multiple installment payments.
     - Overpayment flagged as credit.
@@ -59,13 +75,19 @@ Accounts Phase 1: Fee Agreements, Payments & Expenses completed end-to-end (Data
     - Permission checks (`accounts.view`, `accounts.manage`, `expenses.record`).
     - Subscription read-only block (HTTP 403 on mutations).
     - Void operations require reason.
-  - **534 / 534 server tests passing (0 failed)** across all 11 suites.
+    - Payment with mismatched case/agreement/hearing rejected with HTTP 400.
+    - Closed agreement rejected with HTTP 400.
+    - Client with 3 cases has 3 separate balances; client overall balance is sum of cases.
+    - Idempotency duplicate cannot leak a case the user cannot see.
+    - Concurrent same-key posts return exactly one payment record.
+    - Legacy unassigned shown separately and can be attached to agreement.
+  - **562 / 562 server tests passing (0 failed)** across all 11 suites.
 - [x] **Verification Summary**:
   - `npm run lint`: PASS (0 errors)
   - `npm run test:health`: PASS (87/87 checks passed)
-  - `npm test --prefix server`: PASS (534/534 assertions passed across 11 suites)
-  - `npm run build`: PASS (built cleanly in 3.77s)
-  - `npm run build --prefix admin-app`: PASS (built cleanly in 1.19s)
+  - `npm test --prefix server`: PASS (562/562 assertions passed across 11 suites)
+  - `npm run build`: PASS (built cleanly in 1.39s)
+  - `npm run build --prefix admin-app`: PASS (built cleanly in 763ms)
 - [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
 
 ## Previous status

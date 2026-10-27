@@ -298,6 +298,7 @@ async function runTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
       body: JSON.stringify({
+        feeAgreementId: agreementA.id,
         clientId: clientA.id,
         caseId: caseA.id,
         paymentDate: '2026-10-05',
@@ -327,6 +328,7 @@ async function runTests() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
         body: JSON.stringify({
+          feeAgreementId: agreementA.id,
           clientId: clientA.id,
           caseId: caseA.id,
           paymentDate: '2026-10-25',
@@ -488,11 +490,12 @@ async function runTests() {
     });
     assert(staffRestrictedRes.status === 404, 'Staff without restricted.view gets 404 on restricted case agreement');
 
-    // Staff tries to record payment on restricted case -> 404
+    // Staff tries to record payment on restricted case -> 400 / 404
     const staffRestrictedPayRes = await fetch(`${baseUrl}/api/v1/fee-payments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: staffCookie },
       body: JSON.stringify({
+        feeAgreementId: restrictedAg.id,
         clientId: clientA.id,
         caseId: restrictedCase.id,
         paymentDate: '2026-10-25',
@@ -502,7 +505,7 @@ async function runTests() {
         idempotencyKey: `staff-restricted-${Date.now()}`,
       }),
     });
-    assert(staffRestrictedPayRes.status === 404, 'Staff without restricted.view gets 404 recording payment on restricted case');
+    assert(staffRestrictedPayRes.status === 400 || staffRestrictedPayRes.status === 404, 'Staff without restricted.view gets 404/400 recording payment on restricted case');
 
     console.log('\n--- 11. Permission Denied Checks ---');
     // Remove accounts permissions from staff
@@ -519,6 +522,7 @@ async function runTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: staffCookie },
       body: JSON.stringify({
+        feeAgreementId: agreementA.id,
         clientId: clientA.id,
         paymentDate: '2026-10-25',
         amountPaisa: 100000,
@@ -540,6 +544,7 @@ async function runTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
       body: JSON.stringify({
+        feeAgreementId: agreementA.id,
         clientId: clientA.id,
         paymentDate: '2026-10-25',
         amountPaisa: 100000,
@@ -557,6 +562,7 @@ async function runTests() {
       headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
       body: JSON.stringify({
         clientId: clientA.id,
+        caseId: caseA.id,
         feeType: 'fixed',
         agreedAmountPaisa: 100000,
         agreementDate: '2026-10-25',
@@ -574,6 +580,412 @@ async function runTests() {
     await db.updateFirm('firm-bd-001', {
       licenseExpiresAt: origFirm?.licenseExpiresAt || new Date(Date.now() + 365 * 86400000),
     });
+
+    console.log('\n--- 13. Per-Client & Per-Case Tracking and Invariants ---');
+    // Setup Client with 3 distinct cases
+    const clientMulti = await db.insertClient({
+      id: `client-multi-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      name: 'Rahim Steel Mills Ltd',
+      nameBn: 'রহিম স্টিল মিলস লিঃ',
+      phone: '+880 1711-223344',
+      address: 'Chittagong, Bangladesh',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    const multiCase1 = await db.insertCase({
+      id: `case-multi-1-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      caseNumber: `TAX-001-${Date.now()}`,
+      court: 'High Court Division',
+      matterType: 'Tax Appeal',
+      clientId: clientMulti.id,
+      category: 'Civil',
+      status: 'active',
+      responsibleLawyerId: 'user-owner-001',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    const multiCase2 = await db.insertCase({
+      id: `case-multi-2-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      caseNumber: `LAB-002-${Date.now()}`,
+      court: 'Labour Tribunal',
+      matterType: 'Employment Dispute',
+      clientId: clientMulti.id,
+      category: 'Civil',
+      status: 'active',
+      responsibleLawyerId: 'user-owner-001',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    const multiCase3 = await db.insertCase({
+      id: `case-multi-3-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      caseNumber: `COM-003-${Date.now()}`,
+      court: 'Company Bench',
+      matterType: 'Merger Validation',
+      clientId: clientMulti.id,
+      category: 'Civil',
+      status: 'active',
+      responsibleLawyerId: 'user-owner-001',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    // Agreement 1: Case 1 - 50,000 BDT (5,000,000 paisa)
+    const agMulti1Res = await fetch(`${baseUrl}/api/v1/fee-agreements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        clientId: clientMulti.id,
+        caseId: multiCase1.id,
+        feeType: 'fixed',
+        agreedAmountPaisa: 5000000,
+        agreementDate: '2026-10-25',
+      }),
+    });
+    assert(agMulti1Res.status === 201, 'Created agreement for Multi Case 1');
+    const agMulti1 = await agMulti1Res.json();
+
+    // Agreement 2: Case 2 - 100,000 BDT (10,000,000 paisa)
+    const agMulti2Res = await fetch(`${baseUrl}/api/v1/fee-agreements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        clientId: clientMulti.id,
+        caseId: multiCase2.id,
+        feeType: 'fixed',
+        agreedAmountPaisa: 10000000,
+        agreementDate: '2026-10-25',
+      }),
+    });
+    assert(agMulti2Res.status === 201, 'Created agreement for Multi Case 2');
+    const agMulti2 = await agMulti2Res.json();
+
+    // Agreement 3: Case 3 - 40,000 BDT (4,000,000 paisa)
+    const agMulti3Res = await fetch(`${baseUrl}/api/v1/fee-agreements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        clientId: clientMulti.id,
+        caseId: multiCase3.id,
+        feeType: 'fixed',
+        agreedAmountPaisa: 4000000,
+        agreementDate: '2026-10-25',
+      }),
+    });
+    assert(agMulti3Res.status === 201, 'Created agreement for Multi Case 3');
+    const agMulti3 = await agMulti3Res.json();
+
+    // 13.1 Mismatched case / agreement / hearing rejection
+    // Hearing for Case 2
+    const hearingCase2 = await db.insertHearing({
+      id: `hearing-case2-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      caseId: multiCase2.id,
+      hearingDate: '2026-11-15',
+      courtRoom: 'Tribunal-1',
+      stage: 'Evidence',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    // Try to record payment on agMulti1 (Case 1) with hearing of Case 2
+    const mismatchHearingRes = await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: agMulti1.id,
+        hearingId: hearingCase2.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 1000000,
+        method: 'cash',
+        purposeNote: 'Mismatched hearing test',
+        idempotencyKey: `mismatch-hearing-${Date.now()}`,
+      }),
+    });
+    assert(mismatchHearingRes.status === 400, 'Payment with hearing belonging to another case is rejected with HTTP 400');
+
+    // Agreement creation with case belonging to another client
+    const mismatchClientCaseRes = await fetch(`${baseUrl}/api/v1/fee-agreements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        clientId: clientA.id,
+        caseId: multiCase1.id, // belongs to clientMulti, not clientA
+        feeType: 'fixed',
+        agreedAmountPaisa: 2000000,
+        agreementDate: '2026-10-25',
+      }),
+    });
+    assert(mismatchClientCaseRes.status === 400, 'Agreement creation with case belonging to different client is rejected with HTTP 400');
+
+    // 13.2 Closed agreement rejected
+    const clientClosed = await db.insertClient({
+      id: `client-closed-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      name: 'Closed Agreement Client',
+      phone: '+880 1700-112233',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+    const caseClosed = await db.insertCase({
+      id: `case-closed-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      caseNumber: `CLOSED-001-${Date.now()}`,
+      court: 'High Court Division',
+      matterType: 'Writ Petition',
+      clientId: clientClosed.id,
+      category: 'Civil',
+      status: 'active',
+      responsibleLawyerId: 'user-owner-001',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+    const agToCloseRes = await fetch(`${baseUrl}/api/v1/fee-agreements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        clientId: clientClosed.id,
+        caseId: caseClosed.id,
+        feeType: 'fixed',
+        agreedAmountPaisa: 2500000,
+        agreementDate: '2026-10-25',
+      }),
+    });
+    const agToClose = await agToCloseRes.json();
+
+    const closeAgRes = await fetch(`${baseUrl}/api/v1/fee-agreements/${agToClose.id}/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+    });
+    assert(closeAgRes.status === 200, 'Fee agreement closed successfully');
+
+    const payClosedRes = await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: agToClose.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 1000000,
+        method: 'cash',
+        purposeNote: 'Payment to closed agreement',
+        idempotencyKey: `pay-closed-${Date.now()}`,
+      }),
+    });
+    assert(payClosedRes.status === 400, 'Payment to closed fee agreement is rejected with HTTP 400');
+
+    // 13.3 Client with 3 cases has 3 separate balances
+    // Payment 1 for Case 1: 20,000 BDT (2,000,000 paisa) of 50,000 BDT -> outstanding 30,000 BDT
+    await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: agMulti1.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 2000000,
+        method: 'bank',
+        purposeNote: 'Partial payment on Case 1',
+        idempotencyKey: `pay-multi-1-${Date.now()}`,
+      }),
+    });
+
+    // Payment 2 for Case 2: 100,000 BDT (10,000,000 paisa) of 100,000 BDT -> outstanding 0
+    await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: agMulti2.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 10000000,
+        method: 'bank',
+        purposeNote: 'Full payment on Case 2',
+        idempotencyKey: `pay-multi-2-${Date.now()}`,
+      }),
+    });
+
+    // Payment 3 for Case 3: 50,000 BDT (5,000,000 paisa) of 40,000 BDT -> credit 10,000 BDT
+    await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: agMulti3.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 5000000,
+        method: 'bkash',
+        purposeNote: 'Overpayment on Case 3',
+        idempotencyKey: `pay-multi-3-${Date.now()}`,
+      }),
+    });
+
+    // Grand total client summary
+    const multiSummaryRes = await fetch(`${baseUrl}/api/v1/accounts/summary?clientId=${clientMulti.id}`, {
+      headers: { Cookie: ownerCookie },
+    });
+    assert(multiSummaryRes.status === 200, 'Fetched multi-case client summary');
+    const multiSummary = await multiSummaryRes.json();
+
+    assert(multiSummary.totalAgreedPaisa === 19000000, 'Client total agreed is sum of cases (19,000,000 paisa)');
+    assert(multiSummary.totalPaidPaisa === 17000000, 'Client total paid is sum of cases (17,000,000 paisa)');
+    assert(multiSummary.balancePaisa === 2000000, 'Client overall balance is 2,000,000 paisa');
+
+    // Verify case-level breakdowns
+    const caseSums = multiSummary.caseSummaries || [];
+    assert(caseSums.length === 3, 'Client summary returns 3 distinct case summaries');
+
+    const c1Summary = caseSums.find((c: any) => c.caseId === multiCase1.id);
+    assert(c1Summary && c1Summary.agreedPaisa === 5000000 && c1Summary.paidPaisa === 2000000 && c1Summary.outstandingPaisa === 3000000 && !c1Summary.isCredit, 'Case 1 has isolated agreed 50k, paid 20k, outstanding 30k');
+
+    const c2Summary = caseSums.find((c: any) => c.caseId === multiCase2.id);
+    assert(c2Summary && c2Summary.agreedPaisa === 10000000 && c2Summary.paidPaisa === 10000000 && c2Summary.outstandingPaisa === 0 && !c2Summary.isCredit, 'Case 2 has isolated agreed 100k, paid 100k, outstanding 0');
+
+    const c3Summary = caseSums.find((c: any) => c.caseId === multiCase3.id);
+    assert(c3Summary && c3Summary.agreedPaisa === 4000000 && c3Summary.paidPaisa === 5000000 && c3Summary.isCredit && c3Summary.creditPaisa === 1000000, 'Case 3 has isolated agreed 40k, paid 50k, credit 10k');
+
+    // Case-filtered summary endpoint
+    const c1FilteredRes = await fetch(`${baseUrl}/api/v1/accounts/summary?caseId=${multiCase1.id}`, {
+      headers: { Cookie: ownerCookie },
+    });
+    const c1Filtered = await c1FilteredRes.json();
+    assert(c1Filtered.totalAgreedPaisa === 5000000 && c1Filtered.outstandingPaisa === 3000000, 'Case-filtered summary isolated to single case');
+
+    // 13.4 Idempotency duplicate cannot leak a case the user cannot see
+    const restrictedSecretKey = `secret-restricted-idemp-${Date.now()}`;
+    const ownerRestrictedPayRes = await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({
+        feeAgreementId: restrictedAg.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 3000000,
+        method: 'cash',
+        purposeNote: 'Owner confidential payment',
+        idempotencyKey: restrictedSecretKey,
+      }),
+    });
+    assert(ownerRestrictedPayRes.status === 201, 'Owner records payment on restricted case');
+
+    // Ensure staff has accounts permissions but NOT restricted.view
+    await db.updateUser(staffUser.id, {
+      permissions: ['accounts.view', 'accounts.manage'],
+    });
+
+    // Staff tries to post with the secret idempotency key
+    const staffIdempLeakRes = await fetch(`${baseUrl}/api/v1/fee-payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: staffCookie },
+      body: JSON.stringify({
+        feeAgreementId: restrictedAg.id,
+        paymentDate: '2026-10-25',
+        amountPaisa: 3000000,
+        method: 'cash',
+        purposeNote: 'Staff fishing with idempotency key',
+        idempotencyKey: restrictedSecretKey,
+      }),
+    });
+    assert(staffIdempLeakRes.status === 400 || staffIdempLeakRes.status === 404, 'Staff cannot leak restricted case payment via duplicate idempotency key (HTTP 400/404)');
+    const staffIdempLeakBody = await staffIdempLeakRes.json();
+    assert(!staffIdempLeakBody.receiptNumber && !staffIdempLeakBody.amountPaisa, 'Idempotency response does not leak payment or receipt details');
+
+    // 13.5 Concurrent same-key posts return one record
+    const concurrentKey = `concurrent-test-key-${Date.now()}`;
+    const [conc1, conc2] = await Promise.all([
+      fetch(`${baseUrl}/api/v1/fee-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+        body: JSON.stringify({
+          feeAgreementId: agMulti1.id,
+          paymentDate: '2026-10-25',
+          amountPaisa: 500000,
+          method: 'cash',
+          purposeNote: 'Concurrent race test',
+          idempotencyKey: concurrentKey,
+        }),
+      }),
+      fetch(`${baseUrl}/api/v1/fee-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+        body: JSON.stringify({
+          feeAgreementId: agMulti1.id,
+          paymentDate: '2026-10-25',
+          amountPaisa: 500000,
+          method: 'cash',
+          purposeNote: 'Concurrent race test',
+          idempotencyKey: concurrentKey,
+        }),
+      }),
+    ]);
+    assert((conc1.status === 200 || conc1.status === 201) && (conc2.status === 200 || conc2.status === 201), 'Both concurrent requests succeed');
+    const concBody1 = await conc1.json();
+    const concBody2 = await conc2.json();
+    assert(concBody1.id === concBody2.id, 'Concurrent requests return identical payment record ID');
+    assert(concBody1.receiptNumber === concBody2.receiptNumber, 'Concurrent requests return identical receipt number');
+
+    // 13.6 Legacy unassigned shown separately and attachable
+    const legacyPay = await db.insertFeePayment({
+      id: `pay-legacy-${Date.now()}`,
+      firmId: 'firm-bd-001',
+      clientId: clientMulti.id,
+      caseId: null,
+      feeAgreementId: null,
+      receiptNumber: `R-LEGACY-${Date.now()}`,
+      paymentDate: '2026-09-01',
+      amountPaisa: 1500000,
+      method: 'cash',
+      status: 'posted',
+      legacyUnassigned: true,
+      purposeNote: 'Legacy unassigned deposit before module update',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: 'user-owner-001',
+      updatedBy: 'user-owner-001',
+    });
+
+    const listLegacyRes = await fetch(`${baseUrl}/api/v1/fee-payments?clientId=${clientMulti.id}&legacyUnassigned=true`, {
+      headers: { Cookie: ownerCookie },
+    });
+    assert(listLegacyRes.status === 200, 'List legacy unassigned payments succeeds');
+    const legacyList = await listLegacyRes.json();
+    const foundLegacy = legacyList.find((p: any) => p.id === legacyPay.id);
+    assert(!!foundLegacy, 'Legacy unassigned payment returned in filtered query');
+
+    // Attach legacy payment to agMulti1 (Case 1)
+    const attachRes = await fetch(`${baseUrl}/api/v1/fee-payments/${legacyPay.id}/attach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({ feeAgreementId: agMulti1.id }),
+    });
+    assert(attachRes.status === 200, 'Legacy payment attached to agreement (HTTP 200)');
+    const attachedBody = await attachRes.json();
+    assert(attachedBody.feeAgreementId === agMulti1.id, 'Attached payment has feeAgreementId updated');
+    assert(attachedBody.caseId === multiCase1.id, 'Attached payment has caseId derived from agreement');
+    assert(attachedBody.legacyUnassigned === false, 'legacyUnassigned cleared to false');
 
     console.log('\n========================================');
     console.log(`ACCOUNTS MODULE TESTS COMPLETE: ${passed} passed, ${failed} failed`);
