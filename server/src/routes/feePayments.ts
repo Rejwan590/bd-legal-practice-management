@@ -202,12 +202,16 @@ feePaymentsRouter.post(
 
       return res.status(201).json(created);
     } catch (err: any) {
+      const code = err.code || err.cause?.code;
+      const message = `${err.message || ''} ${err.cause?.message || ''} ${err.detail || ''} ${err.cause?.detail || ''}`;
       // Catch unique-index idempotency race and return the original record
       if (
-        err.code === '23505' ||
-        err.message?.includes('duplicate key') ||
-        err.message?.includes('unique constraint') ||
-        err.message?.includes('idx_fee_payments_firm_idempotency')
+        code === '23505' ||
+        message.includes('duplicate key') ||
+        message.includes('unique constraint') ||
+        message.includes('idx_fee_payments_firm_idempotency') ||
+        err.detail?.includes('idempotency') ||
+        err.cause?.detail?.includes('idempotency')
       ) {
         let original = await db.getFeePaymentByIdempotencyKey(firmId, parsed.data.idempotencyKey);
         if (!original) {
