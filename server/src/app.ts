@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
@@ -31,22 +32,31 @@ export function createApp() {
   app.set('trust proxy', isNaN(trustProxyHops) ? 0 : trustProxyHops);
 
   // Basic security and parsing middlewares
-  const rawOrigins = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001';
-  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim());
+  const isProduction = process.env.NODE_ENV === 'production';
+  const rawOrigins = process.env.CORS_ORIGIN || (isProduction ? '' : 'http://localhost:3000,http://localhost:3001');
+  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+
+  app.use(helmet());
 
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (
-          !origin ||
-          allowedOrigins.includes(origin) ||
-          process.env.NODE_ENV !== 'production' ||
-          Boolean(process.env.VERCEL) ||
-          origin.endsWith('.vercel.app')
-        ) {
-          callback(null, true);
+        if (!origin) {
+          return callback(null, true);
+        }
+        if (isProduction) {
+          if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
         } else {
-          callback(new Error('Not allowed by CORS'));
+          const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+          if (allowedOrigins.includes(origin) || isLocalhost) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
         }
       },
       credentials: true,

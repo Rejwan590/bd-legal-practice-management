@@ -69,6 +69,51 @@ async function runTests() {
       assert(res.status === 200 && body.status === 'ok', 'Health endpoint GET /api/v1/health returns 200 ok');
     }
 
+    // 0.1 CORS Security in Production Test
+    {
+      console.log('\n--- Test 0.1: Production CORS Isolation & Helmet ---');
+      const prevEnv = process.env.NODE_ENV;
+      const prevCors = process.env.CORS_ORIGIN;
+      const prevDbUrl = process.env.DATABASE_URL;
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ORIGIN = 'https://firm-portal.bd';
+      process.env.DATABASE_URL = 'postgres://test_prod_user:test_prod_pass@127.0.0.1:5432/test_prod_db';
+
+      const prodApp = createApp();
+      const prodServer = http.createServer(prodApp);
+      await new Promise<void>((resolve) => prodServer.listen(0, '127.0.0.1', () => resolve()));
+      const prodAddr = prodServer.address() as any;
+      const prodBaseUrl = `http://127.0.0.1:${prodAddr.port}`;
+
+      try {
+        const evilRes = await fetch(`${prodBaseUrl}/api/v1/health`, {
+          headers: { Origin: 'https://evil.vercel.app' },
+        });
+        assert(
+          evilRes.status >= 400 || evilRes.headers.get('access-control-allow-origin') !== 'https://evil.vercel.app',
+          'Production CORS rejects unauthorized origin https://evil.vercel.app'
+        );
+
+        const validRes = await fetch(`${prodBaseUrl}/api/v1/health`, {
+          headers: { Origin: 'https://firm-portal.bd' },
+        });
+        assert(validRes.status === 200, 'Production CORS accepts exact CORS_ORIGIN');
+        assert(
+          validRes.headers.get('access-control-allow-origin') === 'https://firm-portal.bd',
+          'Production CORS sets Access-Control-Allow-Origin to exact origin'
+        );
+        assert(
+          validRes.headers.get('access-control-allow-credentials') === 'true',
+          'Production CORS keeps credentials: true'
+        );
+      } finally {
+        prodServer.close();
+        process.env.NODE_ENV = prevEnv;
+        process.env.CORS_ORIGIN = prevCors;
+        process.env.DATABASE_URL = prevDbUrl;
+      }
+    }
+
     // 1. Test 1: Owner logs in; wrong password rejected; repeated wrong attempts rate-limited
     {
       console.log('\n--- Test 1: Login & Rate Limiting ---');
