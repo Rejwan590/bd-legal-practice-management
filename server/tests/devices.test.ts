@@ -17,11 +17,15 @@ async function startTestServer(): Promise<TestContext> {
   const app = createApp();
   const server = http.createServer(app);
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     server.listen(0, '127.0.0.1', () => resolve());
+    server.on('error', reject);
   });
 
-  const addr = server.address() as any;
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') {
+    throw new Error('Failed to obtain valid server address');
+  }
   const baseUrl = `http://127.0.0.1:${addr.port}`;
   return { baseUrl, server };
 }
