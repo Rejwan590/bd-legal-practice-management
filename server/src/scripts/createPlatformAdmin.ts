@@ -1,9 +1,16 @@
-import 'dotenv/config';
 import readline from 'readline';
+import { Writable } from 'stream';
 import bcrypt from 'bcryptjs';
-import { getDatabase } from '../src/db/client.js';
-import { recordAdminAudit } from '../src/services/adminAuditService.js';
-import * as schema from '../src/db/schema.js';
+import { getDatabase } from '../db/client.js';
+import { recordAdminAudit } from '../services/adminAuditService.js';
+import * as schema from '../db/schema.js';
+
+// Optional dotenv load for local development without requiring it in production environments (e.g. Azure App Service)
+try {
+  await import('dotenv/config');
+} catch {
+  // Ignored in environments where dotenv is omitted or DATABASE_URL comes from environment settings
+}
 
 export const MIN_PASSWORD_LENGTH = 14;
 
@@ -13,16 +20,44 @@ export function validateEmail(email: string): boolean {
 }
 
 export async function prompt(question: string, hideInput = false): Promise<string> {
+  if (!hideInput) {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      rl.question(question, (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+  }
+
+  // When hideInput is true, suppress echoing characters to stdout while keeping prompt question visible
+  const muted = { value: false };
+  const mutableStdout = new Writable({
+    write(chunk, encoding, callback) {
+      if (!muted.value) {
+        process.stdout.write(chunk, encoding);
+      }
+      callback();
+    },
+  });
+
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    output: mutableStdout,
+    terminal: Boolean(process.stdin.isTTY),
   });
 
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       rl.close();
+      process.stdout.write('\n');
       resolve(answer.trim());
     });
+    muted.value = true;
   });
 }
 
@@ -90,7 +125,7 @@ export async function main() {
       process.exit(1);
     }
 
-    const password = await prompt(`Enter platform admin password (minimum ${MIN_PASSWORD_LENGTH} characters): `);
+    const password = await prompt(`Enter platform admin password (minimum ${MIN_PASSWORD_LENGTH} characters): `, true);
     if (!password) {
       console.error('Error: Password cannot be empty.');
       process.exit(1);

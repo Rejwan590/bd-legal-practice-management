@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { createApp } from '../src/app.js';
 import { getDatabase, resetDatabaseInstance } from '../src/db/client.js';
 import { validateStartupConfig } from '../src/config.js';
-import { createPlatformAdmin } from '../scripts/createPlatformAdmin.js';
+import { createPlatformAdmin } from '../src/scripts/createPlatformAdmin.js';
 import { ADMIN_COOKIE_NAME, generateAdminAccessToken } from '../src/middleware/adminAuth.js';
 import { generateAccessToken } from '../src/middleware/auth.js';
 import { SEED_PASSWORDS } from '../src/db/seed.js';
