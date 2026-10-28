@@ -30,10 +30,11 @@ export function generateAdminAccessToken(admin: schema.PlatformAdmin): string {
 }
 
 export function getAdminCookieOptions() {
+  const isProd = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'strict') as 'none' | 'strict',
     maxAge: ADMIN_COOKIE_MAX_AGE_MS,
     path: '/',
   };

@@ -26,12 +26,15 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     deviceName,
   });
 
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
+
   // Always set or refresh the device_key httpOnly cookie if returned
   if ((result as any).deviceKey) {
     res.cookie('device_key', (result as any).deviceKey, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: sameSitePolicy,
       maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
     });
   }
@@ -48,8 +51,8 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
   // Set httpOnly access token cookie
   res.cookie('access_token', result.token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: sameSitePolicy,
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
@@ -69,11 +72,14 @@ authRouter.post('/logout', async (req: AuthenticatedRequest, res: Response) => {
     revokeToken(token);
   }
 
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
+
   // Clear access_token cookie (keep device_key so browser identity is preserved across logouts)
   res.clearCookie('access_token', {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: sameSitePolicy,
+    secure: isProd,
   });
 
   return res.status(200).json({ message: 'Logged out successfully' });
@@ -86,11 +92,13 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
   }
 
   // Slide session: re-issue fresh access_token cookie to prevent sudden 15-minute logouts
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
   const freshToken = generateAccessToken(req.user, req.device);
   res.cookie('access_token', freshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: sameSitePolicy,
     maxAge: 15 * 60 * 1000,
   });
 

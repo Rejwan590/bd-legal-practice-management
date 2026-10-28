@@ -1745,6 +1745,27 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
     - `1280px` (Desktop - 11/11 modules PASS)
   - Result: **33 passed (49.3s)** with 0 failures across all 11 modules.
 
+---
+
+## Production Cross-Site Authentication & Azure Deployment Hardening
+- **Status**: [x] COMPLETED & VERIFIED
+- **Issue**:
+  - Frontend hosted on Vercel (`*.vercel.app`) and backend hosted on Azure App Service (`*.azurewebsites.net`) operate across different registrable domains (cross-site).
+  - Session cookies (`access_token`, `device_key`, `admin_access_token`) previously defaulted to `sameSite: 'lax'` / `sameSite: 'strict'`, which browsers reject on cross-origin fetch calls (`credentials: 'include'`).
+  - As a result, subsequent calls (`/auth/me`, `/api/v1/clients`, `/api/v1/audit-log`) failed with HTTP 401 Unauthorized, immediately kicking logged-in users back to the chamber sign-in screen.
+- **Architectural Fix**:
+  - `server/src/routes/auth.ts`: Configured dynamic cookie `sameSite` policy (`isProd ? 'none' : 'lax'`) and `secure: isProd` on `access_token` and `device_key` during login, sliding session refresh (`/auth/me`), and logout (`clearCookie`).
+  - `server/src/middleware/adminAuth.ts` & `server/src/routes/adminAuth.ts`: Configured `sameSite: isProd ? 'none' : 'strict'` and `secure: isProd` for platform super admin sessions.
+  - Azure App Service Configuration:
+    - Enabled `TRUST_PROXY_HOPS="1"` to correctly handle `X-Forwarded-Proto` behind Azure's internal reverse proxy.
+    - Set `CORS_ORIGIN="https://bd-legal-practice-management.vercel.app,https://bd-legal-practice-management-legal-2b9b.vercel.app"` with credentials enabled.
+- **Verification**:
+  - `npm run lint`: PASS (0 errors)
+  - `npm test --prefix server`: PASS (11/11 test suites, 100% passed)
+  - `npm run build`: PASS (Vite production bundle generated in 1.38s)
+  - `npm run build --prefix server`: PASS (Clean TypeScript compilation)
+
+
 
 
 

@@ -76,10 +76,11 @@ adminAuthRouter.post('/logout', async (req: Request, res: Response) => {
   }
 
   // Clear admin cookie
+  const isProd = process.env.NODE_ENV === 'production';
   res.clearCookie(ADMIN_COOKIE_NAME, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'strict') as 'none' | 'strict',
     path: '/',
   });
 
