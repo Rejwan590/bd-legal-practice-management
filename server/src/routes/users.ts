@@ -2,13 +2,17 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
+import { authMiddleware, AuthenticatedRequest, revokeAllUserSessions } from '../middleware/auth.js';
 import { requireOwnerOrUsersManage } from '../middleware/permission.js';
 import { enforceFirmIsolation } from '../middleware/firmIsolation.js';
 import { enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
 import * as schema from '../db/schema.js';
 import { recordAudit } from '../services/auditService.js';
+import {
+  generateSecureTemporaryPassword,
+  checkResetPasswordRateLimit,
+} from '../services/authService.js';
 import {
   ALL_PERMISSION_KEYS,
   JobType,
@@ -727,6 +731,90 @@ usersRouter.post(
       fromLawyerId: fromLawyer.id,
       toLawyerId: toLawyer.id,
       affectedUserIds,
+    });
+  }
+);
+
+// POST /api/v1/users/:id/reset-password - Reset password for another user in the same firm
+usersRouter.post(
+  '/:id/reset-password',
+  requireOwnerOrUsersManage(),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const targetUserId = req.params.id;
+    const caller = req.user!;
+    const firmId = caller.firmId;
+
+    // Cannot target yourself (use Change password)
+    if (targetUserId === caller.id) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        code: 'SELF_RESET_PROHIBITED',
+        message: 'Cannot reset your own password. Please use Change Password in your profile.',
+      });
+    }
+
+    // Rate-limit: max 5 requests per 15 minutes per target user
+    const rateLimitKey = `reset:${firmId}:${targetUserId}`;
+    if (!checkResetPasswordRateLimit(rateLimitKey, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        code: 'RATE_LIMITED',
+        message: 'Too many password reset attempts for this user. Please try again later.',
+      });
+    }
+
+    const db = getDatabase();
+    const targetUser = await db.getUserById(targetUserId);
+
+    // Cannot target a user of another firm (404)
+    if (!targetUser || targetUser.firmId !== firmId || targetUser.deletedAt) {
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'User not found in this chamber.',
+      });
+    }
+
+    // Generates a one-time temporary password (random, 12+ chars)
+    const temporaryPassword = generateSecureTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+    // Stores only its hash, sets mustChangePassword=true
+    await db.updateUser(targetUser.id, {
+      passwordHash,
+      mustChangePassword: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      updatedBy: caller.id,
+    });
+
+    // Revokes/invalidates the user's active sessions
+    revokeAllUserSessions(targetUser.id);
+
+    // Writes an audit entry (RESET_PASSWORD, no password in the log)
+    await recordAudit({
+      firmId,
+      userId: caller.id,
+      userName: caller.name,
+      entity: 'User',
+      entityId: targetUser.id,
+      action: 'RESET_PASSWORD',
+      oldValue: { mustChangePassword: targetUser.mustChangePassword },
+      newValue: { mustChangePassword: true, sessionsRevoked: true },
+    });
+
+    // Return the temporary password once in the response
+    return res.status(200).json({
+      success: true,
+      temporaryPassword,
+      message: 'Password reset successfully. Share this temporary password securely with the user.',
+      user: {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        mustChangePassword: true,
+      },
     });
   }
 );

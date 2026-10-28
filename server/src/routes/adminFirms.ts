@@ -5,7 +5,13 @@ import { z } from 'zod';
 import { adminAuthMiddleware, AuthenticatedAdminRequest } from '../middleware/adminAuth.js';
 import { getDatabase } from '../db/client.js';
 import { recordAdminAudit } from '../services/adminAuditService.js';
+import { recordAudit } from '../services/auditService.js';
 import { ALL_PERMISSIONS } from '../db/seed.js';
+import { revokeAllUserSessions } from '../middleware/auth.js';
+import {
+  generateSecureTemporaryPassword,
+  checkResetPasswordRateLimit,
+} from '../services/authService.js';
 
 export const adminFirmsRouter = Router();
 
@@ -721,3 +727,112 @@ adminFirmsRouter.get('/:id/payments', async (req: AuthenticatedAdminRequest, res
   const payments = await db.listPayments(firm.id);
   return res.status(200).json(payments);
 });
+
+// 14. GET /firms/:firmId/users - List users belonging to a firm
+adminFirmsRouter.get('/:firmId/users', async (req: AuthenticatedAdminRequest, res: Response) => {
+  const db = getDatabase();
+  const firm = await db.getFirm(req.params.firmId, true);
+
+  if (!firm) {
+    return res.status(404).json({ error: 'Firm not found' });
+  }
+
+  const users = await db.listUsers(firm.id);
+  return res.status(200).json({
+    users: users.map((u) => ({
+      id: u.id,
+      firmId: u.firmId,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      jobType: u.jobType,
+      jobTitleLabel: u.jobTitleLabel,
+      active: u.active,
+      mustChangePassword: u.mustChangePassword,
+      createdAt: u.createdAt,
+    })),
+  });
+});
+
+// 15. POST /firms/:firmId/users/:userId/reset-password - Platform admin password reset (e.g. for Owner)
+adminFirmsRouter.post(
+  '/:firmId/users/:userId/reset-password',
+  async (req: AuthenticatedAdminRequest, res: Response) => {
+    const { firmId, userId } = req.params;
+    const db = getDatabase();
+
+    const firm = await db.getFirm(firmId, true);
+    if (!firm) {
+      return res.status(404).json({ error: 'Firm not found' });
+    }
+
+    const targetUser = await db.getUserById(userId);
+    if (!targetUser || targetUser.firmId !== firm.id || targetUser.deletedAt) {
+      return res.status(404).json({ error: 'User not found in this firm' });
+    }
+
+    // Rate-limit: max 5 requests per 15 minutes per target user
+    const rateLimitKey = `admin_reset:${firm.id}:${targetUser.id}`;
+    if (!checkResetPasswordRateLimit(rateLimitKey, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        code: 'RATE_LIMITED',
+        message: 'Too many password reset attempts for this user. Please try again later.',
+      });
+    }
+
+    const temporaryPassword = generateSecureTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+    await db.updateUser(targetUser.id, {
+      passwordHash,
+      mustChangePassword: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      updatedBy: req.admin!.id,
+    });
+
+    // Invalidate user active sessions
+    revokeAllUserSessions(targetUser.id);
+
+    // Record in admin_audit (NEVER log raw password or hash!)
+    await recordAdminAudit({
+      adminId: req.admin!.id,
+      action: 'RESET_USER_PASSWORD',
+      targetFirmId: firm.id,
+      old: { mustChangePassword: targetUser.mustChangePassword },
+      new: {
+        userId: targetUser.id,
+        userEmail: targetUser.email,
+        role: targetUser.role,
+        mustChangePassword: true,
+        sessionsRevoked: true,
+      },
+      ip: req.ip,
+    });
+
+    // Also record in firm audit log
+    await recordAudit({
+      firmId: firm.id,
+      userId: req.admin!.id,
+      userName: `Admin: ${req.admin!.email}`,
+      entity: 'User',
+      entityId: targetUser.id,
+      action: 'RESET_PASSWORD',
+      oldValue: { mustChangePassword: targetUser.mustChangePassword },
+      newValue: { mustChangePassword: true, resetBy: 'platform_admin' },
+    });
+
+    return res.status(200).json({
+      message: 'Password reset successfully.',
+      temporaryPassword,
+      user: {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        mustChangePassword: true,
+      },
+    });
+  }
+);

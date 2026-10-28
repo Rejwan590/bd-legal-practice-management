@@ -5,6 +5,7 @@ import { RenewModal } from './RenewModal';
 import { LicenseModal } from './LicenseModal';
 import { PaymentModal } from './PaymentModal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ResponsiveModal } from '../components/ResponsiveModal';
 import {
   ArrowLeft,
   Calendar,
@@ -22,6 +23,10 @@ import {
   CheckCircle,
   XCircle,
   Info,
+  KeyRound,
+  Copy,
+  Check,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface FirmDetailScreenProps {
@@ -34,7 +39,8 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
   const [licenseEvents, setLicenseEvents] = useState<LicenseEvent[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [activeTab, setActiveTab] = useState<'license' | 'payments' | 'devices'>('license');
+  const [firmUsers, setFirmUsers] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'license' | 'payments' | 'devices' | 'users'>('license');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,24 +56,67 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
   const [deviceToRevoke, setDeviceToRevoke] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // User Reset Password States
+  const [userToReset, setUserToReset] = useState<any | null>(null);
+  const [resettingUserPassword, setResettingUserPassword] = useState(false);
+  const [tempPasswordModal, setTempPasswordModal] = useState<{
+    password: string;
+    userName: string;
+    email: string;
+  } | null>(null);
+  const [copiedTempPassword, setCopiedTempPassword] = useState(false);
+
   const fetchFirmDetails = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [detailRes, eventsRes, paymentsRes, devicesRes] = await Promise.all([
+      const [detailRes, eventsRes, paymentsRes, devicesRes, usersRes] = await Promise.all([
         adminApi.getFirm(firmId),
         adminApi.listLicenseEvents(firmId),
         adminApi.listPayments(firmId),
         adminApi.getFirmDevices(firmId),
+        adminApi.listFirmUsers(firmId).catch(() => ({ users: [] })),
       ]);
       setData(detailRes);
       setLicenseEvents(eventsRes);
       setPayments(paymentsRes);
       setDevices(devicesRes.devices);
+      setFirmUsers(usersRes.users || []);
     } catch (err: any) {
       setError(err?.message || 'Failed to load firm details.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmResetUserPassword = async () => {
+    if (!userToReset) return;
+    setResettingUserPassword(true);
+    try {
+      const res = await adminApi.resetUserPassword(firmId, userToReset.id);
+      const targetUser = userToReset;
+      setUserToReset(null);
+      setTempPasswordModal({
+        password: res.temporaryPassword,
+        userName: targetUser.name,
+        email: targetUser.email,
+      });
+      await fetchFirmDetails();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reset user password.');
+    } finally {
+      setResettingUserPassword(false);
+    }
+  };
+
+  const handleCopyTempPassword = async () => {
+    if (!tempPasswordModal?.password) return;
+    try {
+      await navigator.clipboard.writeText(tempPasswordModal.password);
+      setCopiedTempPassword(true);
+      setTimeout(() => setCopiedTempPassword(false), 2000);
+    } catch {
+      // Fallback
     }
   };
 
@@ -354,6 +403,17 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
             <CreditCard className="w-4 h-4" />
             Payments ({payments.length})
           </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 border-b-2 whitespace-nowrap min-h-[44px] ${
+              activeTab === 'users'
+                ? 'border-indigo-500 text-indigo-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Chamber Users ({firmUsers.length})
+          </button>
         </div>
 
         {/* Tab: Devices (Step D: Web-app level browser install authorization) */}
@@ -496,6 +556,61 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
           </div>
         )}
 
+        {/* Tab 4: Users */}
+        {activeTab === 'users' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+            {firmUsers.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">No users found for this chamber firm.</div>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {firmUsers.map((u) => {
+                  const isOwner = u.role === 'Owner';
+                  return (
+                    <div key={u.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-white text-sm">{u.name}</span>
+                          <span
+                            className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                              isOwner
+                                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                          {!u.active && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                              Inactive
+                            </span>
+                          )}
+                          {u.mustChangePassword && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              Password change required
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-mono">{u.email}</div>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setUserToReset(u)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 rounded-xl transition-colors min-h-[36px]"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          Reset Password
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab 2: Payments */}
         {activeTab === 'payments' && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
@@ -518,6 +633,61 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Users */}
+        {activeTab === 'users' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+            {firmUsers.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">No users found for this chamber firm.</div>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {firmUsers.map((u) => {
+                  const isOwner = u.role === 'Owner';
+                  return (
+                    <div key={u.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-white text-sm">{u.name}</span>
+                          <span
+                            className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                              isOwner
+                                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                          {!u.active && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                              Inactive
+                            </span>
+                          )}
+                          {u.mustChangePassword && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              Password change required
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-mono">{u.email}</div>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setUserToReset(u)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 rounded-xl transition-colors min-h-[36px]"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          Reset Password
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -613,6 +783,84 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
           loading={actionLoading}
         />
       )}
+
+      {/* User Password Reset Confirm Modal */}
+      {userToReset && (
+        <ConfirmModal
+          isOpen={true}
+          onClose={() => setUserToReset(null)}
+          onConfirm={handleConfirmResetUserPassword}
+          title="Reset User Password"
+          message={`Are you sure you want to reset the password for ${userToReset.role} ${userToReset.name} (${userToReset.email})? A temporary password will be generated, and all active sessions for this user will be invalidated immediately.`}
+          confirmLabel="Reset Password"
+          variant="warning"
+          loading={resettingUserPassword}
+        />
+      )}
+
+      {/* One-Time Temporary Password Display Modal */}
+      <ResponsiveModal
+        isOpen={Boolean(tempPasswordModal)}
+        onClose={() => {
+          setTempPasswordModal(null);
+          setCopiedTempPassword(false);
+        }}
+        title="Temporary Password Generated"
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs text-slate-300">
+          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 space-y-1">
+            <div className="flex items-center gap-2 font-bold text-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Share Privately</span>
+            </div>
+            <p className="leading-relaxed text-[11px] text-amber-300">
+              Share this temporary password privately with the user. It will not be shown again, and they will be required to change it on their next sign-in.
+            </p>
+          </div>
+
+          <div>
+            <span className="block text-xs font-semibold text-slate-400 mb-1">
+              {tempPasswordModal?.userName} ({tempPasswordModal?.email})
+            </span>
+            <div className="flex items-center gap-2 p-3 bg-slate-950 border border-slate-800 rounded-xl">
+              <span className="font-mono text-sm font-bold text-white select-all flex-1 tracking-wider break-all">
+                {tempPasswordModal?.password}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyTempPassword}
+                className="inline-flex items-center gap-1 min-h-[36px] px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg transition-colors shrink-0"
+              >
+                {copiedTempPassword ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Password</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setTempPasswordModal(null);
+                setCopiedTempPassword(false);
+              }}
+              className="min-h-[44px] px-5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </ResponsiveModal>
     </div>
   );
 };

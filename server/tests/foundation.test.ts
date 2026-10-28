@@ -907,6 +907,161 @@ async function runTests() {
       );
     }
 
+    // ----------------------------------------------------
+    // 11. Admin-Assisted Password Reset & Session Invalidation
+    // ----------------------------------------------------
+    {
+      console.log('\n--- 11. Admin-Assisted Password Reset & Session Invalidation ---');
+
+      // Login as Owner and Staff to get session tokens
+      const ownerLogin = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@firm.bd', password: SEED_PASSWORDS.owner }),
+      });
+      const token = extractToken(ownerLogin);
+
+      const staffLogin = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'staff@firm.bd', password: SEED_PASSWORDS.staff }),
+      });
+      const staffToken = extractToken(staffLogin);
+
+      // Setup: Create a test user in firm-bd-001
+      const db = getDatabase();
+      const testEmail = `reset-victim-${Date.now()}@firm.bd`;
+      const testInitialPassword = 'OriginalPassword123!';
+      const victimUser = await db.insertUser({
+        id: `user-victim-${Date.now()}`,
+        firmId: 'firm-bd-001',
+        name: 'Victim Lawyer',
+        email: testEmail,
+        passwordHash: await bcrypt.hash(testInitialPassword, 10),
+        role: 'Staff',
+        permissions: ['cases.view'],
+        language: 'en',
+        active: true,
+        mustChangePassword: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // 11a. Wrong firm rejected with 404
+      const wrongFirmRes = await fetch(`${baseUrl}/api/v1/users/non-existent-user-id/reset-password`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${token}` },
+      });
+      assert(wrongFirmRes.status === 404, 'Reset password on non-existent or other firm user returns HTTP 404');
+
+      // 11b. Self-reset rejected with 400
+      const meRes = await fetch(`${baseUrl}/auth/me`, {
+        headers: { Cookie: `access_token=${token}` },
+      });
+      const meData = await meRes.json();
+      const selfResetRes = await fetch(`${baseUrl}/api/v1/users/${meData.user.id}/reset-password`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${token}` },
+      });
+      assert(selfResetRes.status === 400, 'Self-reset rejected with HTTP 400 (SELF_RESET_PROHIBITED)');
+
+      // 11c. Staff without permission rejected with 403
+      const staffForbiddenRes = await fetch(`${baseUrl}/api/v1/users/${victimUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${staffToken}` },
+      });
+      assert(staffForbiddenRes.status === 403, 'Staff without users.manage rejected with HTTP 403');
+
+      // 11d. Log in as victim user to obtain active session
+      const victimLoginRes = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail, password: testInitialPassword }),
+      });
+      assert(victimLoginRes.status === 200, 'Victim logs in with original password');
+      const victimToken = extractToken(victimLoginRes);
+
+      // Verify victim session works before reset
+      const victimMeBefore = await fetch(`${baseUrl}/auth/me`, {
+        headers: { Cookie: `access_token=${victimToken}` },
+      });
+      assert(victimMeBefore.status === 200, 'Victim session active before reset (HTTP 200)');
+
+      // 11e. Owner resets victim password
+      const resetRes = await fetch(`${baseUrl}/api/v1/users/${victimUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${token}` },
+      });
+      assert(resetRes.status === 200, 'Owner resets victim password successfully (HTTP 200)');
+      const resetData = await resetRes.json();
+      assert(
+        typeof resetData.temporaryPassword === 'string' && resetData.temporaryPassword.length >= 12,
+        'Response returns random temporary password with 12+ characters'
+      );
+      const tempPass = resetData.temporaryPassword;
+
+      // 11f. Sessions invalidated: previous victimToken now returns 401
+      const victimMeAfter = await fetch(`${baseUrl}/auth/me`, {
+        headers: { Cookie: `access_token=${victimToken}` },
+      });
+      assert(victimMeAfter.status === 401, 'Previous active session invalidated after reset (HTTP 401)');
+
+      // 11g. Old password stops working
+      const oldPassLoginRes = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail, password: testInitialPassword }),
+      });
+      assert(oldPassLoginRes.status === 401, 'Old password rejected after reset (HTTP 401)');
+
+      // 11h. New temp password forces a password change
+      const tempPassLoginRes = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail, password: tempPass }),
+      });
+      assert(tempPassLoginRes.status === 200, 'Login with temporary password succeeds (HTTP 200)');
+      const tempPassLoginData = await tempPassLoginRes.json();
+      assert(
+        tempPassLoginData.user.mustChangePassword === true,
+        'User record has mustChangePassword=true forcing a password change'
+      );
+
+      // 11i. Audit log records RESET_PASSWORD with NO raw password or hash
+      const auditRows = await db.listAudit('firm-bd-001', 50);
+      const resetAudit = auditRows.find(
+        (a) => a.action === 'RESET_PASSWORD' && a.entityId === victimUser.id
+      );
+      assert(Boolean(resetAudit), 'Audit log contains RESET_PASSWORD row for target user');
+      const auditSerialized = JSON.stringify(resetAudit);
+      assert(!auditSerialized.includes(tempPass), 'Audit log contains NO raw temporary password');
+      assert(!auditSerialized.includes('$2a$'), 'Audit log contains NO bcrypt password hash');
+
+      // 11j. Subscription read-only blocks reset-password (HTTP 403)
+      const currentFirm = await db.getFirm('firm-bd-001');
+      const originalExpiry = currentFirm!.licenseExpiresAt;
+      await db.updateFirm('firm-bd-001', {
+        licenseExpiresAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      });
+
+      const readOnlyResetRes = await fetch(`${baseUrl}/api/v1/users/${victimUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${token}` },
+      });
+      assert(
+        readOnlyResetRes.status === 403,
+        'Reset password blocked with HTTP 403 when subscription is read-only'
+      );
+      const readOnlyBody = await readOnlyResetRes.json();
+      assert(
+        readOnlyBody.code === 'SUBSCRIPTION_READ_ONLY',
+        'Read-only error response has SUBSCRIPTION_READ_ONLY code'
+      );
+
+      // Restore original license expiry
+      await db.updateFirm('firm-bd-001', { licenseExpiresAt: originalExpiry });
+    }
+
     console.log(`\n========================================`);
     console.log(`FOUNDATION BACKEND TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
     console.log(`========================================\n`);

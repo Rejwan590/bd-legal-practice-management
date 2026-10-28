@@ -481,6 +481,55 @@ async function runAdminFirmsTests() {
     check(eventTypes.includes('RENEW'), 'license_events recorded RENEW');
     check(eventTypes.includes('SOFT_DELETE'), 'license_events recorded SOFT_DELETE');
 
+    // --- 14. Platform Admin Password Reset ---
+    console.log('\n--- 14. Platform Admin Reset User Password & Auditing ---');
+    // List firm users
+    const usersListRes = await makeRequest(server, `/api/admin/firms/${createdFirmId}/users`, {
+      cookie: adminCookie,
+    });
+    check(usersListRes.status === 200, 'GET /api/admin/firms/:firmId/users returns HTTP 200');
+    check(Array.isArray(usersListRes.body.users) && usersListRes.body.users.length > 0, 'Returns list of firm users');
+
+    const ownerUser = usersListRes.body.users.find((u: any) => u.role === 'Owner') || usersListRes.body.users[0];
+
+    // Reset password on Owner
+    const adminResetRes = await makeRequest(
+      server,
+      `/api/admin/firms/${createdFirmId}/users/${ownerUser.id}/reset-password`,
+      {
+        method: 'POST',
+        cookie: adminCookie,
+      }
+    );
+    check(adminResetRes.status === 200, 'Platform admin resets Owner password successfully (HTTP 200)');
+    check(
+      typeof adminResetRes.body.temporaryPassword === 'string' &&
+        adminResetRes.body.temporaryPassword.length >= 12,
+      'Admin reset returns 12+ character temporary password'
+    );
+    const adminTempPass = adminResetRes.body.temporaryPassword;
+
+    // Verify admin_audit contains RESET_USER_PASSWORD with NO password
+    const latestAdminAudits = await db.listAdminAudit(50);
+    const resetAudit = latestAdminAudits.find(
+      (a) => a.action === 'RESET_USER_PASSWORD' && a.targetFirmId === createdFirmId
+    );
+    check(Boolean(resetAudit), 'admin_audit table contains RESET_USER_PASSWORD entry');
+    const resetAuditStr = JSON.stringify(resetAudit);
+    check(!resetAuditStr.includes(adminTempPass), 'admin_audit contains NO raw temporary password');
+    check(!resetAuditStr.includes('$2a$'), 'admin_audit contains NO password hash');
+
+    // Wrong firm user returns 404
+    const wrongFirmResetRes = await makeRequest(
+      server,
+      `/api/admin/firms/non-existent-firm/users/${ownerUser.id}/reset-password`,
+      {
+        method: 'POST',
+        cookie: adminCookie,
+      }
+    );
+    check(wrongFirmResetRes.status === 404, 'Reset password on invalid firm returns HTTP 404');
+
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

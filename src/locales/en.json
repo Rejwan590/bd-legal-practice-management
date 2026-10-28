@@ -628,7 +628,16 @@
     "demoteToStaff": "Demote to Staff",
     "deactivateModalTitle": "Deactivate Team Member",
     "deactivateWarningText": "Deactivating ends all active sessions and devices immediately without deleting historical records. You may optionally reassign their ongoing cases, scheduled hearings, and open tasks to another active lawyer.",
-    "reassignOpenWorkTo": "Reassign open cases, hearings & tasks to (Optional)"
+    "reassignOpenWorkTo": "Reassign open cases, hearings & tasks to (Optional)",
+    "resetPassword": "Reset Password",
+    "resetPasswordConfirmTitle": "Reset User Password",
+    "resetPasswordConfirmMessage": "Are you sure you want to reset the password for {{name}} ({{email}})? A new temporary password will be generated, and all active sessions for this user will be terminated immediately.",
+    "temporaryPasswordTitle": "Temporary Password Generated",
+    "temporaryPasswordWarning": "Share this temporary password privately with the user. It will not be shown again, and they will be required to change it on their next sign-in.",
+    "copyPassword": "Copy Password",
+    "copied": "Copied!",
+    "resetPasswordSuccess": "Password reset successfully.",
+    "resetPasswordError": "Failed to reset password."
   },
   "health": {
     "title": "System Diagnostic & Health Check",

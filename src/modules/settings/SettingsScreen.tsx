@@ -32,6 +32,9 @@ import {
   GitBranch,
   Shield,
   RefreshCw,
+  KeyRound,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 export const SettingsScreen: React.FC = () => {
@@ -78,8 +81,54 @@ export const SettingsScreen: React.FC = () => {
   const [coverToLawyerId, setCoverToLawyerId] = useState<string>('');
   const [reassigningTeam, setReassigningTeam] = useState(false);
 
+  // Reset Password states
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [temporaryPasswordResult, setTemporaryPasswordResult] = useState<{
+    password: string;
+    userName: string;
+    email: string;
+  } | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
+
   const canManageSettings = can('settings.manage');
   const canManageUsers = currentUser.role === 'Owner' || can('users.manage');
+
+  const handleConfirmResetPassword = async () => {
+    if (!resetTarget || !firm) return;
+    setResettingPassword(true);
+    setErrorMsg(null);
+    try {
+      const res = await repos.user.resetPassword(
+        { currentUser },
+        resetTarget.id
+      );
+      const targetName = resetTarget.name;
+      const targetEmail = resetTarget.email;
+      setResetTarget(null);
+      setTemporaryPasswordResult({
+        password: res.temporaryPassword,
+        userName: targetName,
+        email: targetEmail,
+      });
+      setSuccessMsg(t('settings.resetPasswordSuccess'));
+    } catch (err: any) {
+      setErrorMsg(err?.message || t('settings.resetPasswordError'));
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  const handleCopyTemporaryPassword = async () => {
+    if (!temporaryPasswordResult?.password) return;
+    try {
+      await navigator.clipboard.writeText(temporaryPasswordResult.password);
+      setCopiedPassword(true);
+      setTimeout(() => setCopiedPassword(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -418,6 +467,17 @@ export const SettingsScreen: React.FC = () => {
                 <Edit2 className="w-3.5 h-3.5" />
                 {t('common.edit')}
               </button>
+              {parent.id !== currentUser.id && !isDeactivated && (
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(parent)}
+                  className="min-h-[36px] inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition"
+                  title={t('settings.resetPassword')}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  {t('settings.resetPassword')}
+                </button>
+              )}
               {parent.id !== currentUser.id && (
                 isDeactivated ? (
                   <button
@@ -959,6 +1019,17 @@ export const SettingsScreen: React.FC = () => {
                       >
                         {t('common.edit')}
                       </button>
+                      {user.id !== currentUser.id && !isDeactivated && (
+                        <button
+                          type="button"
+                          onClick={() => setResetTarget(user)}
+                          className="min-h-[36px] inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition"
+                          title={t('settings.resetPassword')}
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          {t('settings.resetPassword')}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleToggleRole(user)}
@@ -1238,6 +1309,116 @@ export const SettingsScreen: React.FC = () => {
                   </option>
                 ))}
             </select>
+          </div>
+        </div>
+      </ResponsiveModal>
+
+      {/* Reset Password Confirmation Modal */}
+      <ResponsiveModal
+        isOpen={Boolean(resetTarget)}
+        onClose={() => setResetTarget(null)}
+        title={t('settings.resetPasswordConfirmTitle')}
+        icon={KeyRound}
+        maxWidth="md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setResetTarget(null)}
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={resettingPassword}
+              onClick={handleConfirmResetPassword}
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-xl disabled:opacity-50"
+            >
+              {resettingPassword ? t('common.loading') : t('settings.resetPassword')}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4 text-xs text-slate-700">
+          <p className="leading-relaxed">
+            {resetTarget &&
+              t('settings.resetPasswordConfirmMessage', {
+                name: resetTarget.name,
+                email: resetTarget.email,
+              })}
+          </p>
+          {resetTarget && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl font-semibold text-amber-900 flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                {resetTarget.name} ({resetTarget.email})
+              </span>
+            </div>
+          )}
+        </div>
+      </ResponsiveModal>
+
+      {/* One-Time Temporary Password Display Modal */}
+      <ResponsiveModal
+        isOpen={Boolean(temporaryPasswordResult)}
+        onClose={() => {
+          setTemporaryPasswordResult(null);
+          setCopiedPassword(false);
+        }}
+        title={t('settings.temporaryPasswordTitle')}
+        icon={KeyRound}
+        maxWidth="md"
+        footer={
+          <button
+            type="button"
+            onClick={() => {
+              setTemporaryPasswordResult(null);
+              setCopiedPassword(false);
+            }}
+            className="w-full sm:w-auto min-h-[44px] px-5 py-2 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-xl"
+          >
+            {t('common.done', { defaultValue: 'Done' })}
+          </button>
+        }
+      >
+        <div className="space-y-4 text-xs text-slate-700">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+            <div className="flex items-center gap-2 font-bold text-amber-950">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{t('settings.temporaryPasswordTitle')}</span>
+            </div>
+            <p className="leading-relaxed text-[11px] text-amber-900">
+              {t('settings.temporaryPasswordWarning')}
+            </p>
+          </div>
+
+          <div>
+            <span className="block text-xs font-semibold text-slate-700 mb-1">
+              {temporaryPasswordResult?.userName} ({temporaryPasswordResult?.email})
+            </span>
+            <div className="flex items-center gap-2 p-3 bg-slate-100 border border-slate-300 rounded-xl">
+              <span className="font-mono text-sm font-bold text-slate-900 select-all flex-1 tracking-wider break-all">
+                {temporaryPasswordResult?.password}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyTemporaryPassword}
+                className="inline-flex items-center gap-1 min-h-[36px] px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-lg shadow-2xs transition shrink-0"
+              >
+                {copiedPassword ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">{t('settings.copied')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{t('settings.copyPassword')}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </ResponsiveModal>

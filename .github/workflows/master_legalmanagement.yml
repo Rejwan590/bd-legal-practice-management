@@ -59,6 +59,11 @@ jobs:
       - name: Install server dependencies
         run: npm ci --prefix server
 
+      - name: Prepare test database
+        run: |
+          npm run db:migrate --prefix server
+          npm run db:seed --prefix server
+
       - name: Run server test suite against PostgreSQL 16
         env:
           CI: "true"

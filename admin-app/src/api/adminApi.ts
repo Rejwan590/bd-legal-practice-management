@@ -125,6 +125,22 @@ export const adminApi = {
     });
   },
 
+  async listFirmUsers(firmId: string): Promise<{ users: any[] }> {
+    return adminFetch<{ users: any[] }>(`/api/admin/firms/${firmId}/users`);
+  },
+
+  async resetUserPassword(
+    firmId: string,
+    userId: string
+  ): Promise<{ message: string; temporaryPassword: string; user: any }> {
+    return adminFetch<{ message: string; temporaryPassword: string; user: any }>(
+      `/api/admin/firms/${firmId}/users/${userId}/reset-password`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
   // License & Payments
   async updateLicense(
     id: string,

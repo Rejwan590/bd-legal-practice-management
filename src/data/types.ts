@@ -30,7 +30,8 @@ export type AuditAction =
   | 'BACKUP_EXPORT'
   | 'BACKUP_RESTORE'
   | 'SUBSCRIPTION_RENEW'
-  | 'SUBSCRIPTION_UPDATE';
+  | 'SUBSCRIPTION_UPDATE'
+  | 'RESET_PASSWORD';
 
 export interface AuditLogRecord {
   id: string;

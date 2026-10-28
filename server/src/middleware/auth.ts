@@ -21,6 +21,7 @@ export interface TokenPayload {
   email: string;
   deviceId?: string;
   deviceKeyHash?: string;
+  iatMs?: number;
 }
 
 export function generateAccessToken(user: schema.User, device?: schema.Device): string {
@@ -32,11 +33,13 @@ export function generateAccessToken(user: schema.User, device?: schema.Device): 
     email: user.email,
     deviceId: device?.id,
     deviceKeyHash: device?.deviceKeyHash,
+    iatMs: Date.now(),
   };
   return jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
 const revokedTokens = new Set<string>();
+const userRevocationTimestamps = new Map<string, number>();
 
 export function revokeToken(token: string): void {
   revokedTokens.add(token);
@@ -48,6 +51,21 @@ export function isTokenRevoked(token: string): boolean {
 
 export function clearRevokedTokens(): void {
   revokedTokens.clear();
+}
+
+export function revokeAllUserSessions(userId: string): void {
+  userRevocationTimestamps.set(userId, Date.now());
+}
+
+export function areUserSessionsRevoked(userId: string, tokenIssuedAtMs?: number): boolean {
+  const revokedAt = userRevocationTimestamps.get(userId);
+  if (!revokedAt) return false;
+  if (!tokenIssuedAtMs) return true;
+  return tokenIssuedAtMs <= revokedAt;
+}
+
+export function clearUserSessionRevocations(): void {
+  userRevocationTimestamps.clear();
 }
 
 export async function authMiddleware(
@@ -73,11 +91,21 @@ export async function authMiddleware(
     }
 
     const secret = getJwtSecret();
-    const payload = jwt.verify(token, secret) as TokenPayload & { type?: string };
+    const payload = jwt.verify(token, secret) as TokenPayload & { iat?: number; type?: string };
     if (payload.type === 'platform_admin' || !payload.firmId || !payload.userId) {
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Platform admin token cannot be used for firm endpoints.',
+      });
+    }
+
+    const tokenIssuedMs = payload.iatMs ?? (payload.iat ? payload.iat * 1000 : undefined);
+    if (areUserSessionsRevoked(payload.userId, tokenIssuedMs)) {
+      revokeToken(token);
+      return res.status(401).json({
+        error: 'Unauthorized',
+        code: 'SESSION_INVALIDATED',
+        message: 'Session has been invalidated. Please log in again.',
       });
     }
     const db = getDatabase();

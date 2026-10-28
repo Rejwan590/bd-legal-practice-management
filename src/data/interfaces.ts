@@ -112,6 +112,10 @@ export interface IUserRepository {
     fromLawyerId: string,
     toLawyerId: string
   ): Promise<{ success: boolean; affectedUserIds: string[] }>;
+  resetPassword(
+    context: SecurityContext,
+    targetUserId: string
+  ): Promise<{ temporaryPassword: string; message?: string }>;
 }
 
 export interface IFirmRepository {

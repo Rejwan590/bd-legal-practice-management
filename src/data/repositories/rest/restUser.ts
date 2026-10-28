@@ -111,4 +111,16 @@ export class RestUserRepository implements IUserRepository {
       }
     );
   }
+
+  async resetPassword(
+    _context: SecurityContext,
+    targetUserId: string
+  ): Promise<{ temporaryPassword: string; message?: string }> {
+    return restFetch<{ temporaryPassword: string; message?: string }>(
+      `/users/${targetUserId}/reset-password`,
+      {
+        method: 'POST',
+      }
+    );
+  }
 }

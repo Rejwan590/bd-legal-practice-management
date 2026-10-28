@@ -659,4 +659,54 @@ export class MockUserRepository implements IUserRepository {
 
     return { success: true, affectedUserIds };
   }
+
+  async resetPassword(
+    context: SecurityContext,
+    targetUserId: string
+  ): Promise<{ temporaryPassword: string; message?: string }> {
+    this.assertCanManageUsers(context);
+    const { currentUser } = context;
+
+    if (targetUserId === currentUser.id) {
+      throw new Error('Cannot reset your own password');
+    }
+
+    const store = localStore.getData();
+    const targetUser = store.users.find(
+      (u) => u.id === targetUserId && u.firmId === currentUser.firmId && u.deletedAt === null
+    );
+    if (!targetUser) {
+      throw new Error('User not found in this chamber');
+    }
+
+    // Generate random temporary password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+    let tempPassword = 'Temp_';
+    for (let i = 0; i < 11; i++) {
+      tempPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const now = new Date().toISOString();
+    localStore.mutate((s) => {
+      const u = s.users.find((user) => user.id === targetUserId);
+      if (u) {
+        u.mustChangePassword = true;
+        u.updatedAt = now;
+        u.updatedBy = currentUser.id;
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'User',
+      entityId: targetUserId,
+      action: 'RESET_PASSWORD',
+      oldValue: { mustChangePassword: targetUser.mustChangePassword },
+      newValue: { mustChangePassword: true },
+    });
+
+    return {
+      temporaryPassword: tempPassword,
+      message: 'Password reset successfully',
+    };
+  }
 }

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { getDatabase } from '../db/client.js';
 import { generateAccessToken } from '../middleware/auth.js';
@@ -61,6 +62,56 @@ export function validatePasswordStrength(password: string): { isValid: boolean; 
     return { isValid: false, message: 'Password must contain at least one special character.' };
   }
   return { isValid: true };
+}
+
+export function generateSecureTemporaryPassword(): string {
+  const lettersUpper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lettersLower = 'abcdefghijkmnopqrstuvwxyz';
+  const numbers = '23456789';
+  const symbols = '!@#$%^&*';
+  const allChars = lettersUpper + lettersLower + numbers + symbols;
+
+  // Guarantee at least one of each required character type
+  const picked = [
+    lettersUpper[crypto.randomInt(lettersUpper.length)],
+    lettersLower[crypto.randomInt(lettersLower.length)],
+    numbers[crypto.randomInt(numbers.length)],
+    symbols[crypto.randomInt(symbols.length)],
+  ];
+  // Fill remaining to 16 characters total
+  for (let i = 0; i < 12; i++) {
+    picked.push(allChars[crypto.randomInt(allChars.length)]);
+  }
+  // Fisher-Yates shuffle
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [picked[i], picked[j]] = [picked[j], picked[i]];
+  }
+  return picked.join('');
+}
+
+const resetPasswordRateLimiter = new Map<string, { count: number; resetAt: number }>();
+
+export function checkResetPasswordRateLimit(
+  key: string,
+  limit = 5,
+  windowMs = 15 * 60 * 1000
+): boolean {
+  const now = Date.now();
+  const entry = resetPasswordRateLimiter.get(key);
+  if (!entry || now > entry.resetAt) {
+    resetPasswordRateLimiter.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= limit) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
+export function clearResetPasswordRateLimits(): void {
+  resetPasswordRateLimiter.clear();
 }
 
 export async function loginUser(
