@@ -12,6 +12,22 @@ export const FORBIDDEN_DB_URLS = [
   'postgres://bd_legal_user:bd_legal_secret_password@localhost:5432/bd_legal_db',
 ];
 
+export type CookieSameSite = 'lax' | 'none' | 'strict';
+
+/**
+ * Returns the configured SameSite policy for session cookies.
+ * Configured via COOKIE_SAMESITE (lax | none | strict).
+ * Defaults to 'lax' across all environments.
+ * Note: 'none' is only used for cross-site deployments (e.g. Vercel frontend + Azure API).
+ */
+export function getCookieSameSite(defaultVal: CookieSameSite = 'lax'): CookieSameSite {
+  const envVal = (process.env.COOKIE_SAMESITE || '').trim().toLowerCase();
+  if (envVal === 'none' || envVal === 'strict' || envVal === 'lax') {
+    return envVal as CookieSameSite;
+  }
+  return defaultVal;
+}
+
 export function isServerlessRuntime(): boolean {
   return Boolean(
     process.env.VERCEL ||

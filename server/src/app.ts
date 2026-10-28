@@ -20,6 +20,7 @@ import { adminAuthRouter } from './routes/adminAuth.js';
 import { adminFirmsRouter } from './routes/adminFirms.js';
 import { adminDevicesRouter } from './routes/adminDevices.js';
 import { devicesRouter } from './routes/devices.js';
+import { originCheckMiddleware } from './middleware/originCheck.js';
 import { validateStartupConfig } from './config.js';
 
 export function createApp() {
@@ -48,14 +49,14 @@ export function createApp() {
           if (allowedOrigins.includes(origin)) {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(null, false);
           }
         } else {
           const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
           if (allowedOrigins.includes(origin) || isLocalhost) {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(null, false);
           }
         }
       },
@@ -65,9 +66,12 @@ export function createApp() {
   app.use(cookieParser());
   app.use(express.json());
 
-  // Mount health check at both root and /api/v1
+  // Mount health check at both root and /api/v1 (health check is exempt from origin check)
   app.use('/api/v1', healthRouter);
   app.use('/', healthRouter);
+
+  // CSRF / Origin Protection Middleware applied to /api/v1, /auth, and /api/admin
+  app.use(['/api/v1', '/auth', '/api/admin'], originCheckMiddleware);
 
   // Mount auth routes at both /auth and /api/v1/auth (per prompt specifications)
   app.use('/auth', authRouter);

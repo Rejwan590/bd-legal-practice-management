@@ -17,6 +17,22 @@ const isRestMode =
 
 const getApiBase = () => (isRestMode ? getApiBaseUrl() : 'http://localhost:4000/api/v1');
 
+const emptyUser: UserRecord = {
+  id: '',
+  firmId: '',
+  name: '',
+  email: '',
+  role: 'Staff',
+  permissions: [],
+  language: 'en',
+  active: true,
+  createdAt: '',
+  updatedAt: '',
+  deletedAt: null,
+  createdBy: '',
+  updatedBy: '',
+};
+
 interface AuthContextType {
   currentUser: UserRecord;
   currentFirm: FirmRecord | null;
@@ -35,9 +51,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserRecord>(INITIAL_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<UserRecord>(isRestMode ? emptyUser : INITIAL_USERS[0]);
   const [currentFirm, setCurrentFirm] = useState<FirmRecord | null>(null);
-  const [usersList, setUsersList] = useState<UserRecord[]>(INITIAL_USERS);
+  const [usersList, setUsersList] = useState<UserRecord[]>(isRestMode ? [] : INITIAL_USERS);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!isRestMode);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -46,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshState = async () => {
     try {
       if (isRestMode) {
-        // In REST mode, verify session via /auth/me
+        // In REST mode, verify session strictly via /auth/me. Never use INITIAL_USERS or mock users.
         const authUrl = getApiBase().replace('/api/v1', '') + '/auth/me';
         const res = await fetch(authUrl, {
           credentials: 'include',
@@ -57,10 +73,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCurrentUser(data.user);
           setCurrentFirm(data.firm);
           setIsAuthenticated(true);
-          const users = await repos.user.list({ currentUser: data.user });
-          setUsersList(users);
+          // usersList stays empty or is loaded from GET /users only for users who may manage users
+          if (checkPermission('users.manage', data.user) || data.user.role === 'Owner') {
+            try {
+              const users = await repos.user.list({ currentUser: data.user });
+              setUsersList(users);
+            } catch {
+              setUsersList([]);
+            }
+          } else {
+            setUsersList([]);
+          }
         } else {
           setIsAuthenticated(false);
+          setCurrentUser(emptyUser);
+          setUsersList([]);
         }
       } else {
         // In Mock mode
@@ -78,7 +105,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error('Failed to refresh auth state:', err);
-      if (isRestMode) setIsAuthenticated(false);
+      if (isRestMode) {
+        setIsAuthenticated(false);
+        setCurrentUser(emptyUser);
+        setUsersList([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -159,6 +190,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         console.error('Logout error:', err);
       }
+      setCurrentUser(emptyUser);
+      setUsersList([]);
     }
     localStorage.removeItem('bd_legal_active_user_id');
     setIsAuthenticated(false);
@@ -181,6 +214,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentFirm]);
 
   const switchUser = async (userId: string) => {
+    // In REST mode, user switching is prohibited
+    if (isRestMode) return;
+
     const targetUser = usersList.find((u) => u.id === userId);
     if (!targetUser) return;
 

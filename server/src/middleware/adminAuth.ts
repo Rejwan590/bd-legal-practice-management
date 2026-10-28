@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../db/client.js';
 import * as schema from '../db/schema.js';
-import { getAdminJwtSecret } from '../config.js';
+import { getAdminJwtSecret, getCookieSameSite } from '../config.js';
 import { isTokenRevoked } from './auth.js';
 
 export const ADMIN_COOKIE_NAME = 'admin_access_token';
@@ -31,10 +31,11 @@ export function generateAdminAccessToken(admin: schema.PlatformAdmin): string {
 
 export function getAdminCookieOptions() {
   const isProd = process.env.NODE_ENV === 'production';
+  const sameSite = getCookieSameSite('strict');
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: (isProd ? 'none' : 'strict') as 'none' | 'strict',
+    secure: isProd || sameSite === 'none',
+    sameSite,
     maxAge: ADMIN_COOKIE_MAX_AGE_MS,
     path: '/',
   };

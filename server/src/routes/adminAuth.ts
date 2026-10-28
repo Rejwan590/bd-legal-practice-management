@@ -34,20 +34,20 @@ adminAuthRouter.post('/login', async (req: Request, res: Response) => {
   // Set httpOnly secure sameSite strict cookie
   res.cookie(ADMIN_COOKIE_NAME, token, getAdminCookieOptions());
 
-  // Record audit entry for admin login
+  // Record audit log for successful login
   await recordAdminAudit({
     adminId: admin.id,
     action: 'ADMIN_LOGIN',
     ip: req.ip,
   });
 
-  // Zero token returned in JSON body (cookie-only security)
-  res.json({
-    success: true,
+  return res.status(200).json({
     admin: {
       id: admin.id,
       email: admin.email,
       active: admin.active,
+      createdAt: admin.createdAt,
+      updatedAt: admin.updatedAt,
     },
   });
 });
@@ -57,7 +57,7 @@ adminAuthRouter.post('/logout', async (req: Request, res: Response) => {
   const token = req.cookies?.[ADMIN_COOKIE_NAME];
 
   if (token) {
-    // Revoke token server-side immediately
+    // Revoke token server-side
     revokeToken(token);
 
     try {
@@ -76,12 +76,12 @@ adminAuthRouter.post('/logout', async (req: Request, res: Response) => {
   }
 
   // Clear admin cookie
-  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOpts = getAdminCookieOptions();
   res.clearCookie(ADMIN_COOKIE_NAME, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: (isProd ? 'none' : 'strict') as 'none' | 'strict',
-    path: '/',
+    httpOnly: cookieOpts.httpOnly,
+    secure: cookieOpts.secure,
+    sameSite: cookieOpts.sameSite,
+    path: cookieOpts.path,
   });
 
   res.json({
@@ -124,4 +124,3 @@ adminAuthRouter.get('/audit', adminAuthMiddleware, async (req: AuthenticatedAdmi
     offset,
   });
 });
-

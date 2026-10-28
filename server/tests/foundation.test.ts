@@ -110,7 +110,76 @@ async function runTests() {
         prodServer.close();
         process.env.NODE_ENV = prevEnv;
         process.env.CORS_ORIGIN = prevCors;
-        process.env.DATABASE_URL = prevDbUrl;
+      }
+    }
+
+    // 0.2 CSRF & Origin Protection Middleware Tests
+    {
+      console.log('\n--- Test 0.2: CSRF & Origin Protection Middleware ---');
+      const prevEnv = process.env.NODE_ENV;
+      const prevCors = process.env.CORS_ORIGIN;
+      const prevSameSite = process.env.COOKIE_SAMESITE;
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ORIGIN = 'https://firm-portal.bd';
+      process.env.COOKIE_SAMESITE = 'none';
+      process.env.SEED_OWNER_PASSWORD = SEED_PASSWORDS.owner;
+      process.env.SEED_STAFF_PASSWORD = SEED_PASSWORDS.staff;
+
+      const originApp = createApp();
+      const originServer = http.createServer(originApp);
+      await new Promise<void>((resolve) => originServer.listen(0, '127.0.0.1', () => resolve()));
+      const originAddr = originServer.address() as any;
+      const originBaseUrl = `http://127.0.0.1:${originAddr.port}`;
+
+      try {
+        // 1. POST with a foreign Origin is rejected (403)
+        const foreignRes = await fetch(`${originBaseUrl}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://evil.attacker.com',
+          },
+          body: JSON.stringify({ email: 'owner@firm.bd', password: SEED_PASSWORDS.owner }),
+        });
+        assert(foreignRes.status === 403, 'POST with a foreign Origin is rejected (403)');
+
+        // 2. POST with the allowed Origin works
+        const allowedRes = await fetch(`${originBaseUrl}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://firm-portal.bd',
+          },
+          body: JSON.stringify({ email: 'owner@firm.bd', password: SEED_PASSWORDS.owner }),
+        });
+        assert(allowedRes.status === 200, 'POST with the allowed Origin works');
+        const validCookie = extractCookie(allowedRes);
+
+        // 3. GET is unaffected
+        const getRes = await fetch(`${originBaseUrl}/auth/me`, {
+          method: 'GET',
+          headers: {
+            Origin: 'https://evil.attacker.com',
+            Cookie: validCookie,
+          },
+        });
+        assert(getRes.status === 200, 'GET is unaffected');
+
+        // 4. missing Origin on a cookie-authenticated POST is rejected
+        const missingOriginRes = await fetch(`${originBaseUrl}/api/v1/cases`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: validCookie,
+          },
+          body: JSON.stringify({ title: 'Test Case' }),
+        });
+        assert(missingOriginRes.status === 403, 'missing Origin on a cookie-authenticated POST is rejected');
+      } finally {
+        originServer.close();
+        process.env.NODE_ENV = prevEnv;
+        if (prevCors !== undefined) process.env.CORS_ORIGIN = prevCors; else delete process.env.CORS_ORIGIN;
+        if (prevSameSite !== undefined) process.env.COOKIE_SAMESITE = prevSameSite; else delete process.env.COOKIE_SAMESITE;
       }
     }
 

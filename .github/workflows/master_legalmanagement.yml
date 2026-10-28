@@ -1,3 +1,4 @@
+# Configure the "production" environment with required reviewers in GitHub > Settings > Environments.
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
@@ -10,45 +11,127 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
+    name: Lint, Build, and Test against PostgreSQL 16
     runs-on: ubuntu-latest
-    permissions:
-      contents: read #This is required for actions/checkout
+
+    env:
+      DATABASE_URL: "postgres://bd_legal_test_user:bd_legal_test_password@localhost:5432/bd_legal_test_db"
+      JWT_SECRET: "ci_jwt_secret_key_at_least_32_characters_long_12345"
+      ADMIN_JWT_SECRET: "ci_admin_jwt_secret_key_at_least_32_characters_9876"
+      SEED_OWNER_PASSWORD: "BdLegal_ci_owner_password_123!"
+      SEED_STAFF_PASSWORD: "BdLegal_ci_staff_password_123!"
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bd_legal_test_db
+          POSTGRES_USER: bd_legal_test_user
+          POSTGRES_PASSWORD: bd_legal_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bd_legal_test_user -d bd_legal_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: 22
+          cache: 'npm'
 
-      - name: npm install, build, and test
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run root linter
+        run: npm run lint
+
+      - name: Build root frontend
+        run: npm run build
+
+      - name: Install server dependencies
+        run: npm ci --prefix server
+
+      - name: Run server test suite against PostgreSQL 16
+        env:
+          CI: "true"
+        run: npm test --prefix server
+
+      - name: Install admin-app dependencies
+        run: npm ci --prefix admin-app
+
+      - name: Build admin-app
+        run: npm run build --prefix admin-app
+
+  build:
+    name: Build and package production artifacts
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install root dependencies & build frontend
         run: |
-          npm install
-          npm run build --if-present
-          npm install --prefix server
+          npm ci
+          npm run build
+
+      - name: Install server dependencies & build server
+        run: |
+          npm ci --prefix server
           npm run build --prefix server
+
+      - name: Prune server to production dependencies
+        run: |
+          npm prune --prefix server --production
+
+      - name: Stage deployment package
+        run: |
+          mkdir -p deploy-pkg/server
+          cp -r dist deploy-pkg/
+          cp package.json deploy-pkg/
+          cp -r server/dist deploy-pkg/server/
+          cp -r server/drizzle deploy-pkg/server/ || true
+          cp server/package.json deploy-pkg/server/
+          cp server/package-lock.json deploy-pkg/server/
+          cp -r server/node_modules deploy-pkg/server/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: deploy-pkg
+          retention-days: 7
 
   deploy:
+    name: Deploy to Azure Web App
     runs-on: ubuntu-latest
-    needs: build
+    needs: [test, build]
+    environment: production
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # Required for requesting the JWT
+      contents: read  # Required for actions/checkout
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -56,11 +139,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_AB7B672D82E5482281BFB2340074D437 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_3859BCC52FCF4FC68C4B722A03AAB2A6 }}
 
-      - name: 'Deploy to Azure Web App'
+      - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'legalmanagement'
           slot-name: 'Production'
           package: .
-          

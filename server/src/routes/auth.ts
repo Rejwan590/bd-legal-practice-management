@@ -3,8 +3,16 @@ import { loginUser } from '../services/authService.js';
 import { authMiddleware, AuthenticatedRequest, revokeToken, generateAccessToken } from '../middleware/auth.js';
 import { evaluateServerSubscription, enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { recordAudit } from '../services/auditService.js';
+import { getCookieSameSite } from '../config.js';
 
 export const authRouter = Router();
+
+function getAuthCookieOptions() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSite = getCookieSameSite('lax');
+  const secure = isProd || sameSite === 'none';
+  return { sameSite, secure };
+}
 
 // POST /login
 authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
@@ -26,15 +34,14 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     deviceName,
   });
 
-  const isProd = process.env.NODE_ENV === 'production';
-  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
+  const { sameSite, secure } = getAuthCookieOptions();
 
   // Always set or refresh the device_key httpOnly cookie if returned
   if ((result as any).deviceKey) {
     res.cookie('device_key', (result as any).deviceKey, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: sameSitePolicy,
+      secure,
+      sameSite,
       maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
     });
   }
@@ -51,8 +58,8 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
   // Set httpOnly access token cookie
   res.cookie('access_token', result.token, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: sameSitePolicy,
+    secure,
+    sameSite,
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
@@ -72,14 +79,13 @@ authRouter.post('/logout', async (req: AuthenticatedRequest, res: Response) => {
     revokeToken(token);
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
-  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
+  const { sameSite, secure } = getAuthCookieOptions();
 
   // Clear access_token cookie (keep device_key so browser identity is preserved across logouts)
   res.clearCookie('access_token', {
     httpOnly: true,
-    sameSite: sameSitePolicy,
-    secure: isProd,
+    sameSite,
+    secure,
   });
 
   return res.status(200).json({ message: 'Logged out successfully' });
@@ -92,13 +98,12 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
   }
 
   // Slide session: re-issue fresh access_token cookie to prevent sudden 15-minute logouts
-  const isProd = process.env.NODE_ENV === 'production';
-  const sameSitePolicy = isProd ? ('none' as const) : ('lax' as const);
+  const { sameSite, secure } = getAuthCookieOptions();
   const freshToken = generateAccessToken(req.user, req.device);
   res.cookie('access_token', freshToken, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: sameSitePolicy,
+    secure,
+    sameSite,
     maxAge: 15 * 60 * 1000,
   });
 
