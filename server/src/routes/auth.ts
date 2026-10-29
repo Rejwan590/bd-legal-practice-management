@@ -9,9 +9,14 @@ export const authRouter = Router();
 
 function getAuthCookieOptions() {
   const isProd = process.env.NODE_ENV === 'production';
-  const sameSite = getCookieSameSite('lax');
+  const sameSite = getCookieSameSite(isProd ? 'none' : 'lax');
   const secure = isProd || sameSite === 'none';
-  return { sameSite, secure };
+  return {
+    httpOnly: true,
+    sameSite,
+    secure,
+    path: '/',
+  };
 }
 
 // POST /login
@@ -34,14 +39,12 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     deviceName,
   });
 
-  const { sameSite, secure } = getAuthCookieOptions();
+  const cookieOpts = getAuthCookieOptions();
 
   // Always set or refresh the device_key httpOnly cookie if returned
   if ((result as any).deviceKey) {
     res.cookie('device_key', (result as any).deviceKey, {
-      httpOnly: true,
-      secure,
-      sameSite,
+      ...cookieOpts,
       maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
     });
   }
@@ -57,9 +60,7 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
 
   // Set httpOnly access token cookie
   res.cookie('access_token', result.token, {
-    httpOnly: true,
-    secure,
-    sameSite,
+    ...cookieOpts,
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
@@ -79,13 +80,14 @@ authRouter.post('/logout', async (req: AuthenticatedRequest, res: Response) => {
     revokeToken(token);
   }
 
-  const { sameSite, secure } = getAuthCookieOptions();
+  const cookieOpts = getAuthCookieOptions();
 
   // Clear access_token cookie (keep device_key so browser identity is preserved across logouts)
   res.clearCookie('access_token', {
-    httpOnly: true,
-    sameSite,
-    secure,
+    httpOnly: cookieOpts.httpOnly,
+    sameSite: cookieOpts.sameSite,
+    secure: cookieOpts.secure,
+    path: cookieOpts.path,
   });
 
   return res.status(200).json({ message: 'Logged out successfully' });
@@ -98,12 +100,10 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
   }
 
   // Slide session: re-issue fresh access_token cookie to prevent sudden 15-minute logouts
-  const { sameSite, secure } = getAuthCookieOptions();
+  const cookieOpts = getAuthCookieOptions();
   const freshToken = generateAccessToken(req.user, req.device);
   res.cookie('access_token', freshToken, {
-    httpOnly: true,
-    secure,
-    sameSite,
+    ...cookieOpts,
     maxAge: 15 * 60 * 1000,
   });
 

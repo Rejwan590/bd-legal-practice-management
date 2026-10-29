@@ -3,6 +3,19 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Chamber Member Cross-Origin Cookie & Sign-In 401 Fix (Completed & Verified Live)**:
+  - **Root Cause Diagnosed**: In `server/src/routes/auth.ts`, `getAuthCookieOptions()` was calling `getCookieSameSite('lax')` without `path: '/'`. Because `COOKIE_SAMESITE` was absent in Azure App Service settings, `access_token` and `device_key` were issued with `SameSite=Lax`. Cross-site requests from the Vercel frontend (`bd-legal-practice-management.vercel.app`) to the Azure API (`legalmanagement-...azurewebsites.net`) dropped the `SameSite=Lax` cookies, causing immediate 401 Unauthorized responses on `/auth/me`, `/api/v1/clients`, and `/api/v1/audit-log`, forcing the frontend to bounce the user back to the login screen.
+  - **Azure App Service Configuration**: Set `COOKIE_SAMESITE=none` on Azure App Service `legalmanagement` in resource group `BD-Legal`.
+  - **Cookie Security & Path Hardening (`server/src/routes/auth.ts`)**:
+    - Updated `getAuthCookieOptions` to default to `isProd ? 'none' : 'lax'`.
+    - Explicitly set `path: '/'` on all auth cookies (`access_token`, `device_key`) and clearCookie operations so cookies are sent across all API routes (`/auth/*`, `/api/v1/*`).
+  - **Verification & End-to-End Live Testing**:
+    - `npm run lint`: 0 errors.
+    - `npm run build` and `npm run build:admin`: 0 errors.
+    - `npm test --prefix server`: 601 tests passed, 0 failed.
+    - `npm run test:health`: 87/87 checks passed.
+    - Live Browser Testing via Chrome DevTools: Navigated to `https://bd-legal-practice-management.vercel.app`, entered credentials (`owner@firm.bd`), logged in smoothly into the dashboard, navigated to Clients Directory (all 3 clients loaded) and Cases Register (cases loaded), with 200/304 statuses on all subsequent API calls and zero 401 bounces.
+
 - [x] **Production Admin Routing, Deployment Build & Auth Isolation Pass (Completed)**:
   - **Root Cause Diagnosed**: Vercel was executing single `vite build` outputting only the Chamber Member SPA to `dist`. When visiting `/admin`, Vercel served `dist/index.html` (Member SPA) instead of the admin application. The Member SPA booted up, called `/auth/me` -> 401, followed by member API requests (`/api/v1/clients`, `/api/v1/audit-log`), rendering "Chamber Member Sign In".
   - **Dual Build in Root `package.json`**: Root `build` script updated to `vite build && npm run build --prefix admin-app`. `admin-app/vite.config.ts` configured with `outDir: '../dist/admin'` and `base: '/admin/'`, producing `dist/index.html` (Member SPA) and `dist/admin/index.html` + `dist/admin/assets/` (Admin SPA).
