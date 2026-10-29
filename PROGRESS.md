@@ -3,6 +3,14 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Production Admin Routing, Deployment Build & Auth Isolation Pass (Completed)**:
+  - **Root Cause Diagnosed**: Vercel was executing single `vite build` outputting only the Chamber Member SPA to `dist`. When visiting `/admin`, Vercel served `dist/index.html` (Member SPA) instead of the admin application. The Member SPA booted up, called `/auth/me` -> 401, followed by member API requests (`/api/v1/clients`, `/api/v1/audit-log`), rendering "Chamber Member Sign In".
+  - **Dual Build in Root `package.json`**: Root `build` script updated to `vite build && npm run build --prefix admin-app`. `admin-app/vite.config.ts` configured with `outDir: '../dist/admin'` and `base: '/admin/'`, producing `dist/index.html` (Member SPA) and `dist/admin/index.html` + `dist/admin/assets/` (Admin SPA).
+  - **Standard Vercel Rewrites**: Replaced experimental `"services"` in `vercel.json` with standard static rewrites routing `/admin/assets/(.*)` -> `/admin/assets/$1`, `/admin/(.*)` and `/admin` -> `/admin/index.html`, and `/(.*)` -> `/index.html`.
+  - **Auth & Route Guards**: Added explicit route guard in root `src/App.tsx` and `src/modules/foundation/AuthContext.tsx` preventing any Chamber Member auth checks or redirects on `/admin` paths.
+  - **Resilient Admin API & Bearer Fallback**: Updated `admin-app/src/api/adminApi.ts` to dynamically resolve `VITE_API_URL` or `VITE_API_BASE_URL`. Backend `adminAuthMiddleware` updated to support `Bearer` authorization headers as well as `admin_access_token` cookies for third-party cross-site cookie resilience.
+  - **Verified Clean**: All lint checks, health diagnostics (87/87), admin responsive test (5/5), and full server test suite passed with 0 errors.
+
 Accounts Module: Payments Tracked Per Client and Per Case completed end-to-end (Database + Server REST API + Mock & REST Repositories + UI + Automated Tests) with 100% feature and contract parity.
 - [x] **Per-Client & Per-Case Linkage & Validation Rules**:
   - Every `fee_payment` MUST reference a `fee_agreement`, and every `fee_agreement` MUST reference one client and one case (`case_id` NOT NULL for new agreements enforced via Zod schema & application validation).

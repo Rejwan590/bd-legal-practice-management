@@ -54,7 +54,10 @@ adminAuthRouter.post('/login', async (req: Request, res: Response) => {
 
 // POST /api/admin/auth/logout
 adminAuthRouter.post('/logout', async (req: Request, res: Response) => {
-  const token = req.cookies?.[ADMIN_COOKIE_NAME];
+  let token = req.cookies?.[ADMIN_COOKIE_NAME];
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
 
   if (token) {
     // Revoke token server-side

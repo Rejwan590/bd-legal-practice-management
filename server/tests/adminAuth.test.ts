@@ -351,6 +351,39 @@ async function runAdminAuthTests() {
       (a) => a.adminId === createdAdmin.id && a.action === 'ADMIN_LOGOUT'
     );
     assert(Boolean(logoutAudit), 'admin_audit table records ADMIN_LOGOUT action');
+
+    // ----------------------------------------------------
+    // 8. Bearer Header Support & Separate Auth Isolation
+    // ----------------------------------------------------
+    console.log('\n--- 8. Bearer Header Support & Auth Separation Invariants ---');
+    const freshLoginRes = await fetch(`${baseUrl}/api/admin/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testAdminEmail, password: testAdminPassword }),
+    });
+    const sec8Cookie = extractCookie(freshLoginRes, ADMIN_COOKIE_NAME)!;
+    assert(Boolean(sec8Cookie), 'Fresh login yields valid admin cookie');
+
+    // Admin request with Bearer authorization header works
+    const bearerMeRes = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { Authorization: `Bearer ${sec8Cookie}` },
+    });
+    assert(bearerMeRes.status === 200, 'Admin request with Bearer header succeeds (HTTP 200)');
+    const bearerMeBody = await bearerMeRes.json();
+    assert(bearerMeBody.admin.email === testAdminEmail, 'Bearer request returns correct admin identity');
+
+    // Member route /auth/me strictly rejects admin token (HTTP 401)
+    const adminOnMemberMe = await fetch(`${baseUrl}/auth/me`, {
+      headers: { Authorization: `Bearer ${sec8Cookie}`, Cookie: `access_token=${sec8Cookie}` },
+    });
+    assert(adminOnMemberMe.status === 401, 'Member /auth/me strictly rejects admin token (HTTP 401)');
+
+    // Missing admin session returns 401 JSON and never member sign-in HTML
+    const noSessionAdminRes = await fetch(`${baseUrl}/api/admin/auth/me`);
+    assert(noSessionAdminRes.status === 401, 'Missing admin session returns HTTP 401');
+    const noSessionAdminBody = await noSessionAdminRes.json();
+    assert(noSessionAdminBody.error === 'Unauthorized', 'Missing admin session returns JSON error object');
+    assert(noSessionAdminBody.message === 'No active admin session found.', 'Returns exact admin error message');
   } finally {
     server.close();
   }

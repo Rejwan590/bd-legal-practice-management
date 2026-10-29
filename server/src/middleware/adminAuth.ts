@@ -31,7 +31,7 @@ export function generateAdminAccessToken(admin: schema.PlatformAdmin): string {
 
 export function getAdminCookieOptions() {
   const isProd = process.env.NODE_ENV === 'production';
-  const sameSite = getCookieSameSite('strict');
+  const sameSite = getCookieSameSite(isProd ? 'none' : 'strict');
   return {
     httpOnly: true,
     secure: isProd || sameSite === 'none',
@@ -47,7 +47,10 @@ export async function adminAuthMiddleware(
   next: NextFunction
 ) {
   try {
-    const token = req.cookies?.[ADMIN_COOKIE_NAME];
+    let token = req.cookies?.[ADMIN_COOKIE_NAME];
+    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
 
     if (!token) {
       return res.status(401).json({
@@ -84,6 +87,17 @@ export async function adminAuthMiddleware(
     }
 
     req.admin = admin;
+
+    // Slide session for cookie-authenticated requests if less than 10 minutes remain
+    if (req.cookies?.[ADMIN_COOKIE_NAME] && (payload as any).exp) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const remainingSec = (payload as any).exp - nowSec;
+      if (remainingSec < 10 * 60) {
+        const freshToken = generateAdminAccessToken(admin);
+        res.cookie(ADMIN_COOKIE_NAME, freshToken, getAdminCookieOptions());
+      }
+    }
+
     next();
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'TokenExpiredError') {

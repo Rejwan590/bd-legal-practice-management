@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -9,20 +8,13 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   base: '/admin/',
+  build: {
+    outDir: path.resolve(rootDir, '../dist/admin'),
+    emptyOutDir: true,
+  },
   plugins: [
     react(),
     tailwindcss(),
-    {
-      name: 'copy-admin-assets-for-vercel',
-      closeBundle() {
-        const srcAssets = path.resolve(rootDir, 'dist', 'assets');
-        const destAssets = path.resolve(rootDir, 'dist', 'admin', 'assets');
-        if (fs.existsSync(srcAssets)) {
-          fs.mkdirSync(path.dirname(destAssets), { recursive: true });
-          fs.cpSync(srcAssets, destAssets, { recursive: true });
-        }
-      },
-    },
   ],
   server: {
     port: 3001,

@@ -60,6 +60,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const repos = useMemo(() => getRepositories(), []);
 
   const refreshState = async () => {
+    // If running in an admin route context, skip member auth checks entirely.
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+      setIsLoading(false);
+      return;
+    }
     try {
       if (isRestMode) {
         // In REST mode, verify session strictly via /auth/me. Never use INITIAL_USERS or mock users.

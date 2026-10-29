@@ -22,6 +22,17 @@ function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();
   const { route, navigateToScreen } = useNavigation();
 
+  // Route guard: if the URL path is /admin or /admin/*, redirect to the Admin Console
+  // to ensure the Chamber Member app is never mistakenly rendered for admin routes.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    window.location.replace('/admin/');
+    return (
+      <div className="min-h-[100dvh] bg-slate-950 flex items-center justify-center text-slate-400 text-sm">
+        Redirecting to Super Admin Console...
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-[100dvh] bg-slate-900 flex items-center justify-center">

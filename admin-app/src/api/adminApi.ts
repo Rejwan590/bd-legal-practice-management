@@ -11,11 +11,57 @@ import {
   FirmDevicesResponse,
 } from '../types/adminTypes';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+function getAdminApiBase(): string {
+  if (typeof import.meta !== 'undefined') {
+    if (import.meta.env?.VITE_API_URL) {
+      return (import.meta.env.VITE_API_URL as string).replace(/\/+$/, '');
+    }
+    if (import.meta.env?.VITE_API_BASE_URL) {
+      return (import.meta.env.VITE_API_BASE_URL as string).replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+    }
+  }
+  return '';
+}
+
+const API_BASE = getAdminApiBase();
+const ADMIN_TOKEN_KEY = 'bd_legal_admin_token';
+let inMemoryAdminToken: string | null = null;
+
+export function getAdminToken(): string | null {
+  if (inMemoryAdminToken) return inMemoryAdminToken;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function setAdminToken(token: string | null): void {
+  inMemoryAdminToken = token;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      if (token) {
+        sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+      } else {
+        sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
 
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${path}`;
   const headers = new Headers(options.headers || {});
+
+  const token = getAdminToken();
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
 
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -24,7 +70,7 @@ async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T
   const res = await fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // Security: strictly use httpOnly admin_access_token cookie
+    credentials: 'include', // Cross-origin cookie if enabled + Bearer header fallback
   });
 
   const contentType = res.headers.get('content-type') || '';
@@ -48,15 +94,23 @@ async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T
 
 export const adminApi = {
   // Auth
-  async login(email: string, password: string): Promise<{ success: boolean; admin: PlatformAdmin }> {
-    return adminFetch<{ success: boolean; admin: PlatformAdmin }>('/api/admin/auth/login', {
+  async login(email: string, password: string): Promise<{ success: boolean; admin: PlatformAdmin; token?: string }> {
+    const res = await adminFetch<{ success: boolean; admin: PlatformAdmin; token?: string }>('/api/admin/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    if (res.token) {
+      setAdminToken(res.token);
+    }
+    return res;
   },
 
   async logout(): Promise<void> {
-    await adminFetch('/api/admin/auth/logout', { method: 'POST' });
+    try {
+      await adminFetch('/api/admin/auth/logout', { method: 'POST' });
+    } finally {
+      setAdminToken(null);
+    }
   },
 
   async getMe(): Promise<{ admin: PlatformAdmin }> {

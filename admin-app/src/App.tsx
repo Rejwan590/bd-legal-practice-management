@@ -14,7 +14,7 @@ export const App: React.FC = () => {
   const [selectedFirmId, setSelectedFirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check session on load (using admin httpOnly cookie)
+    // Check session on load (using admin httpOnly cookie or stored token)
     adminApi
       .getMe()
       .then((res) => {
@@ -27,6 +27,28 @@ export const App: React.FC = () => {
         setLoading(false);
       });
   }, []);
+
+  // Periodic sliding session refresh: keep session active while admin tab is open
+  useEffect(() => {
+    if (!admin) return;
+
+    // Refresh every 5 minutes while active/visible
+    const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        adminApi
+          .getMe()
+          .then((res) => {
+            setAdmin(res.admin);
+          })
+          .catch(() => {
+            setAdmin(null);
+          });
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [admin]);
 
   const handleLogout = async () => {
     try {
