@@ -92,7 +92,7 @@ export const AppointmentsScreen: React.FC = () => {
         repos.user.list({ currentUser }).catch(() => []),
       ]);
 
-      setAppointments(appts);
+      setAppointments(Array.isArray(appts) ? appts : ((appts as any)?.appointments || []));
 
       const cmap: Record<string, ClientRecord> = {};
       cls.forEach((c) => {

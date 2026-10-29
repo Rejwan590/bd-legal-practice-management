@@ -28,7 +28,9 @@ export function ResponsiveTable<T>({
   className = '',
   children,
 }: ResponsiveTableProps<T>) {
-  if (data.length === 0 && emptyState) {
+  const safeData = Array.isArray(data) ? data : [];
+
+  if (safeData.length === 0 && emptyState) {
     return <div className="w-full">{emptyState}</div>;
   }
 
@@ -36,7 +38,7 @@ export function ResponsiveTable<T>({
     <div className={`w-full ${className}`}>
       {/* Mobile Stacked Card View (< md) */}
       <div className="block md:hidden space-y-3">
-        {data.map((row, idx) => (
+        {safeData.map((row, idx) => (
           <div
             key={keyExtractor(row, idx)}
             onClick={() => onRowClick?.(row)}
@@ -68,7 +70,7 @@ export function ResponsiveTable<T>({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.map((row, rIdx) => (
+              {safeData.map((row, rIdx) => (
                 <tr
                   key={keyExtractor(row, rIdx)}
                   onClick={() => onRowClick?.(row)}

@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Full Application Functional Audit & Production Array Crash Fix (Completed & Verified)**:
+  - **Audit Matrix Created**: Created durable report `FUNCTIONAL_AUDIT.md` covering all 16 modules and 142 functions, endpoints, and workflows (134 PASS, 3 PARTIAL, 5 NOT IMPLEMENTED conforming to AGENTS.md, 0 FAIL).
+  - **Fixed Production `TypeError: e.map is not a function`**:
+    - Identified root cause in `src/data/repositories/rest/restAppointment.ts`: `GET /api/v1/appointments` returns `{ appointments: [...], total }`, but repository returned the raw object as an array. When passed to `ResponsiveTable` or mapped in `ClientProfileView`, `data.map` threw unhandled TypeError.
+    - Updated `restAppointment.ts` to safely unpack `Array.isArray(res) ? res : (Array.isArray(res?.appointments) ? res.appointments : [])`.
+    - Hardened `ResponsiveTable.tsx` with `const safeData = Array.isArray(data) ? data : []`.
+    - Added defensive array checks across `AppointmentsScreen.tsx`, `ClientProfileView.tsx`, `DashboardScreen.tsx`, `restAccounts.ts`, `restCase.ts`, `restClient.ts`, `restHearing.ts`, `restTask.ts`, and `restUser.ts`.
+  - **Added Dedicated Appointments Test Suite**: Created `server/tests/appointments.test.ts` with 25 comprehensive integration tests (creation, validation, overlap detection, audit logging, reschedule history, soft delete, read-only subscription enforcement).
+  - **Full Automated Verification Results**:
+    - `npm run lint`: 0 errors.
+    - `npm test --prefix server`: 626 tests passed, 0 failed across all 12 test suites.
+    - `npm run test:health`: 87/87 diagnostics passed.
+    - `npm run build; npm run build:admin`: 0 errors.
+    - Chrome DevTools E2E: Verified member login, hard page reload, dashboard navigation, clients directory, and cases register.
+
 - [x] **Chamber Member Cross-Origin Cookie & Sign-In 401 Fix (Completed & Verified Live)**:
   - **Root Cause Diagnosed**: In `server/src/routes/auth.ts`, `getAuthCookieOptions()` was calling `getCookieSameSite('lax')` without `path: '/'`. Because `COOKIE_SAMESITE` was absent in Azure App Service settings, `access_token` and `device_key` were issued with `SameSite=Lax`. Cross-site requests from the Vercel frontend (`bd-legal-practice-management.vercel.app`) to the Azure API (`legalmanagement-...azurewebsites.net`) dropped the `SameSite=Lax` cookies, causing immediate 401 Unauthorized responses on `/auth/me`, `/api/v1/clients`, and `/api/v1/audit-log`, forcing the frontend to bounce the user back to the login screen.
   - **Azure App Service Configuration**: Set `COOKIE_SAMESITE=none` on Azure App Service `legalmanagement` in resource group `BD-Legal`.

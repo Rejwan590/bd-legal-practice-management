@@ -24,7 +24,7 @@ export class RestTaskRepository implements ITaskRepository {
     const qs = params.toString() ? `?${params.toString()}` : '';
 
     const res = await restFetch<{ tasks: TaskRecord[]; total: number } | TaskRecord[]>(`/tasks${qs}`);
-    return Array.isArray(res) ? res : res.tasks;
+    return Array.isArray(res) ? res : (Array.isArray((res as any)?.tasks) ? (res as any).tasks : []);
   }
 
   async getById(_context: SecurityContext, id: string): Promise<TaskRecord | null> {

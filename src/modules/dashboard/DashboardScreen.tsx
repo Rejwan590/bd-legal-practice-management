@@ -121,7 +121,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
       setUpcomingHearings(up);
       setRecentActivities(act);
       setTodayCauseList(cause);
-      setTodayAppointments(u?.todayAppointments || []);
+      setTodayAppointments(Array.isArray(u?.todayAppointments) ? u.todayAppointments : []);
 
       const cmap: Record<string, ClientRecord> = {};
       cls.forEach((c: ClientRecord) => {
@@ -754,7 +754,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {todayAppointments.map((appt) => {
+                    {(Array.isArray(todayAppointments) ? todayAppointments : []).map((appt) => {
                       const start = new Date(appt.startsAt);
                       const end = new Date(appt.endsAt);
                       const client = appt.clientId ? clientsMap[appt.clientId] : null;

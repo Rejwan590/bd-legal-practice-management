@@ -5,7 +5,8 @@ import { restFetch } from './restCommon';
 
 export class RestUserRepository implements IUserRepository {
   async list(_context: SecurityContext): Promise<UserRecord[]> {
-    return restFetch<UserRecord[]>('/users');
+    const res = await restFetch<UserRecord[]>('/users');
+    return Array.isArray(res) ? res : ((res as any)?.users || []);
   }
 
   async getById(_context: SecurityContext, id: string): Promise<UserRecord | null> {

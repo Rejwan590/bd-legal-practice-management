@@ -119,10 +119,10 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
         repos.client.getPhoto({ currentUser }, clientId).catch(() => null),
       ]);
       setClient(cl);
-      setCases(clientCases);
-      setTasks(clientTasks);
-      setFiles(clientFiles);
-      setAppointments(clientAppointments || []);
+      setCases(Array.isArray(clientCases) ? clientCases : []);
+      setTasks(Array.isArray(clientTasks) ? clientTasks : ((clientTasks as any)?.tasks || []));
+      setFiles(Array.isArray(clientFiles) ? clientFiles : []);
+      setAppointments(Array.isArray(clientAppointments) ? clientAppointments : ((clientAppointments as any)?.appointments || []));
 
       if (photoRec?.dataUrl) {
         setPhotoDataUrl(photoRec.dataUrl);
@@ -704,7 +704,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {appointments.map((appt) => (
+                {(Array.isArray(appointments) ? appointments : []).map((appt) => (
                   <div
                     key={appt.id}
                     data-testid={`client-appointment-${appt.id}`}

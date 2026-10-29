@@ -26,7 +26,8 @@ export class RestAccountsRepository implements IAccountsRepository {
   }
 
   async getClientBalances(_context: SecurityContext): Promise<ClientBalanceOverview[]> {
-    return restFetch<ClientBalanceOverview[]>('/accounts/client-balances');
+    const res = await restFetch<ClientBalanceOverview[]>('/accounts/client-balances');
+    return Array.isArray(res) ? res : [];
   }
 
   async listAgreements(
@@ -163,7 +164,8 @@ export class RestAccountsRepository implements IAccountsRepository {
   }
 
   async listExpenseCategories(_context: SecurityContext): Promise<ExpenseCategory[]> {
-    return restFetch<ExpenseCategory[]>('/expenses/categories');
+    const res = await restFetch<ExpenseCategory[]>('/expenses/categories');
+    return Array.isArray(res) ? res : [];
   }
 
   async listExpenses(

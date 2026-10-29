@@ -24,7 +24,10 @@ export class RestAppointmentRepository implements IAppointmentRepository {
     if (filter?.caseId) params.set('caseId', filter.caseId);
     if (filter?.search) params.set('search', filter.search);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    return restFetch<AppointmentRecord[]>(`/appointments${qs}`);
+    const res = await restFetch<{ appointments?: AppointmentRecord[]; total?: number } | AppointmentRecord[]>(
+      `/appointments${qs}`
+    );
+    return Array.isArray(res) ? res : (Array.isArray(res?.appointments) ? res.appointments : []);
   }
 
   async getById(_context: SecurityContext, id: string): Promise<AppointmentRecord | null> {
