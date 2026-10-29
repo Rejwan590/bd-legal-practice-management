@@ -114,12 +114,12 @@ export const HearingsScreen: React.FC = () => {
       ]);
 
       const cmap: Record<string, CaseRecord> = {};
-      casesData.forEach((c) => {
+      (Array.isArray(casesData) ? casesData : []).forEach((c) => {
         cmap[c.id] = c;
       });
       setCasesMap(cmap);
 
-      let filtered = hearingsData;
+      let filtered = Array.isArray(hearingsData) ? hearingsData : [];
 
       // Filter by Cause List Date if in causelist mode
       if (viewMode === 'causelist') {

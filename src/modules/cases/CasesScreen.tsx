@@ -186,7 +186,8 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
     );
   }
 
-  const uniqueCourts = Array.from(new Set(cases.map((c) => c.court)));
+  const safeCases = Array.isArray(cases) ? cases : [];
+  const uniqueCourts = Array.from(new Set(safeCases.map((c) => c.court)));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full">

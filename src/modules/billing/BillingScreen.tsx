@@ -36,13 +36,13 @@ export const BillingScreen: React.FC = () => {
 
     repos.accounts
       .getClientBalances({ currentUser })
-      .then((res) => setBalances(res))
+      .then((res) => setBalances(Array.isArray(res) ? res : []))
       .catch((err) => setErrorMsg(err instanceof Error ? err.message : 'Failed to load balances'))
       .finally(() => setLoading(false));
   }, [currentUser, repos]);
 
   const filteredBalances = useMemo(() => {
-    let list = balances;
+    let list = Array.isArray(balances) ? balances : [];
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -72,7 +72,7 @@ export const BillingScreen: React.FC = () => {
     let totalOutstanding = 0;
     let totalCredit = 0;
 
-    for (const b of balances) {
+    for (const b of (Array.isArray(balances) ? balances : [])) {
       totalAgreed += b.totalAgreedPaisa;
       totalPaid += b.totalPaidPaisa;
       totalOutstanding += b.outstandingPaisa;

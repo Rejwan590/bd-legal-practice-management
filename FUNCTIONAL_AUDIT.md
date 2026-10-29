@@ -47,6 +47,18 @@
   4. Added complete backend test suite `server/tests/appointments.test.ts` (25 tests).
 - **Verification**: Built and verified clean with 0 TypeScript errors. Tested in live browser: `/appointments` loads cleanly without crash, rendering the table and controls.
 
+### Defect 3: Missing Application Error Boundary & Multi-Module Response Defense
+- **Location**: `src/components/ErrorBoundary.tsx`, `src/App.tsx`, `src/data/repositories/rest/restAudit.ts`, `src/data/repositories/rest/restCommon.ts`, `src/modules/billing/BillingScreen.tsx`, `src/modules/calendar/CalendarScreen.tsx`, `src/modules/cases/CasesScreen.tsx`, `src/modules/files/FilesScreen.tsx`, `src/modules/hearings/HearingsScreen.tsx`, `src/modules/tasks/TasksScreen.tsx`
+- **Severity**: High (P1) — Any uncaught JavaScript runtime exception unmounted the entire application; lack of global error boundaries left users with blank screen; restCommon redirected to /login on 401 even from admin route contexts.
+- **Fix Applied**:
+  1. Created `src/components/ErrorBoundary.tsx` providing visual graceful recovery with error details and one-click "Try Again" state reset.
+  2. Wrapped both top-level `App` and individual tab views in `src/App.tsx` with `<ErrorBoundary>`.
+  3. Hardened `src/data/repositories/rest/restAudit.ts` to unpack both array and `{ logs: [...] }` formats.
+  4. Hardened `src/data/repositories/rest/restCommon.ts` to ensure 401 redirection never redirects away from `/admin` paths.
+  5. Hardened array operations in Billing, Calendar, Cases, Files, Hearings, and Tasks screens.
+  6. Added automated regression test suite `tests/authAndContractHardening.test.ts` (9 tests passing).
+- **Verification**: `npm run test:hardening` passed (9/9). `npm run lint` passed (0 errors). Both frontend bundles built cleanly.
+
 ---
 
 ## 3. Detailed Functional Audit Matrix

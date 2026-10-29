@@ -78,11 +78,11 @@ export const TasksScreen: React.FC = () => {
       setCasesMap(cMap);
 
       const clMap: Record<string, ClientRecord> = {};
-      clientsData.forEach((cl) => {
+      (Array.isArray(clientsData) ? clientsData : []).forEach((cl) => {
         clMap[cl.id] = cl;
       });
       setClientsMap(clMap);
-      setUsers(usersData);
+      setUsers(Array.isArray(usersData) ? usersData : []);
 
       // Determine query filter based on scope
       const filter: { assignedTo?: string; search?: string } = {};
@@ -96,7 +96,7 @@ export const TasksScreen: React.FC = () => {
       }
 
       const tasksData = await repos.task.list({ currentUser }, filter);
-      setTasks(tasksData);
+      setTasks(Array.isArray(tasksData) ? tasksData : []);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to load chamber tasks');
     } finally {

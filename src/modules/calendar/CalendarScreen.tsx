@@ -82,8 +82,8 @@ export const CalendarScreen: React.FC = () => {
         repos.firm.getFirm({ currentUser }),
       ]);
 
-      setEvents(allEvents);
-      setDueReminders(remindersData);
+      setEvents(Array.isArray(allEvents) ? allEvents : []);
+      setDueReminders(Array.isArray(remindersData) ? remindersData : []);
       if (firmRec?.name) {
         setFirmName(firmRec.name);
       }

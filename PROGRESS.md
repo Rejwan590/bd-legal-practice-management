@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Application Error Boundary, Global Contract Hardening & Incident Verification (Completed & Verified)**:
+  - **React Error Boundary Component**: Created `src/components/ErrorBoundary.tsx` providing visual graceful recovery with error details and one-click "Try Again" state reset. Wrapped both top-level `App` and individual tab views in `src/App.tsx`.
+  - **Global Defensive Array Contract Hardening**:
+    - `src/data/repositories/rest/restAudit.ts`: Unpacks both array and `{ logs: [...] }` formats.
+    - `src/data/repositories/rest/restCommon.ts`: Ensures 401 redirection never redirects away from `/admin` paths.
+    - `BillingScreen.tsx`, `CalendarScreen.tsx`, `CasesScreen.tsx`, `FilesScreen.tsx`, `HearingsScreen.tsx`, `TasksScreen.tsx`: All state setters and array mappings defensively guarded with `Array.isArray()`.
+  - **Automated Regression Test Suite**: Created `tests/authAndContractHardening.test.ts` (9 tests covering 401 unauthenticated transitions, session restoration, object response unzipping, error object safety, admin isolation, and tenant integrity).
+  - **Automated Verification**:
+    - `npm run test:hardening`: 9/9 PASSED.
+    - `npm run test:restFetch`: 14/14 PASSED.
+    - `npm run test:health`: 87/87 checks passed.
+    - `npm test --prefix server`: 626/626 tests passed across all 12 test suites.
+    - `npm run lint`: 0 errors.
+    - `npm run build; npm run build:admin`: 0 errors.
+
 - [x] **Full Application Functional Audit & Production Array Crash Fix (Completed & Verified)**:
   - **Audit Matrix Created**: Created durable report `FUNCTIONAL_AUDIT.md` covering all 16 modules and 142 functions, endpoints, and workflows (134 PASS, 3 PARTIAL, 5 NOT IMPLEMENTED conforming to AGENTS.md, 0 FAIL).
   - **Fixed Production `TypeError: e.map is not a function`**:

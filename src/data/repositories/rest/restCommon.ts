@@ -70,7 +70,7 @@ export async function restFetch<T>(
     // 401 Unauthorized handling: trigger login redirect if in browser context
     if (response.status === 401) {
       if (typeof window !== 'undefined' && window.location) {
-        if (!window.location.pathname.includes('/login') && window.location.pathname !== '/') {
+        if (!window.location.pathname.startsWith('/admin') && !window.location.pathname.includes('/login') && window.location.pathname !== '/') {
           window.location.href = '/login';
         }
       }

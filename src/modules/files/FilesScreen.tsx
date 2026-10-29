@@ -80,16 +80,16 @@ export const FilesScreen: React.FC = () => {
         repos.client.list({ currentUser }),
       ]);
 
-      setFiles(filesData);
+      setFiles(Array.isArray(filesData) ? filesData : []);
 
       const caseMap: Record<string, CaseRecord> = {};
-      casesData.forEach((c) => {
+      (Array.isArray(casesData) ? casesData : []).forEach((c) => {
         caseMap[c.id] = c;
       });
       setCases(caseMap);
 
       const clientMap: Record<string, ClientRecord> = {};
-      clientsData.forEach((cl) => {
+      (Array.isArray(clientsData) ? clientsData : []).forEach((cl) => {
         clientMap[cl.id] = cl;
       });
       setClients(clientMap);

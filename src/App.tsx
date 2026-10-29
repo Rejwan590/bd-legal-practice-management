@@ -17,6 +17,7 @@ import { DashboardScreen } from './modules/dashboard/DashboardScreen';
 import { BackupScreen } from './modules/backup/BackupScreen';
 import { GlobalSearchModal } from './modules/search/GlobalSearchModal';
 import { BillingScreen } from './modules/billing/BillingScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -52,36 +53,40 @@ function MainApp() {
 
   return (
     <AppShell>
-      {currentTab === 'health' && <HealthScreen />}
-      {currentTab === 'auditLog' && <AuditLogScreen />}
-      {currentTab === 'settings' && <SettingsScreen />}
-      {currentTab === 'backup' && <BackupScreen />}
-      {currentTab === 'clients' && <ClientsScreen />}
-      {currentTab === 'cases' && <CasesScreen />}
-      {currentTab === 'hearings' && <HearingsScreen />}
-      {currentTab === 'tasks' && <TasksScreen />}
-      {currentTab === 'files' && <FilesScreen />}
-      {currentTab === 'appointments' && <AppointmentsScreen />}
-      {currentTab === 'calendar' && <CalendarScreen />}
-      {currentTab === 'billing' && <BillingScreen />}
-      {currentTab === 'search' && (
-        <GlobalSearchModal
-          isOpen={true}
-          inlinePage={true}
-          onClose={() => navigateToScreen('dashboard')}
-        />
-      )}
-      {currentTab === 'dashboard' && <DashboardScreen />}
+      <ErrorBoundary fallbackTitle="An error occurred while loading this section">
+        {currentTab === 'health' && <HealthScreen />}
+        {currentTab === 'auditLog' && <AuditLogScreen />}
+        {currentTab === 'settings' && <SettingsScreen />}
+        {currentTab === 'backup' && <BackupScreen />}
+        {currentTab === 'clients' && <ClientsScreen />}
+        {currentTab === 'cases' && <CasesScreen />}
+        {currentTab === 'hearings' && <HearingsScreen />}
+        {currentTab === 'tasks' && <TasksScreen />}
+        {currentTab === 'files' && <FilesScreen />}
+        {currentTab === 'appointments' && <AppointmentsScreen />}
+        {currentTab === 'calendar' && <CalendarScreen />}
+        {currentTab === 'billing' && <BillingScreen />}
+        {currentTab === 'search' && (
+          <GlobalSearchModal
+            isOpen={true}
+            inlinePage={true}
+            onClose={() => navigateToScreen('dashboard')}
+          />
+        )}
+        {currentTab === 'dashboard' && <DashboardScreen />}
+      </ErrorBoundary>
     </AppShell>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationProvider>
-        <MainApp />
-      </NavigationProvider>
-    </AuthProvider>
+    <ErrorBoundary fallbackTitle="BD Legal Practice Management Application Error">
+      <AuthProvider>
+        <NavigationProvider>
+          <MainApp />
+        </NavigationProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
