@@ -9,14 +9,15 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "start": "node server/dist/index.js",
-    "build": "vite build && npm run build --prefix admin-app",
+    "build": "vite build",
+    "build:admin": "npm run build --prefix admin-app",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit && tsc --noEmit --project admin-app/tsconfig.json",
     "test:health": "tsx scripts/runHealth.ts",
     "test:restFetch": "tsx tests/restFetch.test.ts",
     "test:responsive": "playwright test",
-    "postinstall": "node --input-type=module -e \"import {execSync} from 'node:child_process';if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){execSync('npm install --prefix server && npm install --prefix admin-app',{stdio:'inherit'});}\""
+    "postinstall": "node --input-type=module -e \"import {execSync} from 'node:child_process';if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){try{execSync('npm install --prefix server',{stdio:'inherit'});}catch(e){console.warn(e.message);}}\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

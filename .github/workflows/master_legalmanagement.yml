@@ -57,7 +57,9 @@ jobs:
         run: npm run lint
 
       - name: Build root and admin frontends
-        run: npm run build
+        run: |
+          npm run build
+          npm run build:admin
 
       - name: Install server dependencies
         run: npm ci --prefix server
@@ -92,6 +94,7 @@ jobs:
           npm ci
           npm ci --prefix admin-app
           npm run build
+          npm run build:admin
 
       - name: Install server dependencies & build server
         run: |
