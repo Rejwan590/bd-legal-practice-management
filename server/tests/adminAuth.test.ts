@@ -7,7 +7,7 @@ import { createApp } from '../src/app.js';
 import { getDatabase, resetDatabaseInstance } from '../src/db/client.js';
 import { validateStartupConfig } from '../src/config.js';
 import { createPlatformAdmin } from '../src/scripts/createPlatformAdmin.js';
-import { ADMIN_COOKIE_NAME, generateAdminAccessToken } from '../src/middleware/adminAuth.js';
+import { ADMIN_COOKIE_NAME, generateAdminAccessToken, getAdminCookieOptions } from '../src/middleware/adminAuth.js';
 import { generateAccessToken } from '../src/middleware/auth.js';
 import { SEED_PASSWORDS } from '../src/db/seed.js';
 
@@ -384,6 +384,87 @@ async function runAdminAuthTests() {
     const noSessionAdminBody = await noSessionAdminRes.json();
     assert(noSessionAdminBody.error === 'Unauthorized', 'Missing admin session returns JSON error object');
     assert(noSessionAdminBody.message === 'No active admin session found.', 'Returns exact admin error message');
+
+    // ----------------------------------------------------
+    // 9. Token Expiration & Sliding Session
+    // ----------------------------------------------------
+    console.log('\n--- 9. Token Expiration & Sliding Session ---');
+    const expiredSecret = process.env.ADMIN_JWT_SECRET!;
+    const expiredAdminToken = jwt.sign(
+      { adminId: createdAdmin.id, email: testAdminEmail, type: 'platform_admin' },
+      expiredSecret,
+      { expiresIn: '-5s' }
+    );
+    const expiredRes = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { Cookie: `${ADMIN_COOKIE_NAME}=${expiredAdminToken}` },
+    });
+    assert(expiredRes.status === 401, 'Expired admin token returns HTTP 401');
+    const expiredBody = await expiredRes.json();
+    assert(expiredBody.error === 'TokenExpired', 'Expired token response has TokenExpired error code');
+    assert(expiredBody.message.includes('expired'), 'Expired token response message indicates expiration');
+
+    // ----------------------------------------------------
+    // 10. Cross-Origin Cookie Options & SameSite Resolution
+    // ----------------------------------------------------
+    console.log('\n--- 10. Cross-Origin Cookie Options Invariants ---');
+    // Test COOKIE_SAMESITE=none
+    const prevEnvSameSite = process.env.COOKIE_SAMESITE;
+    const prevEnvNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.COOKIE_SAMESITE = 'none';
+      const noneOptions = getAdminCookieOptions();
+      assert(noneOptions.sameSite === 'none', 'COOKIE_SAMESITE=none resolves to sameSite none');
+      assert(noneOptions.secure === true, 'sameSite none forces secure: true for browser compliance');
+      assert(noneOptions.httpOnly === true, 'admin cookie maintains httpOnly: true');
+
+      // Test Production default when COOKIE_SAMESITE is unset
+      delete process.env.COOKIE_SAMESITE;
+      process.env.NODE_ENV = 'production';
+      const prodDefaultOptions = getAdminCookieOptions();
+      assert(
+        prodDefaultOptions.sameSite === 'none',
+        'Production defaults to sameSite none when COOKIE_SAMESITE is unset'
+      );
+      assert(prodDefaultOptions.secure === true, 'Production default enforces secure: true');
+    } finally {
+      process.env.COOKIE_SAMESITE = prevEnvSameSite;
+      process.env.NODE_ENV = prevEnvNodeEnv;
+    }
+
+    // ----------------------------------------------------
+    // 11. CORS Header Validation on Admin Routes
+    // ----------------------------------------------------
+    console.log('\n--- 11. CORS Header Validation on Admin Routes ---');
+    // In dev mode, admin-app runs on http://localhost:3001
+    const corsPreflight = await fetch(`${baseUrl}/api/admin/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:3001',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+    assert(corsPreflight.status === 204, 'CORS preflight on admin route returns HTTP 204');
+    const allowOrigin = corsPreflight.headers.get('access-control-allow-origin');
+    assert(
+      allowOrigin === 'http://localhost:3001',
+      'CORS preflight permits configured frontend origin http://localhost:3001'
+    );
+    const allowCredentials = corsPreflight.headers.get('access-control-allow-credentials');
+    assert(allowCredentials === 'true', 'CORS preflight sets allow-credentials: true');
+
+    // Unauthorized origin is rejected by CORS
+    const evilPreflight = await fetch(`${baseUrl}/api/admin/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil-unauthorized-hacker.com',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+    const evilAllow = evilPreflight.headers.get('access-control-allow-origin');
+    assert(
+      !evilAllow || evilAllow !== 'https://evil-unauthorized-hacker.com',
+      'CORS rejects unauthorized origin'
+    );
   } finally {
     server.close();
   }

@@ -9,7 +9,9 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
   - **Standard Vercel Rewrites**: Replaced experimental `"services"` in `vercel.json` with standard static rewrites routing `/admin/assets/(.*)` -> `/admin/assets/$1`, `/admin/(.*)` and `/admin` -> `/admin/index.html`, and `/(.*)` -> `/index.html`.
   - **Auth & Route Guards**: Added explicit route guard in root `src/App.tsx` and `src/modules/foundation/AuthContext.tsx` preventing any Chamber Member auth checks or redirects on `/admin` paths.
   - **Resilient Admin API & Bearer Fallback**: Updated `admin-app/src/api/adminApi.ts` to dynamically resolve `VITE_API_URL` or `VITE_API_BASE_URL`. Backend `adminAuthMiddleware` updated to support `Bearer` authorization headers as well as `admin_access_token` cookies for third-party cross-site cookie resilience.
-  - **Verified Clean**: All lint checks, health diagnostics (87/87), admin responsive test (5/5), and full server test suite passed with 0 errors.
+  - **Token Expiration & Sliding Session**: Configured `adminAuthMiddleware` to slide the session when remaining token lifetime is under 10 minutes on active requests, coupled with a 5-minute visible tab keepalive in `admin-app/src/App.tsx` for true inactivity-based session termination.
+  - **Comprehensive Regression Tests**: Added tests in `server/tests/adminAuth.test.ts` (68/68 passing) covering token expiration (`TokenExpired` 401), cross-origin cookie options resolution (`SameSite=none; Secure` in production), and admin route CORS preflight validation.
+  - **Verified Clean**: All lint checks, health diagnostics (87/87), admin responsive test (5/5), and full server test suite (424/424) passed with 0 errors.
 
 Accounts Module: Payments Tracked Per Client and Per Case completed end-to-end (Database + Server REST API + Mock & REST Repositories + UI + Automated Tests) with 100% feature and contract parity.
 - [x] **Per-Client & Per-Case Linkage & Validation Rules**:
