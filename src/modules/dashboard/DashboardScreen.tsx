@@ -106,13 +106,25 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
       const todayIso = new Date().toISOString();
 
       const [m, u, up, act, cause, cls] = await Promise.all([
-        repos.dashboard.getMetrics(securityContext),
-        repos.dashboard.getUrgentItems(securityContext),
-        repos.dashboard.getUpcomingHearings(securityContext, 7),
+        repos.dashboard.getMetrics(securityContext).catch((err) => {
+          console.error('Failed to load metrics:', err);
+          return null;
+        }),
+        repos.dashboard.getUrgentItems(securityContext).catch((err) => {
+          console.error('Failed to load urgent items:', err);
+          return null;
+        }),
+        repos.dashboard.getUpcomingHearings(securityContext, 7).catch((err) => {
+          console.error('Failed to load upcoming hearings:', err);
+          return [];
+        }),
         can('settings.manage')
           ? repos.auditLog.list(securityContext, { limit: 6 }).catch(() => [])
           : Promise.resolve([]),
-        repos.calendar.getDayCauseList(securityContext, todayIso),
+        repos.calendar.getDayCauseList(securityContext, todayIso).catch((err) => {
+          console.error('Failed to load cause list:', err);
+          return null;
+        }),
         repos.client.list(securityContext).catch(() => []),
       ]);
 
@@ -195,6 +207,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
   const todayFormatted = new Date().toLocaleDateString(
     i18n.language === 'bn' ? 'bn-BD' : 'en-GB',
     {
+      timeZone: 'Asia/Dhaka',
       weekday: 'long',
       year: 'numeric',
       month: 'long',

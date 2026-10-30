@@ -41,6 +41,9 @@ import {
   RestHearingRepository,
   RestTaskRepository,
   RestAccountsRepository,
+  RestDashboardRepository,
+  RestCalendarRepository,
+  RestSearchRepository,
 } from './rest';
 
 // Export all individual classes, helpers, and types
@@ -70,6 +73,10 @@ export {
   RestAppointmentRepository,
   RestHearingRepository,
   RestTaskRepository,
+  RestAccountsRepository,
+  RestDashboardRepository,
+  RestCalendarRepository,
+  RestSearchRepository,
 };
 
 // Single registry of repositories
@@ -128,9 +135,15 @@ const taskRepo: ITaskRepository = isRestMode
   ? new RestTaskRepository()
   : new MockTaskRepository(mockAuditLogRepo, reminderRepo);
 const physicalFileRepo = new MockPhysicalFileRepository(mockAuditLogRepo, reminderRepo);
-const calendarRepo = new MockCalendarRepository();
-const searchRepo = new MockSearchRepository();
-const dashboardRepo = new MockDashboardRepository();
+const calendarRepo: ICalendarRepository = isRestMode
+  ? new RestCalendarRepository()
+  : new MockCalendarRepository();
+const searchRepo: ISearchRepository = isRestMode
+  ? new RestSearchRepository()
+  : new MockSearchRepository();
+const dashboardRepo: IDashboardRepository = isRestMode
+  ? new RestDashboardRepository()
+  : new MockDashboardRepository();
 const backupRepo = new MockBackupRepository(mockAuditLogRepo);
 const accountsRepo: IAccountsRepository = isRestMode
   ? new RestAccountsRepository()

@@ -17,6 +17,7 @@
     "test:health": "tsx scripts/runHealth.ts",
     "test:restFetch": "tsx tests/restFetch.test.ts",
     "test:hardening": "tsx tests/authAndContractHardening.test.ts",
+    "test:dashboard": "tsx tests/dashboard.test.ts",
     "test:responsive": "playwright test",
     "seed:synthetic": "tsx scripts/populateSyntheticData.ts",
     "seed:synthetic:clean": "tsx scripts/populateSyntheticData.ts --clean",

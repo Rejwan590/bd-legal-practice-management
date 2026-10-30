@@ -7,6 +7,7 @@ import {
   SecurityContext,
 } from '../types';
 import { getVisibleCaseIdsForContext } from './case';
+import { getDhakaDateString } from '../../utils/dateUtils';
 
 export class MockDashboardRepository implements IDashboardRepository {
   async getMetrics(context: SecurityContext): Promise<DashboardMetrics> {
@@ -14,7 +15,7 @@ export class MockDashboardRepository implements IDashboardRepository {
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = getDhakaDateString(now);
     const nowMs = now.getTime();
 
     // 1. Cases: use central visibility rule
@@ -32,7 +33,7 @@ export class MockDashboardRepository implements IDashboardRepository {
       if (h.caseId && !allowedCaseIds.has(h.caseId)) return false;
       return true;
     });
-    const todayHearingsCount = hearings.filter((h) => h.scheduledAt.slice(0, 10) === todayStr).length;
+    const todayHearingsCount = hearings.filter((h) => getDhakaDateString(h.scheduledAt) === todayStr).length;
 
     // 4. Tasks: pending & overdue
     let tasks = (store.tasks || []).filter((t) => {
@@ -65,7 +66,7 @@ export class MockDashboardRepository implements IDashboardRepository {
       if (a.caseId && !allowedCaseIds.has(a.caseId)) return false;
       return true;
     });
-    const todayAppointmentsCount = appointments.filter((a) => a.startsAt.slice(0, 10) === todayStr).length;
+    const todayAppointmentsCount = appointments.filter((a) => getDhakaDateString(a.startsAt) === todayStr).length;
 
     // 7. Reminders: active pending reminders
     let reminders = (store.reminders || []).filter(
@@ -112,7 +113,7 @@ export class MockDashboardRepository implements IDashboardRepository {
     const store = localStore.getData();
     const firmId = currentUser.firmId;
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = getDhakaDateString(now);
     const nowMs = now.getTime();
 
     const allowedCaseIds = getVisibleCaseIdsForContext(context);
@@ -121,7 +122,7 @@ export class MockDashboardRepository implements IDashboardRepository {
     const todayHearings = (store.hearings || []).filter((h) => {
       if (h.firmId !== firmId || h.deletedAt !== null) return false;
       if (h.caseId && !allowedCaseIds.has(h.caseId)) return false;
-      return h.scheduledAt.slice(0, 10) === todayStr;
+      return getDhakaDateString(h.scheduledAt) === todayStr;
     });
 
     // Overdue tasks
@@ -154,7 +155,7 @@ export class MockDashboardRepository implements IDashboardRepository {
     const appointments = (store.appointments || []).filter((a) => {
       if (a.firmId !== firmId || a.deletedAt !== null) return false;
       if (a.caseId && !allowedCaseIds.has(a.caseId)) return false;
-      return a.startsAt.slice(0, 10) === todayStr;
+      return getDhakaDateString(a.startsAt) === todayStr;
     });
 
     return {

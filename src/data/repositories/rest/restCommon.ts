@@ -18,8 +18,12 @@ export function createRestError(message: string, status?: number, code?: string)
  * In production builds, throws a clear startup error if VITE_API_BASE_URL is not configured.
  */
 export function getApiBaseUrl(): string {
-  const isDev = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
-  const configuredUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_BASE_URL : undefined;
+  const isDev =
+    (typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV)) ||
+    (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production');
+  const configuredUrl =
+    (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_BASE_URL : undefined) ||
+    (typeof process !== 'undefined' ? process.env?.VITE_API_BASE_URL : undefined);
 
   if (!configuredUrl) {
     if (isDev) {

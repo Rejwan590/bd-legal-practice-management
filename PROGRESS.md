@@ -1908,3 +1908,42 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
   - `fee_agreements`: 51 total (50 synthetic + 1 seed)
   - `fee_payments`: 61 total (60 synthetic + 1 seed)
   - `expenses`: 30 synthetic
+
+
+---
+
+## Dashboard Data-Driven Updates & REST Mode Parity
+- **Status**: [x] COMPLETED & VERIFIED
+- **Problem**:
+  - In production and REST mode (`VITE_DATA_SOURCE=rest`), the dashboard displayed static counts (Active cases: 4, Chamber clients: 3, Today's cause list: 0, Pending tasks: 4, Files in custody: 2, Chamber alerts: 10) that never updated when underlying database records were created, modified, or seeded.
+  - Root cause: `src/data/repositories/index.ts` hardcoded `dashboardRepo = new MockDashboardRepository()`, `calendarRepo = new MockCalendarRepository()`, and `searchRepo = new MockSearchRepository()`. There were no REST implementations in `src/data/repositories/rest/`. Even when the Azure PostgreSQL database had 103 clients, 112 cases, 180 hearings, and 120 tasks, the dashboard was querying `localStore` containing hardcoded prototype items.
+  - Timezone bug: `MockDashboardRepository` and `MockCalendarRepository` sliced UTC timestamps (`toISOString().slice(0, 10)`), which drifted across UTC midnight boundaries and miscalculated Bangladesh Standard Time (`Asia/Dhaka`, UTC+6) daily cause lists and hearings.
+- **Architectural Implementation**:
+  - `src/utils/dateUtils.ts`: Created unified Bangladesh timezone utilities (`getDhakaDateString`, `isSameDhakaDay`, `formatDhakaDate`) pinned to `Asia/Dhaka` ensuring calendar days and cause lists strictly match BST across all repositories and screens.
+  - `src/data/repositories/rest/restDashboard.ts`: Created `RestDashboardRepository` implementing `IDashboardRepository`:
+    - `getMetrics`: Queries `/cases`, `/clients`, `/hearings`, `/tasks`, and `/appointments` via `restFetch` in parallel. Enforces central case visibility (`allowedCaseIds`), filters non-archived non-deleted clients, counts today's hearings in BST (`Asia/Dhaka`), aggregates pending & overdue tasks (respecting Staff assignments), counts today's appointments, and reads physical custody files & alerts.
+    - `getUrgentItems`: Accurately returns today's hearings, today's appointments, overdue tasks, and overdue physical files.
+    - `getUpcomingHearings`: Computes upcoming hearings in the next N days sorted chronologically.
+  - `src/data/repositories/rest/restCalendar.ts`: Created `RestCalendarRepository` implementing `ICalendarRepository`:
+    - `getEvents`: Aggregates and enriches hearings, tasks, appointments, and physical file return events with case numbers, courts, and client names.
+    - `getDayCauseList`: Produces daily cause list filtered by Bangladesh calendar day (`getDhakaDateString(dateIso)`).
+  - `src/data/repositories/rest/restSearch.ts`: Created `RestSearchRepository` implementing `ISearchRepository`:
+    - Powers Global Search (`Cmd+K` / `Ctrl+K` and dashboard search bar) with live search across clients, cases, hearings, tasks, and appointments while strictly enforcing permissions and case visibility.
+  - `src/data/repositories/rest/index.ts` & `src/data/repositories/index.ts`:
+    - Wired `RestDashboardRepository`, `RestCalendarRepository`, and `RestSearchRepository` to activate when `isRestMode` (`VITE_DATA_SOURCE === 'rest'`).
+  - `src/data/repositories/dashboard.ts` & `src/data/repositories/calendar.ts`:
+    - Updated mock repositories to use `getDhakaDateString` for 100% dual-mode parity with Bangladesh timezone conventions.
+  - `src/modules/dashboard/DashboardScreen.tsx`:
+    - Hardened `loadDashboardData` with isolated `.catch()` handlers so individual metric or widget fetch failures do not blank out the dashboard.
+    - Pinned `todayFormatted` banner date to `Asia/Dhaka` timezone.
+  - `src/data/repositories/rest/restCommon.ts`:
+    - Added `process.env.VITE_API_BASE_URL` fallback for Node/test runtime support.
+  - `tests/dashboard.test.ts`:
+    - Added 25 automated assertions covering timezone calculations, dual-mode interface parity, live REST metrics aggregation, urgent items, enriched cause list, and global search.
+- **Verification**:
+  - `npm run test:dashboard`: PASS (25/25 assertions passed)
+  - `npm run test:restFetch`: PASS (14/14 assertions passed)
+  - `npm run test:hardening`: PASS (9/9 assertions passed)
+  - `npm run lint`: PASS (0 errors across main app and admin-app)
+  - `npm run build`: PASS (Vite production bundle generated with 0 errors)
+  - `npm test --prefix server`: PASS (626/626 passed across 12 suites)

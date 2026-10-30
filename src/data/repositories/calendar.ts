@@ -3,6 +3,7 @@ import { ICalendarRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import { CalendarEventRecord, CalendarEventType, SecurityContext } from '../types';
 import { getVisibleCaseIdsForContext } from './case';
+import { getDhakaDateString } from '../../utils/dateUtils';
 
 export class MockCalendarRepository implements ICalendarRepository {
   async getEvents(
@@ -181,9 +182,9 @@ export class MockCalendarRepository implements ICalendarRepository {
     context: SecurityContext,
     dateIso: string
   ): Promise<{ date: string; hearings: CalendarEventRecord[]; firmName: string }> {
-    const targetDay = dateIso.slice(0, 10);
+    const targetDay = getDhakaDateString(dateIso);
     const allEvents = await this.getEvents(context, { type: 'hearing' });
-    const dayHearings = allEvents.filter((e) => e.date.slice(0, 10) === targetDay);
+    const dayHearings = allEvents.filter((e) => getDhakaDateString(e.date) === targetDay);
 
     const store = localStore.getData();
     return {
