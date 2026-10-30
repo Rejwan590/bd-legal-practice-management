@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   Edit2,
   Lock,
+  RotateCcw,
+  FolderArchive,
 } from 'lucide-react';
 
 interface ClientsScreenProps {
@@ -41,6 +43,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
 
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -99,6 +102,30 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
     triggerRefresh();
     setTimeout(() => setSuccessMsg(null), 3000);
   };
+
+  const handleRestoreClient = async (e: React.MouseEvent, clientToRestore: ClientRecord) => {
+    e.stopPropagation();
+    if (!canEdit || isReadOnly) return;
+    try {
+      await repos.client.restore({ currentUser }, clientToRestore.id);
+      setSuccessMsg(t('clients.clientRestored', 'Client restored to active status successfully.'));
+      triggerRefresh();
+      fetchClients();
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to restore client');
+    }
+  };
+
+  const activeCount = clients.filter((c) => !c.archived).length;
+  const archivedCount = clients.filter((c) => Boolean(c.archived)).length;
+  const totalCount = clients.length;
+
+  const displayedClients = clients.filter((c) => {
+    if (statusFilter === 'active') return !c.archived;
+    if (statusFilter === 'archived') return Boolean(c.archived);
+    return true;
+  });
 
   if (!canView) {
     return (
@@ -206,8 +233,78 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
           />
         </div>
         <div className="text-xs font-semibold text-slate-500 px-3 py-2 bg-slate-100 rounded-lg shrink-0 self-center">
-          {t('clients.totalClients')}: {clients.length}
+          {t('clients.totalClients')}: {totalCount}
         </div>
+      </div>
+
+      {/* Status Filter Tabs (Active, Archived, All) */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 flex-wrap">
+        <button
+          type="button"
+          data-testid="filter-active-clients"
+          onClick={() => setStatusFilter('active')}
+          className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition ${
+            statusFilter === 'active'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <span>{t('clients.filterActive', 'Active Clients')}</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              statusFilter === 'active'
+                ? 'bg-slate-800 text-slate-200'
+                : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            {activeCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="filter-archived-clients"
+          onClick={() => setStatusFilter('archived')}
+          className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition ${
+            statusFilter === 'archived'
+              ? 'bg-amber-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <FolderArchive className="w-3.5 h-3.5 text-amber-500" />
+          <span>{t('clients.filterArchived', 'Archived Clients')}</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              statusFilter === 'archived'
+                ? 'bg-amber-800 text-amber-200'
+                : 'bg-amber-50 text-amber-800 border border-amber-200'
+            }`}
+          >
+            {archivedCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="filter-all-clients"
+          onClick={() => setStatusFilter('all')}
+          className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition ${
+            statusFilter === 'all'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <span>{t('clients.filterAll', 'All Clients')}</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              statusFilter === 'all'
+                ? 'bg-slate-800 text-slate-200'
+                : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            {totalCount}
+          </span>
+        </button>
       </div>
 
       {/* Clients List */}
@@ -215,11 +312,15 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center text-slate-400 text-sm">
           {t('common.loading')}
         </div>
-      ) : clients.length === 0 ? (
+      ) : displayedClients.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center space-y-3">
           <Users className="w-10 h-10 text-slate-300 mx-auto" />
-          <p className="text-sm text-slate-500">{t('clients.noClientsFound')}</p>
-          {canEdit && !isReadOnly && (
+          <p className="text-sm text-slate-500">
+            {statusFilter === 'archived'
+              ? t('clients.noArchivedClients', 'No archived clients found.')
+              : t('clients.noClientsFound')}
+          </p>
+          {canEdit && !isReadOnly && statusFilter !== 'archived' && (
             <button
               onClick={() => {
                 setEditingClient(null);
@@ -234,7 +335,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
         </div>
       ) : (
         <ResponsiveTable<ClientRecord>
-          data={clients}
+          data={displayedClients}
           keyExtractor={(client) => client.id}
           onRowClick={(client) => openClientProfile(client.id, 'cases')}
           columns={[
@@ -306,6 +407,18 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                   className="flex items-center justify-end gap-1.5"
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {client.archived && canEdit && !isReadOnly && (
+                    <button
+                      type="button"
+                      data-testid={`restore-client-${client.id}`}
+                      onClick={(e) => handleRestoreClient(e, client)}
+                      className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold rounded-lg transition"
+                      title={t('clients.restoreClient', 'Restore Client')}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{t('clients.restoreClient', 'Restore')}</span>
+                    </button>
+                  )}
                   {canEdit && !isReadOnly && (
                     <button
                       onClick={() => {
@@ -367,9 +480,19 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               </div>
 
               <div
-                className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100"
+                className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 flex-wrap"
                 onClick={(e) => e.stopPropagation()}
               >
+                {client.archived && canEdit && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleRestoreClient(e, client)}
+                    className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold rounded-lg transition"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{t('clients.restoreClient', 'Restore')}</span>
+                  </button>
+                )}
                 <button
                   onClick={() => openClientProfile(client.id, 'cases')}
                   className="min-h-[44px] flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition border border-indigo-200/60"

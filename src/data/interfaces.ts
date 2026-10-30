@@ -167,6 +167,7 @@ export interface IClientRepository {
   ): Promise<ClientRecord>;
   delete(context: SecurityContext, id: string): Promise<{ success: boolean; softDeleted: true }>;
   archive(context: SecurityContext, id: string): Promise<ClientRecord>;
+  restore(context: SecurityContext, id: string): Promise<ClientRecord>;
   getLinkedOverview(context: SecurityContext, clientId: string): Promise<ClientLinkedOverview>;
   getPhoto(context: SecurityContext, clientId: string): Promise<ClientPhotoRecord | null>;
   savePhoto(context: SecurityContext, clientId: string, mime: string, bytes: string): Promise<ClientPhotoRecord>;

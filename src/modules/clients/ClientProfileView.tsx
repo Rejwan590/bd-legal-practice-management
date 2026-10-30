@@ -13,6 +13,7 @@ import {
 import { EntityLink } from '../../components/EntityLink';
 import { Breadcrumbs } from '../../components/Breadcrumbs';
 import { ClientAvatar, invalidateClientPhotoCache } from '../../components/ClientAvatar';
+import { CameraCaptureModal } from '../../components/CameraCaptureModal';
 import { ClientNotesPanel } from './ClientNotesPanel';
 import { resizeClientPhoto } from '../../utils/photoResizer';
 import { formatCasePartyTitle } from '../../data/caseRoles';
@@ -92,6 +93,8 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,12 +156,12 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     };
   }, [loadClientHub, refreshVersion, setActiveClientContext]);
 
-  const handlePhotoUpload = async (file: File) => {
-    if (!file || isReadOnly || !canManageClient) return;
+  const handlePhotoUpload = async (fileOrBlob: File | Blob) => {
+    if (!fileOrBlob || isReadOnly || !canManageClient) return;
     setPhotoUploading(true);
     setErrorMsg(null);
     try {
-      const resized = await resizeClientPhoto(file, 400, 'image/jpeg');
+      const resized = await resizeClientPhoto(fileOrBlob, 400, 'image/jpeg');
       await repos.client.savePhoto({ currentUser }, clientId, resized.mime, resized.bytes);
       invalidateClientPhotoCache(clientId, resized.dataUrl);
       setPhotoDataUrl(resized.dataUrl);
@@ -197,6 +200,21 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to archive client');
       setArchiving(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!client || !canManageClient || isReadOnly) return;
+    setRestoring(true);
+    setErrorMsg(null);
+    try {
+      const restored = await repos.client.restore({ currentUser }, client.id);
+      setClient(restored);
+      triggerRefresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to restore client');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -311,6 +329,27 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
         </div>
       )}
 
+      {client.archived && (
+        <div className="p-3.5 bg-slate-100 border border-slate-300 rounded-xl text-slate-700 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <FolderArchive className="w-4 h-4 shrink-0 text-slate-500" />
+            <span>{t('clients.archivedNotice', 'This client dossier is currently archived. Historical cases, tasks, and documents are preserved in read-only / archived state.')}</span>
+          </div>
+          {canManageClient && !isReadOnly && (
+            <button
+              type="button"
+              data-testid="client-banner-restore-btn"
+              onClick={handleRestore}
+              disabled={restoring}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{restoring ? '...' : t('clients.restoreClient', 'Restore Client')}</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {errorMsg && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center justify-between gap-2">
           <span>{errorMsg}</span>
@@ -351,7 +390,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
                     <button
                       type="button"
                       title="Take photo with camera"
-                      onClick={() => cameraInputRef.current?.click()}
+                      onClick={() => setCameraModalOpen(true)}
                       disabled={photoUploading}
                       className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] inline-flex items-center gap-1 shadow-xs transition"
                     >
@@ -459,6 +498,19 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
                   <Edit2 className="w-3.5 h-3.5" />
                   <span>{t('common.edit')}</span>
                 </button>
+
+                {client.archived && (
+                  <button
+                    type="button"
+                    data-testid="client-header-restore-btn"
+                    disabled={isReadOnly || restoring}
+                    onClick={handleRestore}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition disabled:opacity-40 min-h-[38px] shadow-xs"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{restoring ? '...' : t('clients.restoreClient', 'Restore Client')}</span>
+                  </button>
+                )}
 
                 {!client.archived && !confirmArchive && (
                   <button
@@ -1006,6 +1058,13 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
           </div>
         )}
       </div>
+
+      <CameraCaptureModal
+        isOpen={cameraModalOpen}
+        onClose={() => setCameraModalOpen(false)}
+        onCapture={handlePhotoUpload}
+        clientName={client.name}
+      />
     </div>
   );
 };

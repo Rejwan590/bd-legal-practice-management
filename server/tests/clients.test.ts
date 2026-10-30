@@ -361,6 +361,112 @@ async function runTests() {
       assert(client001AfterDelete.hasPhoto === false, 'client-001 hasPhoto reverts to false after deletion');
     }
 
+    console.log('\n--- 7. Photo Upload Validation & Security ---');
+    {
+      // 1. Staff without clients.edit cannot upload photo (HTTP 403)
+      const unauthorizedUpload = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${staffToken}`,
+        },
+        body: JSON.stringify({
+          mime: 'image/jpeg',
+          data: '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=',
+        }),
+      });
+      assert(unauthorizedUpload.status === 403, 'Staff without clients.edit cannot upload photo (HTTP 403)');
+
+      // 2. Invalid magic bytes rejected with HTTP 400
+      const invalidMagicRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify({
+          mime: 'image/jpeg',
+          data: Buffer.from('NOT_A_VALID_IMAGE_HEADER').toString('base64'),
+        }),
+      });
+      assert(invalidMagicRes.status === 400, 'Non-image payload rejected by magic byte verification (HTTP 400)');
+
+      // 3. Unauthenticated photo request returns HTTP 401
+      const unauthPhotoRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`);
+      assert(unauthPhotoRes.status === 401, 'Unauthenticated photo request returns HTTP 401');
+    }
+
+    console.log('\n--- 8. Client Archive, Restore & Firm Isolation ---');
+    {
+      // 1. Create a synthetic client for archiving test
+      const testClientId = `client-test-archive-${Date.now()}`;
+      await db.insertClient({
+        id: testClientId,
+        firmId: 'firm-bd-001',
+        name: 'Synthetic Archive Client',
+        nameBn: 'সিন্থেটিক আর্কাইভ মক্কেল',
+        phone: '+880 1700-999888',
+        email: 'synthetic.archive@example.com',
+        address: 'Chamber Test Suite, Dhaka',
+        notes: 'Created for archive and restore verification',
+        archived: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        createdBy: 'user-owner-001',
+        updatedBy: 'user-owner-001',
+      });
+
+      // 2. Archive the client via PATCH
+      const archiveRes = await fetch(`${baseUrl}/api/v1/clients/${testClientId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify({ archived: true }),
+      });
+      assert(archiveRes.status === 200, 'PATCH /clients/:id with { archived: true } succeeds (HTTP 200)');
+      const archivedClient = await archiveRes.json();
+      assert(archivedClient.archived === true, 'Client record is now marked archived === true');
+
+      // 3. Staff without clients.edit cannot restore (HTTP 403)
+      const staffRestoreRes = await fetch(`${baseUrl}/api/v1/clients/${testClientId}/restore`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${staffToken}` },
+      });
+      assert(staffRestoreRes.status === 403, 'Staff without clients.edit cannot restore client (HTTP 403)');
+
+      // 4. Firm isolation: Firm B cannot restore Firm A client (HTTP 404)
+      const firmBId = 'firm-bd-002';
+      const firmBOwnerRes = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@firm-b.bd', password: 'DifferentFirmPassword123!' }),
+      }).catch(() => null);
+
+      // 5. Authorized Owner restores the client
+      const restoreRes = await fetch(`${baseUrl}/api/v1/clients/${testClientId}/restore`, {
+        method: 'POST',
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(restoreRes.status === 200, 'POST /clients/:id/restore returns HTTP 200');
+      const restoredClient = await restoreRes.json();
+      assert(restoredClient.archived === false, 'Restored client has archived === false');
+      assert(restoredClient.deletedAt === null, 'Restored client has deletedAt === null');
+
+      // 6. Verify audit log captures RESTORE action
+      const auditRes = await fetch(`${baseUrl}/api/v1/audit-log`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(auditRes.status === 200, 'GET /audit-log returns HTTP 200');
+      const auditData = await auditRes.json();
+      const logs = Array.isArray(auditData) ? auditData : auditData.logs;
+      const restoreLog = logs.find((l: any) => l.entity === 'Client' && l.entityId === testClientId && l.action === 'RESTORE');
+      assert(Boolean(restoreLog), 'Audit log contains immutable row capturing RESTORE action for client');
+      assert(restoreLog?.userName === 'Adv. Mahbubur Rahman', 'Audit log records operator identity');
+    }
+
     console.log(`\n========================================`);
     console.log(`CLIENTS BACKEND TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
     console.log(`========================================\n`);

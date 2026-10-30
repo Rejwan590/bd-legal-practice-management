@@ -59,6 +59,38 @@
   6. Added automated regression test suite `tests/authAndContractHardening.test.ts` (9 tests passing).
 - **Verification**: `npm run test:hardening` passed (9/9). `npm run lint` passed (0 errors). Both frontend bundles built cleanly.
 
+### Defect 4: Camera Capture Failure & Hardware Track Lifecycle
+- **Location**: `src/components/CameraCaptureModal.tsx`, `src/modules/clients/ClientProfileView.tsx`, `src/utils/photoResizer.ts`
+- **Severity**: High (P1) — Camera icon in Client Profile failed to capture photos on desktop and modern web browsers.
+- **Root Cause**: Reliance on hidden `<input type="file" capture="environment">` which desktop browsers reject or ignore; lack of Web Media API (`getUserMedia`) live preview, still frame capture, retake flow, and track cleanup (`stop()`).
+- **Fix Applied**:
+  1. Created `CameraCaptureModal.tsx` utilizing `navigator.mediaDevices.getUserMedia` with fallback.
+  2. Integrated live video feed, offscreen canvas frame grab (JPEG quality 0.92), preview, retake, and confirmation.
+  3. Strict hardware track cleanup on capture, cancel, close, and unmount.
+  4. Fallback file input (`capture="user"`) for environments without camera access.
+  5. Both flows route through `photoResizer.ts` (<=300KB quota, EXIF stripped) and persist to database.
+- **Verification**: `npx tsx tests/cameraCapture.test.ts` passed (8/8). `server/tests/clients.test.ts` passed (44/44).
+
+### Defect 5: Member Login Hydration Race Condition & `/auth/me` 401 Bounce
+- **Location**: `src/modules/foundation/AuthContext.tsx`, `src/data/repositories/rest/restCommon.ts`
+- **Severity**: Critical (P0) — Intermittent session loss and 401 error flooding upon logging in.
+- **Root Cause**: `login()` fired an immediate `await refreshState()`, making a second `GET /auth/me` call before cross-site `SameSite=None; Secure; HttpOnly` cookies were asynchronously committed in browser storage.
+- **Fix Applied**:
+  1. Hydrated `currentUser`, `currentFirm`, and `isAuthenticated = true` directly from `POST /auth/login` response payload without duplicate `/auth/me` network call.
+  2. Handled initial 401 quietly on first page load as expected unauthenticated visitor state.
+  3. Added `auth:unauthorized` custom event listener for non-disruptive state transitions without reload loops.
+- **Verification**: `tests/authAndContractHardening.test.ts` passed (9/9). `server/tests/foundation.test.ts` passed.
+
+### Defect 6: Missing Archive Filtering & Restoration Flow across Records
+- **Location**: `server/src/routes/clients.ts`, `server/src/db/client.ts`, `src/modules/clients/ClientsScreen.tsx`, `src/modules/clients/ClientProfileView.tsx`, `src/modules/cases/CaseDetailsView.tsx`
+- **Severity**: High (P1) — Archived clients were mixed with active clients in normal view; no interface to filter archived records or restore archived clients/matters.
+- **Fix Applied**:
+  1. Added `POST /api/v1/clients/:id/restore` with permission `clients.edit`, tenant isolation, and `RESTORE` audit logging.
+  2. Implemented `includeDeleted` parameter in database adapters to allow fetching and reviving archived records.
+  3. Added Active, Archived, and All filter tabs with counters in `ClientsScreen.tsx`.
+  4. Added one-click "Restore Client" buttons in client list, client profile banner, and "Reopen / Restore Matter" in case details view.
+- **Verification**: `npx tsx tests/archiveAndRestore.test.ts` passed (10/10).
+
 ---
 
 ## 3. Detailed Functional Audit Matrix
@@ -89,7 +121,8 @@
 | `POST /api/v1/clients` | `server/src/routes/clients.ts` | Create client, enforce subscription write limits | Validates payload, checks subscription, audits CREATE | `PASS` | `clients.test.ts` |
 | `PATCH /api/v1/clients/:id` | `server/src/routes/clients.ts` | Update client details | Validates partial updates, audits changes | `PASS` | `clients.test.ts` |
 | `DELETE /api/v1/clients/:id` | `server/src/routes/clients.ts` | Soft-delete client (`deleted_at = NOW()`) | Soft deletes, cascades soft-delete checks, audits DELETE | `PASS` | `clients.test.ts` |
-| `GET/PUT /api/v1/clients/:id/photo` | `server/src/routes/clients.ts` | Store & retrieve compressed profile photo (<=300KB) | Client canvas strips EXIF, verifies <=300KB, stores in DB | `PASS` | `clients.test.ts`, `photoResizer.ts` |
+| `POST /api/v1/clients/:id/restore` | `server/src/routes/clients.ts` | Restore archived or soft-deleted client | Un-archives, sets deleted_at=null, audits RESTORE | `PASS` | `archiveAndRestore.test.ts`, `clients.test.ts` |
+| `GET/PUT /api/v1/clients/:id/photo` | `server/src/routes/clients.ts` | Store & retrieve compressed profile photo (<=300KB) | Client canvas strips EXIF, verifies <=300KB, stores in DB | `PASS` | `clients.test.ts`, `photoResizer.ts`, `cameraCapture.test.ts` |
 | `GET /api/v1/clients/:id/overview` | `server/src/routes/clients.ts` | Client dossier with linked cases, hearings, tasks, files | Aggregates client-linked entities respecting case visibility | `PASS` | `clients.test.ts` |
 | Client Notes | `server/src/routes/clients.ts` | CRUD client notes with pagination | `listClientNotes`, `insertClientNote`, audits | `PASS` | `clients.test.ts` |
 
@@ -101,6 +134,7 @@
 | `POST /api/v1/cases` | `server/src/routes/cases.ts` | Register new case with party roles & court | Validates Zod schema, checks subscription, audits CREATE | `PASS` | `cases.test.ts` |
 | `PATCH /api/v1/cases/:id` | `server/src/routes/cases.ts` | Update case status, court, or responsible lawyer | Validates updates, audits changes | `PASS` | `cases.test.ts` |
 | `DELETE /api/v1/cases/:id` | `server/src/routes/cases.ts` | Soft-delete case and cascade linked entities | Sets `deleted_at = NOW()`, audits DELETE | `PASS` | `cases.test.ts` |
+| Reopen / Restore Matter | `CaseDetailsView.tsx` | Reopen closed/archived matter to ongoing status | Sets `status = 'ongoing'`, clears `closedOn`, audits UPDATE | `PASS` | `archiveAndRestore.test.ts` |
 | `GET /api/v1/cases/check-duplicate` | `server/src/routes/cases.ts` | Warn if caseNumber + court already exists | Queries duplicate case numbers respecting visibility | `PASS` | `cases.test.ts` |
 | `POST /api/v1/cases/:id/shares` | `server/src/routes/cases.ts` | Share case access with another lawyer/clerk | Inserts case_shares row, audits SHARE | `PASS` | `teamVisibility.test.ts` |
 | `DELETE /api/v1/cases/:id/shares/:userId` | `server/src/routes/cases.ts` | Revoke case share; immediately blocks access | Deletes share, verifies 404 on subsequent read | `PASS` | `teamVisibility.test.ts` |
@@ -237,3 +271,24 @@
 | Live Chrome DevTools E2E | Chamber member sign in & session reload | **PASS** | Logged in as `owner@firm.bd`; reloads cleanly; 0 401 errors |
 | Live Chrome DevTools E2E | Navigation across Dashboard, Clients, Cases, Appointments | **PASS** | All routes load cleanly; zero `.map` crashes |
 | Live Super Admin E2E | Super Admin portal (`/admin`) isolation | **PASS** | Separate session for `md.rejwan.ahmed.riad@gmail.com`; loads live firms |
+| `npx tsx tests/archiveAndRestore.test.ts` | Archive, restore, soft-delete & audit lifecycle | **PASS** | 10/10 tests passed (creation, archive, filter, restore, audit) |
+| `npx tsx tests/cameraCapture.test.ts` | Camera capture modal, media stream cleanup & fallbacks | **PASS** | 8/8 tests passed (video track stop, errors, fallbacks, 300KB) |
+| `npx tsx tests/browserConsoleErrors.test.ts` | Console error regression & date formats | **PASS** | 4/4 tests passed |
+| `npx tsx tests/syntheticData.test.ts` | 100 synthetic clients & practice data | **PASS** | 47/47 tests passed |
+
+---
+
+## 5. Archive, Soft-Delete & Restore Governance Matrix
+
+| Record Type | Storage Medium | Archive Representation | Soft-Delete Strategy | Recovery / Restore Workflow | Access & Filter View |
+|---|---|---|---|---|---|
+| **Clients** | Postgres `clients` / Mock | `archived: true` | `deleted_at = NOW()` | `POST /api/v1/clients/:id/restore` | Clients Screen -> "Archived" Tab |
+| **Cases** | Postgres `cases` / Mock | `status: 'closed'` | `deleted_at = NOW()` | Case Details -> "Reopen / Restore Matter" | Cases Screen -> Status: Closed |
+| **Tasks** | Postgres `tasks` / Mock | `status: 'completed'` | `deleted_at = NOW()` | Edit Task -> Status: Pending | Tasks Screen -> Status: Completed |
+| **Appointments** | Postgres `appointments` / Mock | `status: 'completed'` | `deleted_at = NOW()` | Edit Appointment -> Status: Scheduled | Appointments Screen -> Status: Completed |
+| **Hearings** | Postgres `hearings` / Mock | `status: 'held'` | `deleted_at = NOW()` | Edit Hearing -> Status: Scheduled | Hearings Screen / Cause List History |
+| **Physical Files** | Mock `files` | `status: 'archived'` | `deletedAt = timestamp` | File Actions -> Status: In Rack | Physical Files Screen -> Status: Archived |
+| **Billing Records** | Postgres `fee_agreements` | Immutable ledger | `deleted_at = NOW()` | Permanent legal retention (soft-delete only by admin) | Billing Screen -> Invoices / Ledger |
+| **Client / Case Notes** | Postgres `client_notes`, `case_notes` | Preserved in history | Soft-delete on notes | Historical audit trail preserved | Notes History Panel |
+| **Chamber Users** | Postgres `users` | `active = false` | Deactivation | Settings -> Edit User -> `active = true` | Settings -> Team Members |
+| **Firms** | Postgres `firms` | Plan suspended | Permanent platform record | Platform Super Admin Reactivate | Super Admin Portal (`/admin/firms`) |

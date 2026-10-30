@@ -60,6 +60,12 @@ export class RestClientRepository implements IClientRepository {
     return this.update(context, id, { archived: true });
   }
 
+  async restore(context: SecurityContext, id: string): Promise<ClientRecord> {
+    return restFetch<ClientRecord>(`/clients/${id}/restore`, {
+      method: 'POST',
+    });
+  }
+
   async getLinkedOverview(
     _context: SecurityContext,
     clientId: string

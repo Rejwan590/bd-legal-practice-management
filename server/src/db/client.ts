@@ -85,7 +85,7 @@ export interface IDatabase {
   ): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
   listClients(firmId: string, search?: string, user?: VisibilityUserContext): Promise<schema.Client[]>;
-  getClientById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Client | null>;
+  getClientById(id: string, firmId: string, user?: VisibilityUserContext, includeDeleted?: boolean): Promise<schema.Client | null>;
   insertClient(client: schema.Client): Promise<schema.Client>;
   updateClient(id: string, firmId: string, updates: Partial<schema.Client>): Promise<schema.Client>;
   countActiveCasesForClient(clientId: string, firmId: string): Promise<number>;
@@ -724,10 +724,11 @@ class MemoryDatabase implements IDatabase {
   public async getClientById(
     id: string,
     firmId: string,
-    user?: VisibilityUserContext
+    user?: VisibilityUserContext,
+    includeDeleted = false
   ): Promise<schema.Client | null> {
     await this.init();
-    const c = this.clients.find((x) => x.id === id && x.firmId === firmId && !x.deletedAt);
+    const c = this.clients.find((x) => x.id === id && x.firmId === firmId && (includeDeleted || !x.deletedAt));
     if (!c) return null;
     if (user) {
       const firm = this.firms.find((f) => f.id === firmId) || { id: firmId, visibilityMode: 'open' };
@@ -2930,12 +2931,14 @@ class PostgresDatabase implements IDatabase {
     }));
   }
 
-  public async getClientById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Client | null> {
+  public async getClientById(id: string, firmId: string, user?: VisibilityUserContext, includeDeleted = false): Promise<schema.Client | null> {
     const conditions = [
       eq(schema.clients.id, id),
       eq(schema.clients.firmId, firmId),
-      isNull(schema.clients.deletedAt),
     ];
+    if (!includeDeleted) {
+      conditions.push(isNull(schema.clients.deletedAt)!);
+    }
     if (user) {
       const firm = (await this.getFirm(firmId)) || { id: firmId, visibilityMode: 'open' };
       const firmUsers = await this.listUsers(firmId);

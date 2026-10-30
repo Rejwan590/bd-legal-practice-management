@@ -323,6 +323,51 @@ export class MockClientRepository implements IClientRepository {
     return updated!;
   }
 
+  async restore(context: SecurityContext, id: string): Promise<ClientRecord> {
+    if (!can('clients.edit', context.currentUser)) {
+      throw new Error('Permission denied: clients.edit required to restore clients');
+    }
+    assertNotReadOnly(context.currentUser.firmId);
+
+    const { currentUser } = context;
+    const store = localStore.getData();
+    const existing = (store.clients || []).find(
+      (c) => c.id === id && c.firmId === currentUser.firmId
+    );
+
+    if (!existing) {
+      throw new Error('Client not found');
+    }
+
+    const oldSnapshot = { ...existing };
+    const now = new Date().toISOString();
+    let updated: ClientRecord | null = null;
+
+    localStore.mutate((s) => {
+      const idx = (s.clients || []).findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        s.clients[idx] = {
+          ...s.clients[idx],
+          archived: false,
+          deletedAt: null,
+          updatedAt: now,
+          updatedBy: currentUser.id,
+        };
+        updated = { ...s.clients[idx] };
+      }
+    });
+
+    await this.auditRepo.record(context, {
+      entity: 'Client',
+      entityId: id,
+      action: 'RESTORE',
+      oldValue: oldSnapshot as unknown as Record<string, unknown>,
+      newValue: { archived: false, deletedAt: null },
+    });
+
+    return updated!;
+  }
+
   async getLinkedOverview(
     context: SecurityContext,
     clientId: string

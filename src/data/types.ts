@@ -17,6 +17,7 @@ export type AuditAction =
   | 'UPDATE'
   | 'DELETE'
   | 'ARCHIVE'
+  | 'RESTORE'
   | 'CASE_UNLINK'
   | 'LOGIN'
   | 'USER_SWITCH'

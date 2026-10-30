@@ -71,11 +71,16 @@ export async function restFetch<T>(
 
     clearTimeout(timeoutId);
 
-    // 401 Unauthorized handling: trigger login redirect if in browser context
+    // 401 Unauthorized handling: notify session manager and trigger login redirect if in browser context
     if (response.status === 401) {
-      if (typeof window !== 'undefined' && window.location) {
-        if (!window.location.pathname.startsWith('/admin') && !window.location.pathname.includes('/login') && window.location.pathname !== '/') {
-          window.location.href = '/login';
+      if (typeof window !== 'undefined') {
+        if (typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+        if (window.location) {
+          if (!window.location.pathname.startsWith('/admin') && !window.location.pathname.includes('/login') && window.location.pathname !== '/') {
+            window.location.href = '/login';
+          }
         }
       }
       throw createRestError('Session expired or unauthorized. Please log in again.', 401, 'UNAUTHORIZED');

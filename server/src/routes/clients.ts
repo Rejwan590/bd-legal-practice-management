@@ -522,3 +522,47 @@ clientsRouter.delete(
     res.json({ success: true, softDeleted: true });
   }
 );
+
+// POST /api/v1/clients/:id/restore - Restore an archived or soft-deleted client
+clientsRouter.post(
+  '/:id/restore',
+  requirePermission('clients.edit'),
+  enforceSubscriptionReadOnly,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    // Allow looking up archived or soft-deleted client for restore
+    const existing = await db.getClientById(req.params.id, req.user!.firmId, req.user, true);
+
+    if (!existing || existing.firmId !== req.user!.firmId) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const oldSnapshot = {
+      name: existing.name,
+      archived: existing.archived,
+      deletedAt: existing.deletedAt,
+    };
+
+    const now = new Date();
+    const updated = await db.updateClient(existing.id, req.user!.firmId, {
+      archived: false,
+      deletedAt: null,
+      updatedAt: now,
+      updatedBy: req.user!.id,
+    });
+
+    // Record audit log
+    await recordAudit({
+      firmId: req.user!.firmId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      entity: 'Client',
+      entityId: updated.id,
+      action: 'RESTORE',
+      oldValue: oldSnapshot,
+      newValue: { archived: false, deletedAt: null },
+    });
+
+    res.json(updated);
+  }
+);

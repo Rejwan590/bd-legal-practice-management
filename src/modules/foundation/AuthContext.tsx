@@ -17,6 +17,12 @@ const isRestMode =
 
 const getApiBase = () => (isRestMode ? getApiBaseUrl() : 'http://localhost:4000/api/v1');
 
+const getAuthEndpoint = (path: string) => {
+  const base = getApiBase();
+  const cleanBase = base.replace(/\/api\/v1\/?$/, '');
+  return `${cleanBase}${path.startsWith('/') ? path : '/' + path}`;
+};
+
 const emptyUser: UserRecord = {
   id: '',
   firmId: '',
@@ -68,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (isRestMode) {
         // In REST mode, verify session strictly via /auth/me. Never use INITIAL_USERS or mock users.
-        const authUrl = getApiBase().replace('/api/v1', '') + '/auth/me';
+        const authUrl = getAuthEndpoint('/auth/me');
         const res = await fetch(authUrl, {
           credentials: 'include',
         });
@@ -90,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUsersList([]);
           }
         } else {
+          // 401 Unauthorized is the normal, expected response when no active session cookie is present
           setIsAuthenticated(false);
           setCurrentUser(emptyUser);
           setUsersList([]);
@@ -108,8 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCurrentUser(syncedUser);
         }
       }
-    } catch (err) {
-      console.error('Failed to refresh auth state:', err);
+    } catch {
       if (isRestMode) {
         setIsAuthenticated(false);
         setCurrentUser(emptyUser);
@@ -135,7 +141,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     }
+
+    // Listen to global 401 unauthorized events to immediately reset session without reloading
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false);
+      setCurrentUser(emptyUser);
+      setUsersList([]);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('auth:unauthorized', handleUnauthorized);
+    }
+
     refreshState();
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('auth:unauthorized', handleUnauthorized);
+      }
+    };
   }, []);
 
   const login = async (
@@ -144,7 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; error?: string; code?: string; device?: any }> => {
     if (isRestMode) {
       try {
-        const authUrl = getApiBase().replace('/api/v1', '') + '/auth/login';
+        const authUrl = getAuthEndpoint('/auth/login');
         const res = await fetch(authUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,7 +189,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(data.user);
         setCurrentFirm(data.firm);
         setIsAuthenticated(true);
-        await refreshState();
+
+        if (checkPermission('users.manage', data.user) || data.user.role === 'Owner') {
+          try {
+            const users = await repos.user.list({ currentUser: data.user });
+            setUsersList(users);
+          } catch {
+            setUsersList([]);
+          }
+        } else {
+          setUsersList([]);
+        }
+
         return { success: true };
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : 'Network error during login';
@@ -187,7 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     if (isRestMode) {
       try {
-        const logoutUrl = getApiBase().replace('/api/v1', '') + '/auth/logout';
+        const logoutUrl = getAuthEndpoint('/auth/logout');
         await fetch(logoutUrl, {
           method: 'POST',
           credentials: 'include',

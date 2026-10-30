@@ -268,6 +268,20 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
     }
   };
 
+  const handleReopenCase = async () => {
+    if (!canEditCase || isReadOnly) return;
+    try {
+      await repos.case.update({ currentUser }, caseId, {
+        status: 'ongoing',
+        closedOn: null,
+      });
+      triggerRefresh();
+      await loadCaseDetails();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to reopen case');
+    }
+  };
+
   const handleSaveClientChange = async () => {
     if (!caseData || !canEditCase || isReadOnly || !selectedNewClientId) return;
     setSavingClientChange(true);
@@ -535,6 +549,20 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
 
             {/* Single Case Edit + Delete Actions in Header */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {caseData.status === 'closed' && canEditCase && (
+                <button
+                  type="button"
+                  data-testid="case-header-reopen-btn"
+                  disabled={isReadOnly}
+                  title={t('cases.reopenMatter', 'Reopen / Restore Matter')}
+                  onClick={handleReopenCase}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px] shadow-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{t('cases.reopenMatter', 'Reopen / Restore Matter')}</span>
+                </button>
+              )}
+
               {canEditCase && (
                 <button
                   type="button"

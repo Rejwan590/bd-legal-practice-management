@@ -3,6 +3,36 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Client Photo Upload, Camera Capture, Member Auth Hardening & Archive/Restore System (Completed & Verified)**:
+  - **1. Member Auth & Session Restoration Hardening (Problem 1 Resolved)**:
+    - Addressed root cause of race condition in `src/modules/foundation/AuthContext.tsx`: `login()` immediately fired a redundant `await refreshState()`, dispatching a second `/auth/me` request before cross-site `SameSite=None; Secure; HttpOnly` cookies were committed in browser storage.
+    - Hydrated `currentUser`, `currentFirm`, and `isAuthenticated = true` directly from the `POST /auth/login` 200 OK response body.
+    - Implemented regex-safe `getAuthEndpoint(path)` to prevent trailing-slash corruption on API URLs.
+    - Added listener for `auth:unauthorized` to gracefully transition expired sessions without page reload loops while keeping Platform Super Admin (`/admin`) isolated.
+  - **2. Interactive Client Photo Camera Capture Flow (Problem 2 Resolved)**:
+    - Created `src/components/CameraCaptureModal.tsx` providing true camera access via `navigator.mediaDevices.getUserMedia()` with facingMode selection (front/rear camera toggling when multiple video inputs exist).
+    - Features live HTML5 video preview, high-quality still capture onto an offscreen canvas (JPEG quality 0.92), captured photo preview, retake button, and explicit confirmation before persistence.
+    - Strict camera hardware track cleanup (`stopCameraTracks`) upon capture, modal close, cancel, and component unmount.
+    - Friendly error alerts mapping `NotAllowedError`, `NotFoundError`, and `NotReadableError` with fallback file upload button (`capture="user"`).
+    - Unified persistence through `photoResizer.ts` and `repos.client.savePhoto`, strictly enforcing the <=300KB quota, EXIF stripping, and `clientPhotoCache` invalidation.
+  - **3. Archive, Restore & Soft-Delete Governance System Across All Modules**:
+    - Comprehensive audit across all 10 record types (Clients, Cases, Tasks, Appointments, Hearings, Files, Billing, Notes, Users, Firms).
+    - Added `POST /api/v1/clients/:id/restore` endpoint in `server/src/routes/clients.ts` verifying `clients.edit` permission, tenant isolation (`firm_id`), subscription read-only gate, un-archiving, clearing `deleted_at = null`, and logging `RESTORE` audit action.
+    - Updated `MemoryDatabase` and `PostgresDatabase` `getClientById` to support `includeDeleted` parameter.
+    - Added `restore` method to both `MockClientRepository` and `RestClientRepository` with 100% dual-mode parity.
+    - Updated `ClientsScreen.tsx` with Active, Archived, and All filter tabs with live counters, keeping archived records out of normal operation by default, with one-click "Restore" action on table rows and cards.
+    - Added "Restore Client" banner action in `ClientProfileView.tsx` and "Reopen / Restore Matter" in `CaseDetailsView.tsx`.
+    - Added bilingual i18n keys across `src/locales/en.json` and `src/locales/bn.json` with 100% key parity.
+  - **Automated Verification Suites**:
+    - `npm run lint`: 0 errors (clean pass across app and admin-app).
+    - `npm run build`: built production bundle cleanly in 1.84s.
+    - `npx tsx tests/archiveAndRestore.test.ts`: 10/10 PASSED.
+    - `npx tsx tests/cameraCapture.test.ts`: 8/8 PASSED.
+    - `npx tsx tests/browserConsoleErrors.test.ts`: 4/4 PASSED.
+    - `npm run test:restFetch`: 14/14 PASSED.
+    - `npm run test:hardening`: 9/9 PASSED.
+    - `npm test --prefix server`: 626/626 PASSED across all 12 backend test suites.
+
 - [x] **Fix Browser Console Errors (Completed & Verified)**:
   - **1. Date Input Formatting (yyyy-MM-dd vs ISO Timestamps)**:
     - Root Cause: Database timestamps returned as ISO 8601 strings (e.g. `2026-05-15T12:00:00.000Z` on closed cases like `case-syn-109`) were bound directly to HTML `<input type="date">` inputs in `CaseFormModal.tsx` (`caseDate`, `closedOn`), `CaseNotesTab.tsx` (`noteDate`), `ClientNotesPanel.tsx` (`noteDate`), and `HearingsScreen.tsx` (`causeListDate`), violating HTML5 date input format requirements (`The specified value ... does not conform to the required format, "yyyy-MM-dd"`).
@@ -141,7 +171,7 @@ Accounts Module: Payments Tracked Per Client and Per Case completed end-to-end (
   - Added endpoint `POST /api/v1/fee-payments/:id/attach` allowing admins to attach legacy unassigned payments to active fee agreements, deriving case and client automatically.
 - [x] **Integer Paisa & Currency Precision**:
   - All monetary values stored and calculated strictly as integer paisa (1 BDT = 100 paisa). Zero floating-point arithmetic.
-  - Implemented `src/utils/currency.ts` with South Asian comma grouping (`৳ 1,50,000` / `৳ ১,৫০,০০০`) and English/Bangla digit support (`formatBdt`, `takaToPaisa`, `paisaToTaka`, `toBnDigits`).
+  - Implemented `src/utils/currency.ts` with South Asian comma grouping (`à§³ 1,50,000` / `à§³ à§§,à§«à§¦,à§¦à§¦à§¦`) and English/Bangla digit support (`formatBdt`, `takaToPaisa`, `paisaToTaka`, `toBnDigits`).
 - [x] **Database Schema & Migrations**:
   - `server/src/db/schema.ts`: Added 6 new tables:
     - `fee_agreements`: `id`, `firm_id`, `client_id`, `case_id`, `fee_type` (`fixed`, `per_hearing`, `hourly`, `retainer`, `installment`), `agreed_amount_paisa`, `agreement_date`, `notes`, `status` (`active`, `closed`, `void`), `created_by`, timestamps.
@@ -208,7 +238,7 @@ Accounts Module: Payments Tracked Per Client and Per Case completed end-to-end (
   - `npm test --prefix server`: PASS (562/562 assertions passed across 11 suites)
   - `npm run build`: PASS (built cleanly in 1.39s)
   - `npm run build --prefix admin-app`: PASS (built cleanly in 763ms)
-- [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
+- [x] **Recommended Next Step**: Phase 8 â€” Physical File Tracking & Custody Backend.
 
 ## Previous status
 Phase 7: Tasks Module Backend & TypeScript Build Fixes completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
@@ -245,7 +275,7 @@ Phase 7: Tasks Module Backend & TypeScript Build Fixes completed and fully verif
   - `npm run test:health`: PASS (87/87 checks passed, 0 failed)
   - `npm run build`: PASS (1,787 modules transformed in 1.23s)
   - `npm run build --prefix admin-app`: PASS (1,672 modules transformed in 740ms)
-- [x] **Recommended Next Step**: Phase 8 — Physical File Tracking & Custody Backend.
+- [x] **Recommended Next Step**: Phase 8 â€” Physical File Tracking & Custody Backend.
 
 ## Previous status
 Phase 6: Daily Cause List Docket & Bulk Actions completed and fully verified across server and frontend mock/REST layers with 100% feature and contract parity.
@@ -298,7 +328,7 @@ Phase 5: Hearings Backend & "Date Fixed For" completed and fully verified across
   - `npm test --prefix server`: PASS (419 assertions passed, 0 failed)
   - `npm run build`: PASS (1784 modules transformed in 13.14s)
   - `npm run build --prefix admin-app`: PASS (1672 modules transformed in 7.37s)
-- [x] **Recommended Next Step**: Phase 6 — Daily Cause List Docket & Bulk Actions.
+- [x] **Recommended Next Step**: Phase 6 â€” Daily Cause List Docket & Bulk Actions.
 
 ## Previous status
 Clients, Cases, and Appointments modules completed and fully verified across server (REST API, PostgreSQL schema & migration 0005, memory DB) and frontend mock/data layers with 100% parity. Central visibility, permissions, subscription read-only enforcement, audit logging, firm isolation, and restricted confidentiality strictly preserved.
@@ -330,7 +360,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
 - **Verification Summary**:
   - `npm run lint`: PASS (0 errors)
   - `npm run build`: PASS
-  - `npm run test:health`: PASS (87/87 passed, 0 failed — including 6 new Hub & Navigation chain checks)
+  - `npm run test:health`: PASS (87/87 passed, 0 failed â€” including 6 new Hub & Navigation chain checks)
   - `npm run test:responsive`: PASS (64/64 Playwright tests passed across 360px, 768px, and 1280px viewports covering all routes, Case Dossier tabs, Client Profile tabs, Dossier modals, deep links, refresh persistence, and Browser Back)
   - `npm test --prefix server`: PASS (381 assertions passed, 0 failed)
   - `npm run build --prefix admin-app`: PASS
@@ -959,7 +989,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
     - `server/tests/foundation.test.ts`
     - `PROGRESS.md`
   - **How to verify by hand**:
-    1. Inspect `ARCHITECTURE.md` to verify all rules (1–14), data model tables (`payments`, `backups_log`), and backend folder layout are present.
+    1. Inspect `ARCHITECTURE.md` to verify all rules (1â€“14), data model tables (`payments`, `backups_log`), and backend folder layout are present.
     2. Run the test suite:
        ```powershell
        npm test --prefix server
@@ -1297,7 +1327,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
 4. Click "Demo Owner (Adv. Mahbubur Rahman)": verify login succeeds, cookie is set, and chamber dashboard opens.
 5. In header profile, click "Sign Out": verify session clears and returns to LoginScreen.
 6. Click "Demo Staff (Adv. Nusrat Jahan)": verify staff login and permissions.
-7. Test bilingual toggle (EN / বাংলা) on login screen.
+7. Test bilingual toggle (EN / à¦¬à¦¾à¦‚à¦²à¦¾) on login screen.
 
 ### 4. Known gaps
 - Two-step verification (2FA) and email password reset are postponed.
@@ -1342,7 +1372,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
   ```
 
 ### 3. What to verify by hand
-1. Send `GET /api/v1/clients?search=হাসান` to verify Bangla search works.
+1. Send `GET /api/v1/clients?search=à¦¹à¦¾à¦¸à¦¾à¦¨` to verify Bangla search works.
 2. Send `DELETE /api/v1/clients/client-001` (client with active case): verify HTTP 400 error preventing orphaned cases.
 3. Call `POST /api/v1/clients` as Staff user without `clients.edit`: verify HTTP 403 Forbidden.
 4. Call `GET /api/v1/audit-log` after creating or editing client: verify audit entries recorded.
@@ -1598,7 +1628,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
     - Converted to `ResponsiveModal` (maxWidth="xl") with sticky header and sticky bottom action bar (Cancel, Save File).
     - Responsive form grid for serial, case, client, shelf location, and notes with $\ge 44px$ touch targets.
   - `src/modules/files/FileHistoryModal.tsx`:
-    - Converted to `ResponsiveModal` (maxWidth="xl") with subtitle `${file.serial} • ${file.title}`.
+    - Converted to `ResponsiveModal` (maxWidth="xl") with subtitle `${file.serial} â€¢ ${file.title}`.
     - Sticky Close button with $\ge 44px$ touch target.
     - Responsive custody timeline with status badges and timestamps.
   - `src/modules/files/FilesScreen.tsx`:
@@ -1632,7 +1662,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
   - `src/modules/calendar/CalendarScreen.tsx`:
     - Outer container bounded to `space-y-6 max-w-7xl mx-auto w-full`.
     - Month grid cells:
-      - Mobile (`< sm`): compact layout (`min-h-[56px]`) with colored dots indicating hearing (indigo), task (amber), and file return (emerald) events, guaranteeing zero horizontal overflow across 320px–430px viewports.
+      - Mobile (`< sm`): compact layout (`min-h-[56px]`) with colored dots indicating hearing (indigo), task (amber), and file return (emerald) events, guaranteeing zero horizontal overflow across 320pxâ€“430px viewports.
       - Desktop (`>= sm`): structured cells (`min-h-[105px]`) with event title badges and "+N more" overflow indicators.
     - Selected date agenda section:
       - Interactive touch targets on all event cards and "Print Daily Cause List" button ($\ge 44px$).
@@ -1676,7 +1706,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
       - "Quick examples" filter suggestion buttons ("Suit", "F-000101", "Dhaka", "Rafiqul") upgraded to $\ge 44px$ touch targets.
     - Search result hits:
       - Each result row styled with $\ge 48px$ touch target height and active scale feedback (`active:scale-[0.99]`).
-      - Clean multi-line wrapping on titles, subtitles, and details, preventing truncation bugs on 320px–430px viewports.
+      - Clean multi-line wrapping on titles, subtitles, and details, preventing truncation bugs on 320pxâ€“430px viewports.
       - Confidentiality / restricted indicators gracefully wrap with entity and status badges.
     - Footer info bar:
       - Compact layout with result count and responsive keyboard hints.
@@ -1742,7 +1772,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
     - Backup Quick Card:
       - Navigation link upgraded to `min-h-[44px] py-2 inline-flex items-center gap-1.5`.
     - Staff Management & Permissions Matrix:
-      - User card header equipped with `min-w-0` and `break-all sm:break-normal` on User ID to prevent overflow on 320px–360px phones.
+      - User card header equipped with `min-w-0` and `break-all sm:break-normal` on User ID to prevent overflow on 320pxâ€“360px phones.
       - Permissions checklist items upgraded to `min-h-[44px] p-2.5 rounded-xl flex items-start gap-2.5` with `shrink-0` on checkboxes and `break-words leading-tight` preventing text truncation across English and Bengali labels.
 - **Exact Widths Checked**:
   - Phones: `320px`, `360px`, `390px`, `430px`
@@ -1795,7 +1825,7 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
     - Header & Trigger Action:
       - "Run Diagnostics Again" button upgraded to `w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl` with spinning refresh indicator.
     - Stage Banner:
-      - Stage status badge aligned with `self-start sm:self-auto` to prevent badge compression or distortion on 320px–360px viewports.
+      - Stage status badge aligned with `self-start sm:self-auto` to prevent badge compression or distortion on 320pxâ€“360px viewports.
     - Summary Scorecards:
       - Overall Status, Passed Count, and Issues cards styled with rounded-2xl corners, responsive typography (`text-base sm:text-lg`), and balanced spacing.
     - Diagnostics List:
