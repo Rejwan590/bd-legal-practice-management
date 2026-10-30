@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import {
   AppointmentRecord,
   AppointmentType,
@@ -335,7 +336,7 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
               <input
                 type="datetime-local"
                 required
-                value={startsAt}
+                value={toDateTimeInputValue(startsAt)}
                 onChange={(e) => handleStartChange(e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
               />
@@ -348,7 +349,7 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
               <input
                 type="datetime-local"
                 required
-                value={endsAt}
+                value={toDateTimeInputValue(endsAt)}
                 onChange={(e) => setEndsAt(e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
               />

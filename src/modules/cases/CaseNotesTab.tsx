@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseNoteRecord, UserRecord } from '../../data/types';
+import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 import { Plus, Edit2, Trash2, Calendar, User, FileText, AlertTriangle, X } from 'lucide-react';
 
 interface CaseNotesTabProps {
@@ -78,7 +79,7 @@ export const CaseNotesTab: React.FC<CaseNotesTabProps> = ({
 
   const handleOpenCreate = () => {
     setEditingNote(null);
-    setNoteDate(new Date().toISOString().slice(0, 10));
+    setNoteDate(getDhakaDateString());
     setNoteBody('');
     setErrorMsg(null);
     setComposerOpen(true);
@@ -86,7 +87,7 @@ export const CaseNotesTab: React.FC<CaseNotesTabProps> = ({
 
   const handleOpenEdit = (note: CaseNoteRecord) => {
     setEditingNote(note);
-    setNoteDate(note.noteDate || note.createdAt.slice(0, 10));
+    setNoteDate(toDateInputValue(note.noteDate || note.createdAt));
     setNoteBody(note.body);
     setErrorMsg(null);
     setComposerOpen(true);
@@ -109,12 +110,12 @@ export const CaseNotesTab: React.FC<CaseNotesTabProps> = ({
     try {
       if (editingNote) {
         await repos.case.updateNote({ currentUser }, caseId, editingNote.id, {
-          noteDate,
+          noteDate: toDateInputValue(noteDate) || getDhakaDateString(),
           body: noteBody.trim(),
         });
       } else {
         await repos.case.createNote({ currentUser }, caseId, {
-          noteDate,
+          noteDate: toDateInputValue(noteDate) || getDhakaDateString(),
           body: noteBody.trim(),
         });
       }
@@ -301,7 +302,7 @@ export const CaseNotesTab: React.FC<CaseNotesTabProps> = ({
                 <input
                   type="date"
                   required
-                  value={noteDate}
+                  value={toDateInputValue(noteDate)}
                   onChange={(e) => setNoteDate(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
                 />

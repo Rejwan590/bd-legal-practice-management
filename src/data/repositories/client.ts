@@ -46,7 +46,13 @@ export class MockClientRepository implements IClientRepository {
     }
 
     // Sort descending by creation
-    return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const photos = store.clientPhotos || [];
+    return results
+      .map((c) => ({
+        ...c,
+        hasPhoto: photos.some((p) => p.clientId === c.id),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getById(context: SecurityContext, id: string): Promise<ClientRecord | null> {
@@ -70,7 +76,11 @@ export class MockClientRepository implements IClientRepository {
       return null;
     }
 
-    return found;
+    const photos = store.clientPhotos || [];
+    return {
+      ...found,
+      hasPhoto: photos.some((p) => p.clientId === found.id),
+    };
   }
 
   async create(

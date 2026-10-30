@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, TaskPriority, TaskRecord, UserRecord } from '../../data/types';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import { CheckSquare, Calendar, AlertCircle, User, Briefcase, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 
@@ -73,7 +74,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
             setDescription(initialData.description || '');
             setAssignedTo(initialData.assignedTo);
             setPriority(initialData.priority);
-            setDueDate(initialData.dueAt.slice(0, 16));
+            setDueDate(toDateTimeInputValue(initialData.dueAt));
             setCaseId(initialData.caseId || '');
             setClientId(initialData.clientId || '');
           } else {
@@ -92,7 +93,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
               const tomorrow = new Date();
               tomorrow.setDate(tomorrow.getDate() + 1);
               tomorrow.setHours(17, 0, 0, 0);
-              setDueDate(tomorrow.toISOString().slice(0, 16));
+              setDueDate(toDateTimeInputValue(tomorrow));
             }
 
             const resolvedCaseId = defaultCaseId || '';
@@ -272,7 +273,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           <input
             type="datetime-local"
             required
-            value={dueDate}
+            value={toDateTimeInputValue(dueDate)}
             onChange={(e) => setDueDate(e.target.value)}
             className="w-full px-3.5 py-2.5 min-h-[44px] sm:min-h-0 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
           />

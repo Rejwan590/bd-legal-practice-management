@@ -80,6 +80,7 @@ export interface ClientRecord extends BaseRecord {
   address: string;
   notes: string;
   archived?: boolean;
+  hasPhoto?: boolean;
 }
 
 export interface ClientPhotoRecord {

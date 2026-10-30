@@ -713,9 +713,12 @@ class MemoryDatabase implements IDatabase {
           c.address.toLowerCase().includes(q)
       );
     }
-    return res.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    return res
+      .map((c) => ({
+        ...c,
+        hasPhoto: this.clientPhotos.some((p) => p.clientId === c.id),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   public async getClientById(
@@ -734,7 +737,10 @@ class MemoryDatabase implements IDatabase {
         return null;
       }
     }
-    return { ...c };
+    return {
+      ...c,
+      hasPhoto: this.clientPhotos.some((p) => p.clientId === c.id),
+    };
   }
 
   public async insertClient(client: schema.Client): Promise<schema.Client> {
@@ -2908,11 +2914,20 @@ class PostgresDatabase implements IDatabase {
       );
     }
 
-    return this.db
-      .select()
+    const rows = await this.db
+      .select({
+        client: schema.clients,
+        hasPhoto: sql<boolean>`CASE WHEN ${schema.clientPhotos.clientId} IS NOT NULL THEN true ELSE false END`,
+      })
       .from(schema.clients)
+      .leftJoin(schema.clientPhotos, eq(schema.clients.id, schema.clientPhotos.clientId))
       .where(and(...conditions))
       .orderBy(desc(schema.clients.createdAt));
+
+    return rows.map((r) => ({
+      ...r.client,
+      hasPhoto: Boolean(r.hasPhoto),
+    }));
   }
 
   public async getClientById(id: string, firmId: string, user?: VisibilityUserContext): Promise<schema.Client | null> {
@@ -2927,11 +2942,19 @@ class PostgresDatabase implements IDatabase {
       conditions.push(buildClientVisibilitySql(user, firm, firmUsers));
     }
     const rows = await this.db
-      .select()
+      .select({
+        client: schema.clients,
+        hasPhoto: sql<boolean>`CASE WHEN ${schema.clientPhotos.clientId} IS NOT NULL THEN true ELSE false END`,
+      })
       .from(schema.clients)
+      .leftJoin(schema.clientPhotos, eq(schema.clients.id, schema.clientPhotos.clientId))
       .where(and(...conditions))
       .limit(1);
-    return rows[0] || null;
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].client,
+      hasPhoto: Boolean(rows[0].hasPhoto),
+    };
   }
 
   public async insertClient(client: schema.Client): Promise<schema.Client> {

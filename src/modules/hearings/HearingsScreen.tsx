@@ -4,6 +4,7 @@ import { useAuth } from '../foundation/AuthContext';
 import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, HearingRecord, HearingStatus, UserRecord } from '../../data/types';
+import { getDhakaDateString, isSameDhakaDay, toDateInputValue } from '../../utils/dateUtils';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { HearingDateHistoryModal } from './HearingDateHistoryModal';
 import { RescheduleHearingModal } from './RescheduleHearingModal';
@@ -52,7 +53,7 @@ export const HearingsScreen: React.FC = () => {
 
   // Filter states
   const [viewMode, setViewMode] = useState<'all' | 'causelist'>('all');
-  const [causeListDate, setCauseListDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [causeListDate, setCauseListDate] = useState<string>(() => getDhakaDateString());
   const [statusFilter, setStatusFilter] = useState<'all' | HearingStatus>('all');
   const [fixedForFilter, setFixedForFilter] = useState<string>('all');
   const [courtFilter, setCourtFilter] = useState<string>('all');
@@ -123,7 +124,7 @@ export const HearingsScreen: React.FC = () => {
 
       // Filter by Cause List Date if in causelist mode
       if (viewMode === 'causelist') {
-        filtered = filtered.filter((h) => h.scheduledAt.slice(0, 10) === causeListDate);
+        filtered = filtered.filter((h) => isSameDhakaDay(h.scheduledAt, causeListDate));
       }
 
       // Filter by Court Bench
@@ -203,9 +204,9 @@ export const HearingsScreen: React.FC = () => {
 
   // Date jump helpers
   const handleDateOffset = (offsetDays: number) => {
-    const current = new Date(causeListDate);
+    const current = new Date(`${causeListDate}T12:00:00+06:00`);
     current.setDate(current.getDate() + offsetDays);
-    setCauseListDate(current.toISOString().slice(0, 10));
+    setCauseListDate(getDhakaDateString(current));
   };
 
   // Bulk Actions
@@ -477,7 +478,7 @@ export const HearingsScreen: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setCauseListDate(new Date().toISOString().slice(0, 10))}
+                onClick={() => setCauseListDate(getDhakaDateString())}
                 className="px-2.5 py-1 text-xs font-semibold bg-white rounded-lg text-indigo-700 border border-slate-200 hover:bg-indigo-50 transition"
               >
                 {t('calendar.today')}
@@ -492,7 +493,7 @@ export const HearingsScreen: React.FC = () => {
               </button>
               <input
                 type="date"
-                value={causeListDate}
+                value={toDateInputValue(causeListDate)}
                 onChange={(e) => setCauseListDate(e.target.value)}
                 className="text-xs font-mono font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 focus:outline-hidden"
               />

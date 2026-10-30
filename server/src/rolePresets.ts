@@ -129,7 +129,14 @@ export const VALID_JOB_TYPES: JobType[] = [
 ];
 
 export function isLawyerOrOwner(
-  userOrRole: { role: string; jobType?: JobType | string | null } | string,
+  userOrRole:
+    | {
+        role: string;
+        jobType?: JobType | string | null;
+        jobTitleLabel?: string | null;
+        name?: string | null;
+      }
+    | string,
   jobType?: JobType | string | null
 ): boolean {
   if (typeof userOrRole === 'string') {
@@ -137,5 +144,15 @@ export function isLawyerOrOwner(
     return jobType === 'lawyer_senior' || jobType === 'lawyer_junior';
   }
   if (userOrRole.role === 'Owner') return true;
-  return userOrRole.jobType === 'lawyer_senior' || userOrRole.jobType === 'lawyer_junior';
+  if (userOrRole.jobType === 'lawyer_senior' || userOrRole.jobType === 'lawyer_junior') return true;
+  if (
+    userOrRole.jobTitleLabel &&
+    /associate|lawyer|advocate|counsel|solicitor|barrister/i.test(userOrRole.jobTitleLabel)
+  ) {
+    return true;
+  }
+  if (userOrRole.name && /^adv\./i.test(userOrRole.name)) {
+    return true;
+  }
+  return false;
 }

@@ -6,6 +6,7 @@ import { CaseRecord, FeeAgreement, HearingRecord, PaymentMethod } from '../../da
 import { CreditCard, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa, formatBdt } from '../../utils/currency';
+import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [selectedHearingId, setSelectedHearingId] = useState<string>('');
 
   const [takaAmount, setTakaAmount] = useState('');
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() => getDhakaDateString());
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [reference, setReference] = useState('');
   const [purposeNote, setPurposeNote] = useState('');
@@ -142,7 +143,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           clientId,
           caseId: selectedCaseId,
           hearingId: selectedHearingId || null,
-          paymentDate,
+          paymentDate: toDateInputValue(paymentDate) || getDhakaDateString(),
           amountPaisa: paisa,
           method,
           reference: reference.trim() || null,
@@ -274,7 +275,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             </label>
             <input
               type="date"
-              value={paymentDate}
+              value={toDateInputValue(paymentDate)}
               onChange={(e) => setPaymentDate(e.target.value)}
               required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px]"

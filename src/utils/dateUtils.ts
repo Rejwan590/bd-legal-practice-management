@@ -54,3 +54,51 @@ export function formatDhakaDate(
     return '';
   }
 }
+
+/**
+ * Safely formats any date, ISO timestamp, number, or string for HTML `<input type="date">` (`YYYY-MM-DD`).
+ * Prevents browser console errors when full ISO timestamps (e.g. `2026-05-15T12:00:00.000Z`) are supplied.
+ * Handles null, undefined, empty, and invalid dates safely by returning an empty string.
+ */
+export function toDateInputValue(val?: Date | string | number | null): string {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return '';
+    // If it's already exactly YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    // Parse ISO timestamps or other date strings
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return getDhakaDateString(d);
+    }
+    // Fallback regex matching YYYY-MM-DD at the start
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+  }
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    return getDhakaDateString(val);
+  }
+  if (typeof val === 'number') {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    return getDhakaDateString(d);
+  }
+  return '';
+}
+
+/**
+ * Safely formats any date, timestamp, or string for HTML `<input type="datetime-local">` (`YYYY-MM-DDTHH:mm`).
+ * Handles null, undefined, and invalid values safely by returning an empty string.
+ */
+export function toDateTimeInputValue(val?: Date | string | number | null): string {
+  if (!val) return '';
+  const d = typeof val === 'object' && val instanceof Date ? val : new Date(val);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+

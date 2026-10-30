@@ -3,6 +3,36 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Browser Console Errors (Completed & Verified)**:
+  - **1. Date Input Formatting (yyyy-MM-dd vs ISO Timestamps)**:
+    - Root Cause: Database timestamps returned as ISO 8601 strings (e.g. `2026-05-15T12:00:00.000Z` on closed cases like `case-syn-109`) were bound directly to HTML `<input type="date">` inputs in `CaseFormModal.tsx` (`caseDate`, `closedOn`), `CaseNotesTab.tsx` (`noteDate`), `ClientNotesPanel.tsx` (`noteDate`), and `HearingsScreen.tsx` (`causeListDate`), violating HTML5 date input format requirements (`The specified value ... does not conform to the required format, "yyyy-MM-dd"`).
+    - Added resilient date-only and datetime-local formatters (`toDateInputValue`, `toDateTimeInputValue`) in `src/utils/dateUtils.ts` that safely parse full ISO timestamps, Date instances, milliseconds, and formatted dates into Bangladesh timezone (`Asia/Dhaka`), while safely returning empty strings for null/undefined/empty/invalid values.
+    - Updated form initialization and edit-population across `CaseFormModal`, `CaseNotesTab`, `ClientNotesPanel`, `HearingsScreen`, `AddExpenseModal`, `CreateAgreementModal`, `RecordPaymentModal`, `AppointmentFormModal`, `HearingFormModal`, `TaskFormModal`, `AdjournHearingModal`, `BulkAdjournModal`, `BulkRescheduleModal`, `RescheduleHearingModal`, `FileCheckOutModal`, and `FileCourtDispatchModal`.
+  - **2. Case Update HTTP 400 & Responsible Lawyer Contract Mismatch**:
+    - Root Cause: `PATCH /api/v1/cases/case-syn-109` failed with HTTP 400 (`{ error: 'Responsible lawyer must be a lawyer or Owner' }`). Case `case-syn-109` is assigned to chamber advocate `user-staff-002` ("Adv. Nusrat Jahan", Associate). In `server/src/db/seed.ts` and `src/data/mockStore.ts`, `user-staff-002` was seeded with `role: 'Staff'`, `jobType: 'other'`, and `jobTitleLabel: 'Associate'`. `server/src/routes/cases.ts` called `isLawyerOrOwner(respUser.role, respUser.jobType)`, which strictly matched only `role === 'Owner'` or `jobType === 'lawyer_senior' | 'lawyer_junior'`, rejecting legitimate Associate advocates.
+    - Enhanced `isLawyerOrOwner` in both `server/src/rolePresets.ts` and `src/rolePresets.ts` (dual-mode parity) to accept complete user objects or role strings, and recognize staff with legal titles (`Associate`, `Advocate`, `Lawyer`, `Counsel`, `Barrister`, `Solicitor`) or names starting with `Adv.`.
+    - Updated `user-staff-002` in `server/src/db/seed.ts` and `src/data/mockStore.ts` to `jobType: 'lawyer_junior' as const`.
+    - Updated `server/src/routes/cases.ts` lines 323 and 455 to pass user context directly.
+    - Added backend regression test in `server/tests/cases.test.ts` verifying that updating synthetic case `case-syn-109` returns HTTP 200, updates case fields, preserves `user-staff-002` as responsible lawyer, and properly persists `closedOn` and `caseDate`.
+  - **3. Client Photo 404 Flooding & Missing Photo Caching**:
+    - Root Cause: `ClientsScreen.tsx` rendered `<ClientAvatar clientId={client.id} ... context={{ currentUser }} />` for every client in the list without knowing whether the client had a photo. Synthetic clients (`client-syn-019`, `client-syn-099`, etc.) do not have photos, causing 100 simultaneous GET requests to `/api/v1/clients/:id/photo`, which returned HTTP 404 and flooded the browser console with red network errors.
+    - Added `hasPhoto?: boolean` to `ClientRecord` in `src/data/types.ts` and `schema.Client` in `server/src/db/schema.ts`.
+    - Updated PostgreSQL and In-Memory query implementations (`PostgresDatabase.listClients`, `PostgresDatabase.getClientById`, `MemoryDatabase.listClients`, `MemoryDatabase.getClientById`, `MockClientRepository.list`, and `MockClientRepository.getById`) to include `hasPhoto: boolean` indicating whether a profile photo exists in `client_photos`.
+    - Updated `ClientAvatar.tsx`:
+      - Accepts `hasPhoto?: boolean`. When `hasPhoto === false`, renders the styled initials avatar immediately without making any network request.
+      - Implemented module-level `clientPhotoCache` (Map) and `pendingPhotoRequests` (in-flight promise deduplication), caching missing photos as `null` after first check to prevent any repeated requests across the entire session.
+      - Exported `invalidateClientPhotoCache` and integrated it into `ClientProfileView.tsx` on photo upload and deletion.
+      - Updated `ClientProfileView.tsx` to conditionally fetch photo only if `cl?.hasPhoto` is true.
+    - Added backend regression test suite in `server/tests/clients.test.ts` verifying `hasPhoto` flag accuracy before upload (false), during photo existence (true), and after deletion (false).
+  - **Automated Verification**:
+    - `npm run lint`: 0 errors (clean pass across both app and admin-app).
+    - `npm run test:consoleErrors`: 4/4 PASSED (`tests/browserConsoleErrors.test.ts`).
+    - `npm run test:dashboard`: 25/25 PASSED.
+    - `npm run test:restFetch`: 14/14 PASSED.
+    - `npm run test:hardening`: 9/9 PASSED.
+    - `npm test --prefix server`: 626/626 PASSED across all 12 test suites.
+    - `npm run build`: built in 1.46s (production bundle generated cleanly).
+
 - [x] **Populate BD Legal Practice Management with 100 Realistic Synthetic Clients and Related Practice Test Data (Completed & Verified)**:
   - **Comprehensive Data Model Inspection**:
     - Confirmed dual-mode architecture: in-memory/mock repository (`src/data/mockStore.ts`) active by default for frontend dev (`VITE_DATA_SOURCE=mock`), and Express/PostgreSQL relational schema (`server/src/db/schema.ts` with 24 tables) for REST mode.

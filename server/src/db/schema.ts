@@ -578,7 +578,9 @@ export type Firm = typeof firms.$inferSelect;
 export type NewFirm = typeof firms.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type Client = typeof clients.$inferSelect;
+export type Client = typeof clients.$inferSelect & {
+  hasPhoto?: boolean;
+};
 export type ClientPhoto = typeof clientPhotos.$inferSelect;
 export type NewClientPhoto = typeof clientPhotos.$inferInsert;
 export type ClientNote = typeof clientNotes.$inferSelect;

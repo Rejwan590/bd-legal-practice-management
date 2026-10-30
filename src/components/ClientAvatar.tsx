@@ -8,9 +8,22 @@ interface ClientAvatarProps {
   clientName?: string;
   nameBn?: string;
   photoUrl?: string | null;
+  hasPhoto?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   context?: SecurityContext;
+}
+
+// Module-level photo cache to prevent repeated network requests across avatar instances
+const clientPhotoCache = new Map<string, string | null>();
+const pendingPhotoRequests = new Map<string, Promise<string | null>>();
+
+export function invalidateClientPhotoCache(clientId: string, newUrl?: string | null) {
+  if (newUrl !== undefined) {
+    clientPhotoCache.set(clientId, newUrl);
+  } else {
+    clientPhotoCache.delete(clientId);
+  }
 }
 
 export function getInitials(name: string, nameBn?: string): string {
@@ -59,45 +72,85 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
   clientName,
   nameBn,
   photoUrl,
+  hasPhoto,
   size = 'md',
   className = '',
   context,
 }) => {
-  const [imgSrc, setImgSrc] = useState<string | null>(photoUrl || null);
+  const [imgSrc, setImgSrc] = useState<string | null>(() => {
+    if (photoUrl !== undefined) return photoUrl;
+    if (hasPhoto === false) return null;
+    if (clientId && clientPhotoCache.has(clientId)) return clientPhotoCache.get(clientId)!;
+    return null;
+  });
   const [loadError, setLoadError] = useState(false);
   const effectiveName = name || clientName || '';
 
   useEffect(() => {
     if (photoUrl !== undefined) {
       setImgSrc(photoUrl);
+      if (clientId) clientPhotoCache.set(clientId, photoUrl);
+      setLoadError(false);
+      return;
+    }
+
+    // If client is known to not have a photo, do not trigger network fetch or 404
+    if (hasPhoto === false) {
+      setImgSrc(null);
+      if (clientId) clientPhotoCache.set(clientId, null);
+      setLoadError(false);
+      return;
+    }
+
+    if (!clientId || !context) {
+      return;
+    }
+
+    // Check cached result first
+    if (clientPhotoCache.has(clientId)) {
+      setImgSrc(clientPhotoCache.get(clientId)!);
       setLoadError(false);
       return;
     }
 
     let isMounted = true;
-    if (clientId && context) {
-      repositories.client
+    let fetchPromise = pendingPhotoRequests.get(clientId);
+
+    if (!fetchPromise) {
+      fetchPromise = repositories.client
         .getPhoto(context, clientId)
         .then((photo) => {
-          if (isMounted) {
-            if (photo?.dataUrl) {
-              setImgSrc(photo.dataUrl);
-            } else if (photo?.bytes && photo?.mime) {
-              setImgSrc(`data:${photo.mime};base64,${photo.bytes}`);
-            } else {
-              setImgSrc(null);
-            }
+          let resolvedUrl: string | null = null;
+          if (photo?.dataUrl) {
+            resolvedUrl = photo.dataUrl;
+          } else if (photo?.bytes && photo?.mime) {
+            resolvedUrl = `data:${photo.mime};base64,${photo.bytes}`;
           }
+          clientPhotoCache.set(clientId, resolvedUrl);
+          return resolvedUrl;
         })
         .catch(() => {
-          if (isMounted) setImgSrc(null);
+          // Cache null to prevent repeated failed requests
+          clientPhotoCache.set(clientId, null);
+          return null;
+        })
+        .finally(() => {
+          pendingPhotoRequests.delete(clientId);
         });
+      pendingPhotoRequests.set(clientId, fetchPromise);
     }
+
+    fetchPromise.then((url) => {
+      if (isMounted) {
+        setImgSrc(url);
+        setLoadError(false);
+      }
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [clientId, photoUrl, context]);
+  }, [clientId, photoUrl, hasPhoto, context]);
 
   const initials = getInitials(effectiveName, nameBn);
   const colorClass = getColorForName(effectiveName || 'Client');

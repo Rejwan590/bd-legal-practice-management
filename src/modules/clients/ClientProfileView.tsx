@@ -12,7 +12,7 @@ import {
 } from '../../data/types';
 import { EntityLink } from '../../components/EntityLink';
 import { Breadcrumbs } from '../../components/Breadcrumbs';
-import { ClientAvatar } from '../../components/ClientAvatar';
+import { ClientAvatar, invalidateClientPhotoCache } from '../../components/ClientAvatar';
 import { ClientNotesPanel } from './ClientNotesPanel';
 import { resizeClientPhoto } from '../../utils/photoResizer';
 import { formatCasePartyTitle } from '../../data/caseRoles';
@@ -110,13 +110,14 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [cl, clientCases, clientTasks, clientFiles, clientAppointments, photoRec] = await Promise.all([
-        repos.client.getById({ currentUser }, clientId),
+      const cl = await repos.client.getById({ currentUser }, clientId);
+      const [clientCases, clientTasks, clientFiles, clientAppointments, photoRec] = await Promise.all([
+
         repos.case.getByClientId({ currentUser }, clientId).catch(() => []),
         repos.task.list({ currentUser }, { clientId }).catch(() => []),
         repos.physicalFile.list({ currentUser }, { clientId }).catch(() => []),
         repos.appointment ? repos.appointment.list({ currentUser }, { clientId }).catch(() => []) : Promise.resolve([]),
-        repos.client.getPhoto({ currentUser }, clientId).catch(() => null),
+        cl?.hasPhoto ? repos.client.getPhoto({ currentUser }, clientId).catch(() => null) : Promise.resolve(null),
       ]);
       setClient(cl);
       setCases(Array.isArray(clientCases) ? clientCases : []);
@@ -129,7 +130,8 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
       } else if (photoRec?.bytes && photoRec?.mime) {
         setPhotoDataUrl(`data:${photoRec.mime};base64,${photoRec.bytes}`);
       } else {
-        setPhotoDataUrl(null);
+        invalidateClientPhotoCache(clientId, null);
+      setPhotoDataUrl(null);
       }
 
       if (cl) {
@@ -158,6 +160,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     try {
       const resized = await resizeClientPhoto(file, 400, 'image/jpeg');
       await repos.client.savePhoto({ currentUser }, clientId, resized.mime, resized.bytes);
+      invalidateClientPhotoCache(clientId, resized.dataUrl);
       setPhotoDataUrl(resized.dataUrl);
       triggerRefresh();
     } catch (err: unknown) {
@@ -173,6 +176,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     setErrorMsg(null);
     try {
       await repos.client.deletePhoto({ currentUser }, clientId);
+      invalidateClientPhotoCache(clientId, null);
       setPhotoDataUrl(null);
       triggerRefresh();
     } catch (err: unknown) {

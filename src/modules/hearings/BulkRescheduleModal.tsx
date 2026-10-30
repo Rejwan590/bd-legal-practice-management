@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HearingRecord } from '../../data/types';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Calendar, AlertCircle, Save } from 'lucide-react';
 import { CIVIL_FIXED_FOR_OPTIONS, CRIMINAL_FIXED_FOR_OPTIONS } from '../../data/hearingFixedFor';
@@ -52,7 +53,7 @@ export const BulkRescheduleModal: React.FC<BulkRescheduleModalProps> = ({
       const future = new Date();
       future.setDate(future.getDate() + 14);
       future.setHours(10, 30, 0, 0);
-      setNewDate(future.toISOString().slice(0, 16));
+      setNewDate(toDateTimeInputValue(future));
       setFixedFor('');
       setFixedForNote('');
       setReason(COMMON_REASONS[0]);
@@ -159,7 +160,7 @@ export const BulkRescheduleModal: React.FC<BulkRescheduleModalProps> = ({
               <input
                 type="datetime-local"
                 required
-                value={newDate}
+                value={toDateTimeInputValue(newDate)}
                 onChange={(e) => setNewDate(e.target.value)}
                 className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
               />

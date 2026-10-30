@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HearingRecord, CaseCategory } from '../../data/types';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
@@ -55,7 +56,7 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
       // Default to 14 days after current scheduled date
       const current = new Date(hearing.scheduledAt);
       current.setDate(current.getDate() + 14);
-      setNewDate(current.toISOString().slice(0, 16));
+      setNewDate(toDateTimeInputValue(current));
       setReason(COMMON_REASONS[0]);
       setFixedFor(hearing.fixedFor || 'hearing');
       setFixedForNote(hearing.fixedForNote || '');
@@ -184,7 +185,7 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
             <input
               type="datetime-local"
               required
-              value={newDate}
+              value={toDateTimeInputValue(newDate)}
               onChange={(e) => setNewDate(e.target.value)}
               className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
             />

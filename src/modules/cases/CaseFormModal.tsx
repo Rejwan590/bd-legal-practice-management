@@ -4,6 +4,7 @@ import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseCategory, CaseRecord, ClientRecord, CourtRole, UserRecord } from '../../data/types';
 import { isLawyerOrOwner } from '../../rolePresets';
+import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 import {
   CATEGORY_ROLES,
   COMMON_COURT_SUGGESTIONS,
@@ -146,8 +147,8 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       setCaseNumber(initialData.caseNumber);
       const cat = initialData.caseCategory || 'civil';
       setCaseCategory(cat);
-      setCaseDate(initialData.caseDate || initialData.createdAt.slice(0, 10));
-      setClosedOn(initialData.closedOn || '');
+      setCaseDate(toDateInputValue(initialData.caseDate || initialData.createdAt));
+      setClosedOn(toDateInputValue(initialData.closedOn));
       setCourt(initialData.court);
 
       if (COMMON_MATTERS.includes(initialData.matterType)) {
@@ -178,7 +179,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       setFileSerial(`F-${year}-${randomSeq}`);
       setCaseNumber('');
       setCaseCategory('civil');
-      setCaseDate(new Date().toISOString().slice(0, 10));
+      setCaseDate(getDhakaDateString());
       setClosedOn('');
       setCourt(COMMON_COURT_SUGGESTIONS[3]);
       setMatterType(COMMON_MATTERS[0]);
@@ -270,8 +271,8 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
         matterType: finalMatter,
         description: description.trim(),
         caseCategory,
-        caseDate: caseDate || null,
-        closedOn: status === 'closed' ? (closedOn || new Date().toISOString().slice(0, 10)) : null,
+        caseDate: toDateInputValue(caseDate) || null,
+        closedOn: status === 'closed' ? (toDateInputValue(closedOn) || getDhakaDateString()) : null,
         partyARole: partyARole.trim(),
         partyBRole: partyBRole.trim(),
         plaintiff: plaintiff.trim(),
@@ -421,7 +422,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
               </label>
               <input
                 type="date"
-                value={caseDate}
+                value={toDateInputValue(caseDate)}
                 onChange={(e) => setCaseDate(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden min-h-[44px]"
               />
@@ -451,7 +452,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
               </label>
               <input
                 type="date"
-                value={closedOn}
+                value={toDateInputValue(closedOn)}
                 onChange={(e) => setClosedOn(e.target.value)}
                 className="w-full sm:w-1/2 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
               />

@@ -319,7 +319,7 @@ export const INITIAL_USERS: UserRecord[] = [
     name: 'Adv. Nusrat Jahan',
     email: 'sample-associate@demo-chamber.local',
     role: 'Staff',
-    jobType: 'other',
+    jobType: 'lawyer_junior',
     jobTitleLabel: 'Associate',
     reportsToUserId: null,
     permissions: DEFAULT_STAFF_PERMISSIONS,

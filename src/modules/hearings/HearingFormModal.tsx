@@ -4,6 +4,7 @@ import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, HearingRecord, HearingStatus, UserRecord } from '../../data/types';
 import { isLawyerOrOwner } from '../../rolePresets';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Calendar, Save, AlertCircle, Lock } from 'lucide-react';
 import { getFixedForOptionsForCategory, getFixedForLabel } from '../../data/hearingFixedFor';
@@ -94,7 +95,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
       if (initialData) {
         setCaseId(initialData.caseId);
         setAppearingLawyerId(initialData.appearingLawyerId || '');
-        setScheduledAt(initialData.scheduledAt.slice(0, 16));
+        setScheduledAt(toDateTimeInputValue(initialData.scheduledAt));
         setFixedFor(initialData.fixedFor || 'first_hearing');
         setFixedForNote(initialData.fixedForNote || '');
         setPurpose(initialData.purpose);
@@ -107,7 +108,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
           const d = new Date();
           d.setDate(d.getDate() + 7);
           d.setHours(10, 30, 0, 0);
-          setScheduledAt(d.toISOString().slice(0, 16));
+          setScheduledAt(toDateTimeInputValue(d));
         }
         if (defaultCaseId) {
           setCaseId(defaultCaseId);
@@ -292,7 +293,7 @@ export const HearingFormModal: React.FC<HearingFormModalProps> = ({
             <input
               type="datetime-local"
               required
-              value={scheduledAt}
+              value={toDateTimeInputValue(scheduledAt)}
               onChange={(e) => setScheduledAt(e.target.value)}
               className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
             />

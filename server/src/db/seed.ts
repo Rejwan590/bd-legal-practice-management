@@ -240,7 +240,7 @@ export async function getSeedUsers() {
       email: 'staff@firm.bd',
       passwordHash: staffHash,
       role: 'Staff' as const,
-      jobType: 'other' as const,
+      jobType: 'lawyer_junior' as const,
       jobTitleLabel: 'Associate',
       reportsToUserId: null,
       permissions: DEFAULT_STAFF_PERMISSIONS,

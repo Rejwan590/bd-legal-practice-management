@@ -563,6 +563,80 @@ async function runTests() {
       const crossFirmCase = await (db as any).getCaseById('case-001', firmBId);
       assert(crossFirmCase === null, 'DB adapter getCaseById with foreign firmId returns null');
     }
+
+    console.log('\n--- 8. Synthetic Case Update Regression Test (case-syn-109) ---');
+    {
+      // Create synthetic case linked to client-001 and responsible lawyer user-staff-002
+      const synCaseId = 'case-syn-109';
+      await db.insertCase({
+        id: synCaseId,
+        firmId: 'firm-bd-001',
+        clientId: 'client-001',
+        fileSerial: 'SYN-FS-0109',
+        caseNumber: 'Customs No. 104/2024',
+        court: 'Family Court, Dhaka',
+        matterType: 'Customs Valuation & Port Tariff Dispute',
+        description: 'Synthetic legal practice matter concerning customs valuation dispute',
+        plaintiff: 'Md. Zillur Rahman Molla',
+        defendant: 'Opposite Party & Others (109)',
+        partyARole: 'Plaintiff',
+        partyBRole: 'Defendant',
+        ourRole: 'Plaintiff',
+        plaintiffLawyer: 'Adv. Nusrat Jahan',
+        defendantLawyer: 'Adv. Enamul Karim (109)',
+        responsibleLawyerId: 'user-staff-002',
+        status: 'closed',
+        caseCategory: 'other',
+        caseDate: new Date('2024-11-10T00:00:00.000Z'),
+        closedOn: new Date('2026-05-15T12:00:00.000Z'),
+        policeStation: null,
+        sectionsOfLaw: 'Section 54 Specific Relief Act 1877',
+        restricted: false,
+        nextHearingAt: null,
+        createdAt: new Date('2024-11-12T10:00:00.000Z'),
+        updatedAt: new Date('2026-06-15T14:00:00.000Z'),
+        deletedAt: null,
+        createdBy: 'user-owner-001',
+        updatedBy: 'user-owner-001',
+      } as any);
+
+      // Verify updating synthetic case succeeds with HTTP 200 (including date fields & responsible lawyer)
+      const updatePayload = {
+        clientId: 'client-001',
+        responsibleLawyerId: 'user-staff-002',
+        fileSerial: 'SYN-FS-0109',
+        caseNumber: 'Customs No. 104/2024-UPDATED',
+        court: 'Family Court, Dhaka',
+        matterType: 'Customs Valuation & Port Tariff Dispute',
+        description: 'Updated synthetic matter description',
+        caseCategory: 'other',
+        caseDate: '2024-11-10',
+        closedOn: '2026-05-15',
+        partyARole: 'Plaintiff',
+        partyBRole: 'Defendant',
+        plaintiff: 'Md. Zillur Rahman Molla',
+        defendant: 'Opposite Party & Others (109)',
+        ourRole: 'Plaintiff',
+        status: 'closed',
+        restricted: false,
+      };
+
+      const patchRes = await fetch(`${baseUrl}/api/v1/cases/${synCaseId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify(updatePayload),
+      });
+
+      assert(patchRes.status === 200, `Updating synthetic case-syn-109 returns HTTP 200 (received ${patchRes.status})`);
+      const patchedBody = await patchRes.json();
+      assert(patchedBody.caseNumber === 'Customs No. 104/2024-UPDATED', 'Synthetic case number was updated');
+      assert(patchedBody.responsibleLawyerId === 'user-staff-002', 'Responsible lawyer user-staff-002 retained');
+      assert(patchedBody.status === 'closed', 'Case status remains closed');
+      assert(Boolean(patchedBody.closedOn), 'Disposal date closedOn persisted properly');
+    }
   } finally {
     server.close();
   }

@@ -6,6 +6,7 @@ import { CaseRecord, FeeType } from '../../data/types';
 import { FileText, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa } from '../../utils/currency';
+import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface CreateAgreementModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || '');
   const [feeType, setFeeType] = useState<FeeType>('fixed');
   const [takaAmount, setTakaAmount] = useState('');
-  const [agreementDate, setAgreementDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [agreementDate, setAgreementDate] = useState(() => getDhakaDateString());
   const [notes, setNotes] = useState('');
 
   const [saving, setSaving] = useState(false);
@@ -41,7 +42,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
     if (isOpen && currentUser && clientId) {
       setFeeType('fixed');
       setTakaAmount('');
-      setAgreementDate(new Date().toISOString().slice(0, 10));
+      setAgreementDate(getDhakaDateString());
       setNotes('');
       setErrorMsg(null);
 
@@ -87,7 +88,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
           caseId: selectedCaseId,
           feeType,
           agreedAmountPaisa: paisa,
-          agreementDate,
+          agreementDate: toDateInputValue(agreementDate) || getDhakaDateString(),
           notes: notes.trim() || null,
         }
       );
@@ -205,7 +206,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
           </label>
           <input
             type="date"
-            value={agreementDate}
+            value={toDateInputValue(agreementDate)}
             onChange={(e) => setAgreementDate(e.target.value)}
             required
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"

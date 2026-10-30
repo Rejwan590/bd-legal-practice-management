@@ -6,6 +6,7 @@ import { ExpenseCategory } from '../../data/types';
 import { Receipt, AlertCircle } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa } from '../../utils/currency';
+import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface AddExpenseModalProps {
   isOpen: boolean;
@@ -29,7 +30,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [takaAmount, setTakaAmount] = useState('');
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [expenseDate, setExpenseDate] = useState(() => getDhakaDateString());
   const [description, setDescription] = useState('');
   const [reimbursable, setReimbursable] = useState(true);
 
@@ -85,7 +86,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
           clientId: clientId || null,
           caseId: caseId || null,
           categoryId,
-          expenseDate,
+          expenseDate: toDateInputValue(expenseDate) || getDhakaDateString(),
           amountPaisa: paisa,
           description: description.trim(),
           reimbursable,
@@ -178,7 +179,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             </label>
             <input
               type="date"
-              value={expenseDate}
+              value={toDateInputValue(expenseDate)}
               onChange={(e) => setExpenseDate(e.target.value)}
               required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px]"

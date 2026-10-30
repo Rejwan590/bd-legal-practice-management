@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HearingRecord, CaseCategory } from '../../data/types';
+import { toDateTimeInputValue } from '../../utils/dateUtils';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
@@ -51,7 +52,7 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
       const future = new Date();
       future.setDate(future.getDate() + 21);
       future.setHours(10, 30, 0, 0);
-      setNextDate(future.toISOString().slice(0, 16));
+      setNextDate(toDateTimeInputValue(future));
       setNextPurpose(hearing.purpose);
       setNextFixedFor(hearing.fixedFor || 'hearing');
       setNextFixedForNote(hearing.fixedForNote || '');
@@ -228,7 +229,7 @@ export const AdjournHearingModal: React.FC<AdjournHearingModalProps> = ({
                 <input
                   type="datetime-local"
                   required
-                  value={nextDate}
+                  value={toDateTimeInputValue(nextDate)}
                   onChange={(e) => setNextDate(e.target.value)}
                   className="w-full min-h-[44px] bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
                 />

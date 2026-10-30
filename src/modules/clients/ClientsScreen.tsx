@@ -246,6 +246,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                     clientId={client.id}
                     name={client.name}
                     nameBn={client.nameBn}
+                    hasPhoto={client.hasPhoto}
                     size="md"
                     context={{ currentUser }}
                   />

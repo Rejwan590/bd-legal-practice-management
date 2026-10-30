@@ -320,11 +320,11 @@ casesRouter.post(
       if (!respUser || respUser.firmId !== req.user!.firmId || !respUser.active) {
         return res.status(400).json({ error: 'Responsible lawyer must be an active user of the same firm' });
       }
-      if (!isLawyerOrOwner(respUser.role, respUser.jobType)) {
+      if (!isLawyerOrOwner(respUser)) {
         return res.status(400).json({ error: 'Responsible lawyer must be a lawyer or Owner' });
       }
       resolvedRespLawyerId = respUser.id;
-    } else if (isLawyerOrOwner(req.user!.role, req.user!.jobType)) {
+    } else if (isLawyerOrOwner(req.user!)) {
       resolvedRespLawyerId = req.user!.id;
     } else if (req.user!.reportsToUserId) {
       resolvedRespLawyerId = req.user!.reportsToUserId;
@@ -452,7 +452,7 @@ casesRouter.patch(
       if (!respUser || respUser.firmId !== req.user!.firmId || !respUser.active) {
         return res.status(400).json({ error: 'Responsible lawyer must be an active user of the same firm' });
       }
-      if (!isLawyerOrOwner(respUser.role, respUser.jobType)) {
+      if (!isLawyerOrOwner(respUser)) {
         return res.status(400).json({ error: 'Responsible lawyer must be a lawyer or Owner' });
       }
     }

@@ -301,6 +301,66 @@ async function runTests() {
       assert(directRes.status === 404, 'Firm A querying Firm B client by ID gets 404 Not Found');
     }
 
+    console.log('\n--- 6. Client Photos & hasPhoto Flag Verification ---');
+    {
+      // Verify client-001 initially has hasPhoto === false
+      const client001Res = await fetch(`${baseUrl}/api/v1/clients/client-001`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(client001Res.status === 200, 'GET /clients/client-001 succeeds');
+      const client001 = await client001Res.json();
+      assert(client001.hasPhoto === false, 'client-001 hasPhoto is false before photo upload');
+
+      // Verify missing photo endpoint returns 404
+      const missingPhotoRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(missingPhotoRes.status === 404, 'GET /clients/client-001/photo returns 404 Not Found when no photo exists');
+
+      // Upload photo
+      const sampleJpegBase64 = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+      const uploadRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `access_token=${ownerToken}`,
+        },
+        body: JSON.stringify({
+          mime: 'image/jpeg',
+          data: sampleJpegBase64,
+        }),
+      });
+      assert(uploadRes.status === 200, 'PUT /clients/client-001/photo uploads photo successfully');
+
+      // Verify client-001 now has hasPhoto === true
+      const client001WithPhotoRes = await fetch(`${baseUrl}/api/v1/clients/client-001`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      const client001WithPhoto = await client001WithPhotoRes.json();
+      assert(client001WithPhoto.hasPhoto === true, 'client-001 hasPhoto is true after photo upload');
+
+      // Verify GET /photo returns the uploaded photo with 200
+      const getPhotoRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(getPhotoRes.status === 200, 'GET /clients/client-001/photo returns 200 OK after photo upload');
+      assert(getPhotoRes.headers.get('content-type') === 'image/jpeg', 'Content-Type matches uploaded photo MIME');
+
+      // Delete photo
+      const deletePhotoRes = await fetch(`${baseUrl}/api/v1/clients/client-001/photo`, {
+        method: 'DELETE',
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      assert(deletePhotoRes.status === 200, 'DELETE /clients/client-001/photo returns 200 OK');
+
+      // Verify hasPhoto reverts to false
+      const client001AfterDeleteRes = await fetch(`${baseUrl}/api/v1/clients/client-001`, {
+        headers: { Cookie: `access_token=${ownerToken}` },
+      });
+      const client001AfterDelete = await client001AfterDeleteRes.json();
+      assert(client001AfterDelete.hasPhoto === false, 'client-001 hasPhoto reverts to false after deletion');
+    }
+
     console.log(`\n========================================`);
     console.log(`CLIENTS BACKEND TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
     console.log(`========================================\n`);
