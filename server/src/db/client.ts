@@ -760,7 +760,8 @@ class MemoryDatabase implements IDatabase {
       updatedAt: new Date(),
     };
     this.clients[index] = updated;
-    return { ...updated };
+    const hasPhoto = this.clientPhotos.some((p) => p.clientId === id && p.firmId === firmId);
+    return { ...updated, hasPhoto };
   }
 
   public async countActiveCasesForClient(clientId: string, firmId: string): Promise<number> {
@@ -2976,7 +2977,15 @@ class PostgresDatabase implements IDatabase {
       .where(and(eq(schema.clients.id, id), eq(schema.clients.firmId, firmId)))
       .returning();
     if (!rows[0]) throw new Error(`Client not found: ${id}`);
-    return rows[0];
+    const photoRow = await this.db
+      .select({ clientId: schema.clientPhotos.clientId })
+      .from(schema.clientPhotos)
+      .where(and(eq(schema.clientPhotos.clientId, id), eq(schema.clientPhotos.firmId, firmId)))
+      .limit(1);
+    return {
+      ...rows[0],
+      hasPhoto: photoRow.length > 0,
+    };
   }
 
   public async countActiveCasesForClient(clientId: string, firmId: string): Promise<number> {

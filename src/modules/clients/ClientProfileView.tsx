@@ -12,7 +12,7 @@ import {
 } from '../../data/types';
 import { EntityLink } from '../../components/EntityLink';
 import { Breadcrumbs } from '../../components/Breadcrumbs';
-import { ClientAvatar, invalidateClientPhotoCache } from '../../components/ClientAvatar';
+import { ClientAvatar, invalidateClientPhotoCache, getCachedClientPhoto } from '../../components/ClientAvatar';
 import { CameraCaptureModal } from '../../components/CameraCaptureModal';
 import { ClientNotesPanel } from './ClientNotesPanel';
 import { resizeClientPhoto } from '../../utils/photoResizer';
@@ -88,7 +88,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [files, setFiles] = useState<PhysicalFileRecord[]>([]);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
-  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(() => (clientId ? getCachedClientPhoto(clientId) || null : null));
   const [photoUploading, setPhotoUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -130,11 +130,19 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
 
       if (photoRec?.dataUrl) {
         setPhotoDataUrl(photoRec.dataUrl);
+        invalidateClientPhotoCache(clientId, photoRec.dataUrl);
       } else if (photoRec?.bytes && photoRec?.mime) {
-        setPhotoDataUrl(`data:${photoRec.mime};base64,${photoRec.bytes}`);
+        const url = `data:${photoRec.mime};base64,${photoRec.bytes}`;
+        setPhotoDataUrl(url);
+        invalidateClientPhotoCache(clientId, url);
+      } else if (cl?.hasPhoto) {
+        const cached = getCachedClientPhoto(clientId);
+        if (cached) {
+          setPhotoDataUrl(cached);
+        }
       } else {
         invalidateClientPhotoCache(clientId, null);
-      setPhotoDataUrl(null);
+        setPhotoDataUrl(null);
       }
 
       if (cl) {
@@ -162,9 +170,11 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     setErrorMsg(null);
     try {
       const resized = await resizeClientPhoto(fileOrBlob, 400, 'image/jpeg');
-      await repos.client.savePhoto({ currentUser }, clientId, resized.mime, resized.bytes);
-      invalidateClientPhotoCache(clientId, resized.dataUrl);
-      setPhotoDataUrl(resized.dataUrl);
+      const saved = await repos.client.savePhoto({ currentUser }, clientId, resized.mime, resized.bytes);
+      const activeDataUrl = saved?.dataUrl || resized.dataUrl;
+      invalidateClientPhotoCache(clientId, activeDataUrl);
+      setPhotoDataUrl(activeDataUrl);
+      setClient((prev) => (prev ? { ...prev, hasPhoto: true } : prev));
       triggerRefresh();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to upload photo');
@@ -181,6 +191,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
       await repos.client.deletePhoto({ currentUser }, clientId);
       invalidateClientPhotoCache(clientId, null);
       setPhotoDataUrl(null);
+      setClient((prev) => (prev ? { ...prev, hasPhoto: false } : prev));
       triggerRefresh();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to delete photo');
@@ -368,9 +379,10 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
               <div className="relative group shrink-0 flex flex-col items-center">
                 <ClientAvatar
                   clientId={client.id}
-                  photoUrl={photoDataUrl}
+                  photoUrl={photoDataUrl || undefined}
                   name={client.name}
                   nameBn={client.nameBn}
+                  hasPhoto={Boolean(photoDataUrl || client.hasPhoto)}
                   size="xl"
                   context={{ currentUser }}
                 />

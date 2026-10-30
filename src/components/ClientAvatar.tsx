@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { repositories } from '../data/repositories';
-import { SecurityContext } from '../data/types';
+import { SecurityContext, UserRecord } from '../data/types';
+import { useAuth } from '../modules/foundation/AuthContext';
 
 interface ClientAvatarProps {
   clientId?: string;
@@ -17,6 +18,10 @@ interface ClientAvatarProps {
 // Module-level photo cache to prevent repeated network requests across avatar instances
 const clientPhotoCache = new Map<string, string | null>();
 const pendingPhotoRequests = new Map<string, Promise<string | null>>();
+
+export function getCachedClientPhoto(clientId: string): string | null | undefined {
+  return clientPhotoCache.get(clientId);
+}
 
 export function invalidateClientPhotoCache(clientId: string, newUrl?: string | null) {
   if (newUrl !== undefined) {
@@ -77,8 +82,18 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
   className = '',
   context,
 }) => {
+  let authUser: UserRecord | undefined;
+  try {
+    const auth = useAuth();
+    authUser = auth?.currentUser;
+  } catch {
+    // outside AuthProvider (e.g. tests)
+  }
+  const effectiveContext = context || (authUser ? { currentUser: authUser } : undefined);
+
   const [imgSrc, setImgSrc] = useState<string | null>(() => {
-    if (photoUrl !== undefined) return photoUrl;
+    if (photoUrl) return photoUrl;
+    if (photoUrl === null) return null;
     if (hasPhoto === false) return null;
     if (clientId && clientPhotoCache.has(clientId)) return clientPhotoCache.get(clientId)!;
     return null;
@@ -87,9 +102,16 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
   const effectiveName = name || clientName || '';
 
   useEffect(() => {
-    if (photoUrl !== undefined) {
+    if (photoUrl) {
       setImgSrc(photoUrl);
       if (clientId) clientPhotoCache.set(clientId, photoUrl);
+      setLoadError(false);
+      return;
+    }
+
+    if (photoUrl === null && hasPhoto === false) {
+      setImgSrc(null);
+      if (clientId) clientPhotoCache.set(clientId, null);
       setLoadError(false);
       return;
     }
@@ -102,14 +124,19 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
       return;
     }
 
-    if (!clientId || !context) {
+    if (!clientId) {
       return;
     }
 
     // Check cached result first
     if (clientPhotoCache.has(clientId)) {
-      setImgSrc(clientPhotoCache.get(clientId)!);
+      const cached = clientPhotoCache.get(clientId);
+      setImgSrc(cached ?? null);
       setLoadError(false);
+      if (cached !== null && cached !== undefined) return;
+    }
+
+    if (!effectiveContext) {
       return;
     }
 
@@ -118,7 +145,7 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
 
     if (!fetchPromise) {
       fetchPromise = repositories.client
-        .getPhoto(context, clientId)
+        .getPhoto(effectiveContext, clientId)
         .then((photo) => {
           let resolvedUrl: string | null = null;
           if (photo?.dataUrl) {
@@ -150,7 +177,7 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [clientId, photoUrl, hasPhoto, context]);
+  }, [clientId, photoUrl, hasPhoto, effectiveContext]);
 
   const initials = getInitials(effectiveName, nameBn);
   const colorClass = getColorForName(effectiveName || 'Client');

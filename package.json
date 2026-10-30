@@ -18,6 +18,7 @@
     "test:restFetch": "tsx tests/restFetch.test.ts",
     "test:hardening": "tsx tests/authAndContractHardening.test.ts",
     "test:consoleErrors": "tsx tests/browserConsoleErrors.test.ts",
+    "test:photoPersistence": "tsx tests/clientPhotoUploadPersistence.test.ts",
     "test:dashboard": "tsx tests/dashboard.test.ts",
     "test:responsive": "playwright test",
     "seed:synthetic": "tsx scripts/populateSyntheticData.ts",

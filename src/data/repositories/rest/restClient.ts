@@ -1,6 +1,6 @@
 import { IClientRepository, ClientLinkedOverview } from '../../interfaces';
 import { ClientNoteRecord, ClientPhotoRecord, ClientRecord, SecurityContext } from '../../types';
-import { restFetch } from './restCommon';
+import { restFetch, getApiBaseUrl, createRestError } from './restCommon';
 
 export class RestClientRepository implements IClientRepository {
   async list(_context: SecurityContext, filter?: { search?: string }): Promise<ClientRecord[]> {
@@ -75,7 +75,61 @@ export class RestClientRepository implements IClientRepository {
 
   async getPhoto(_context: SecurityContext, clientId: string): Promise<ClientPhotoRecord | null> {
     try {
-      return await restFetch<ClientPhotoRecord>(`/clients/${clientId}/photo`);
+      const baseUrl = getApiBaseUrl();
+      const url = `${baseUrl}/clients/${clientId}/photo`;
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json, image/*',
+        },
+        credentials: 'include',
+      });
+
+      if (response.status === 404) return null;
+      if (response.status === 401) {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+        throw createRestError('Session expired or unauthorized', 401, 'UNAUTHORIZED');
+      }
+      if (!response.ok) {
+        throw createRestError(`Failed to fetch photo: ${response.statusText}`, response.status);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const json = await response.json();
+        return {
+          clientId,
+          firmId: json.firmId || _context.currentUser.firmId,
+          mime: json.mime || 'image/jpeg',
+          bytes: json.bytes,
+          dataUrl: json.dataUrl || (json.bytes && json.mime ? `data:${json.mime};base64,${json.bytes}` : undefined),
+          updatedAt: json.updatedAt || new Date().toISOString(),
+        };
+      }
+
+      // Fallback for raw binary image stream response
+      const arrayBuffer = await response.arrayBuffer();
+      let base64 = '';
+      if (typeof Buffer !== 'undefined') {
+        base64 = Buffer.from(arrayBuffer).toString('base64');
+      } else {
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        base64 = btoa(binary);
+      }
+      const mime = contentType || 'image/jpeg';
+      return {
+        clientId,
+        firmId: _context.currentUser.firmId,
+        mime,
+        bytes: base64,
+        dataUrl: `data:${mime};base64,${base64}`,
+        updatedAt: response.headers.get('last-modified') || new Date().toISOString(),
+      };
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404) return null;
       throw err;
@@ -88,13 +142,31 @@ export class RestClientRepository implements IClientRepository {
     mime: string,
     bytes: string
   ): Promise<ClientPhotoRecord> {
-    return restFetch<ClientPhotoRecord>(`/clients/${clientId}/photo`, {
+    const rawBase64 = bytes.includes(',') ? bytes.split(',')[1] : bytes;
+    const res = await restFetch<{
+      success?: boolean;
+      clientId?: string;
+      firmId?: string;
+      mime?: string;
+      bytes?: string;
+      dataUrl?: string;
+      updatedAt?: string;
+    }>(`/clients/${clientId}/photo`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ mime, data: bytes }),
+      body: JSON.stringify({ mime, data: rawBase64 }),
     });
+
+    return {
+      clientId,
+      firmId: res.firmId || _context.currentUser.firmId,
+      mime: res.mime || mime,
+      bytes: res.bytes || rawBase64,
+      dataUrl: res.dataUrl || (bytes.startsWith('data:') ? bytes : `data:${mime};base64,${rawBase64}`),
+      updatedAt: res.updatedAt || new Date().toISOString(),
+    };
   }
 
   async deletePhoto(_context: SecurityContext, clientId: string): Promise<void> {

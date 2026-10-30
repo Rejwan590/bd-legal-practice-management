@@ -16,7 +16,7 @@ clientsRouter.use(enforceFirmIsolation);
 // Raw body parser for photo upload
 clientsRouter.use('/:id/photo', (req, res, next) => {
   if (req.method === 'PUT') {
-    express.raw({ type: ['image/*', 'application/octet-stream'], limit: '350kb' })(req, res, (err) => {
+    express.raw({ type: ['image/*', 'application/octet-stream'], limit: '500kb' })(req, res, (err) => {
       if (err) {
         return res.status(400).json({ error: 'Payload too large', message: 'Photo exceeds 300 KB limit' });
       }
@@ -152,7 +152,16 @@ clientsRouter.put(
       newValue: { mime, size: buffer.length },
     });
 
-    res.json({ success: true, mime, size: buffer.length, updatedAt: photo.updatedAt });
+    res.json({
+      success: true,
+      clientId: client.id,
+      firmId: req.user!.firmId,
+      mime,
+      bytes: photo.bytes,
+      dataUrl: `data:${photo.mime};base64,${photo.bytes}`,
+      size: buffer.length,
+      updatedAt: photo.updatedAt,
+    });
   }
 );
 
@@ -172,8 +181,22 @@ clientsRouter.get(
       return res.status(404).json({ error: 'Photo not found' });
     }
 
+    // Support JSON response if client explicitly requests JSON via Accept header or format query param
+    const acceptsJson = req.headers.accept?.includes('application/json') || req.query.format === 'json';
+    if (acceptsJson) {
+      return res.json({
+        clientId: client.id,
+        firmId: req.user!.firmId,
+        mime: photo.mime,
+        bytes: photo.bytes,
+        dataUrl: `data:${photo.mime};base64,${photo.bytes}`,
+        updatedAt: photo.updatedAt,
+      });
+    }
+
     res.setHeader('Content-Type', photo.mime);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+    res.setHeader('ETag', `"${photo.updatedAt ? new Date(photo.updatedAt).getTime() : Date.now()}"`);
     res.send(Buffer.from(photo.bytes, 'base64'));
   }
 );

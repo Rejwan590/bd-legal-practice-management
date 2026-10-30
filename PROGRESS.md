@@ -3,6 +3,31 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Critical Bug: Client Photo Upload Reverts or Disappears (Completed & Verified)**:
+  - **1. Root Cause Analysis**:
+    - **Protocol & Serialization Mismatch**: In REST mode, `GET /api/v1/clients/:id/photo` served the raw binary image buffer (`Buffer.from(photo.bytes, 'base64')`) with `Content-Type: image/jpeg`. `RestClientRepository.getPhoto` called `restFetch<ClientPhotoRecord>(...)`, which attempted `JSON.parse` on the raw binary string, caught the SyntaxError, and returned the garbled text representation without `.dataUrl` or `.bytes` properties.
+    - **Premature Cache Eviction on Refresh**: In `ClientProfileView.tsx`, saving a photo immediately invoked `triggerRefresh()`, which executed `loadClientHub()`. Because `photoRec?.dataUrl` and `photoRec?.bytes` were `undefined`, `loadClientHub()` executed its fallback `else` branch: `invalidateClientPhotoCache(clientId, null); setPhotoDataUrl(null);`, immediately erasing the newly uploaded photo and resetting the avatar to default initials.
+    - **Avatar Prop Nuance**: In `ClientAvatar.tsx`, `photoUrl` was checked against `photoUrl !== undefined`. When `photoDataUrl` initialized to `null` before load, it overwrote the cache with `null`.
+    - **Dual-Mode hasPhoto Consistency**: In `MockClientRepository` and `server/src/db/client.ts` (`MemoryDatabase` & `PostgresDatabase`), `updateClient` did not set `hasPhoto`, causing subsequent client updates to lose their `hasPhoto` flag.
+    - **Express Body Limits**: `server/src/app.ts` defaulted `express.json()` to 100kb, which rejected base64-encoded photos exceeding ~75KB raw with HTTP 413.
+  - **2. Implementation Details**:
+    - **Dual Content Negotiation**: Updated `GET /api/v1/clients/:id/photo` to check `Accept: application/json` or `?format=json`. When JSON is accepted, it responds with `{ clientId, firmId, mime, bytes, dataUrl, updatedAt }`; otherwise it continues serving raw binary images with `Cache-Control: private, no-cache, must-revalidate` and ETag to prevent browser cache staleness.
+    - **Robust REST Repository Photo Handling**: Rewrote `RestClientRepository.getPhoto` to request `Accept: application/json, image/*`. It parses JSON directly into `ClientPhotoRecord` with `dataUrl` and `bytes`, while also safely decoding binary arrayBuffer streams in both browser and Node environments.
+    - **Complete SavePhoto Contract**: Updated `PUT /api/v1/clients/:id/photo` and `RestClientRepository.savePhoto` to return fully populated `ClientPhotoRecord` objects including `clientId`, `firmId`, `bytes`, and `dataUrl`.
+    - **Payload Size Security**: Expanded `express.json({ limit: '2mb' })` and `express.urlencoded({ limit: '2mb' })` in `server/src/app.ts`, and updated raw body limit to 500kb in `server/src/routes/clients.ts`.
+    - **Persistent In-Memory & Component Caching**: Added `getCachedClientPhoto(clientId)` in `ClientAvatar.tsx`, initialized `photoDataUrl` in `ClientProfileView.tsx` from cache to eliminate flicker, and prevented `loadClientHub()` from overwriting cache with null when `cl?.hasPhoto` is true.
+    - **Context-Aware Avatar**: Updated `ClientAvatar` to gracefully fall back to `useAuth()` when `context` is omitted, allowing avatars in Cases and Appointments screens to render photos automatically.
+    - **Automated Verification**: Added comprehensive regression suite `tests/clientPhotoUploadPersistence.test.ts` (6 assertions) and npm script `npm run test:photoPersistence`.
+  - **3. Verification Results**:
+    - `npm run lint`: 0 errors (clean pass across app and admin-app).
+    - `npm run test:photoPersistence`: 6/6 PASSED (`tests/clientPhotoUploadPersistence.test.ts`).
+    - `npm run test:consoleErrors`: 4/4 PASSED (`tests/browserConsoleErrors.test.ts`).
+    - `npm run test:restFetch`: 14/14 PASSED (`tests/restFetch.test.ts`).
+    - `npm run test:hardening`: 9/9 PASSED (`tests/authAndContractHardening.test.ts`).
+    - `npx tsx tests/cameraCapture.test.ts`: 8/8 PASSED.
+    - `npm test --prefix server`: 626/626 PASSED across all 12 backend test suites.
+    - `npm run build`: built production bundle cleanly in 1.27s.
+    - `npm run build:admin`: built admin app production bundle cleanly in 9.79s.
 - [x] **Client Photo Upload, Camera Capture, Member Auth Hardening & Archive/Restore System (Completed & Verified)**:
   - **1. Member Auth & Session Restoration Hardening (Problem 1 Resolved)**:
     - Addressed root cause of race condition in `src/modules/foundation/AuthContext.tsx`: `login()` immediately fired a redundant `await refreshState()`, dispatching a second `/auth/me` request before cross-site `SameSite=None; Secure; HttpOnly` cookies were committed in browser storage.

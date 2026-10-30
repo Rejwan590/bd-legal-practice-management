@@ -172,7 +172,10 @@ export class MockClientRepository implements IClientRepository {
           updatedAt: now,
           updatedBy: currentUser.id,
         };
-        updated = { ...s.clients[idx] };
+        updated = {
+          ...s.clients[idx],
+          hasPhoto: (s.clientPhotos || []).some((p) => p.clientId === id),
+        };
       }
     });
 
@@ -487,6 +490,13 @@ export class MockClientRepository implements IClientRepository {
       } else {
         store.clientPhotos.push(photoRecord);
       }
+      const clientIdx = (store.clients || []).findIndex((c) => c.id === clientId);
+      if (clientIdx !== -1) {
+        store.clients[clientIdx] = {
+          ...store.clients[clientIdx],
+          hasPhoto: true,
+        };
+      }
     });
 
     await this.auditRepo.record(context, {
@@ -514,6 +524,13 @@ export class MockClientRepository implements IClientRepository {
         store.clientPhotos = store.clientPhotos.filter(
           (p) => !(p.clientId === clientId && p.firmId === context.currentUser.firmId)
         );
+      }
+      const clientIdx = (store.clients || []).findIndex((c) => c.id === clientId);
+      if (clientIdx !== -1) {
+        store.clients[clientIdx] = {
+          ...store.clients[clientIdx],
+          hasPhoto: false,
+        };
       }
     });
 
