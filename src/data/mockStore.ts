@@ -787,6 +787,7 @@ const STORAGE_KEY = 'bd_legal_store_v1';
 
 class LocalStoreManager {
   private data: AppStoreData;
+  private syntheticDataSuppressed = false;
 
   constructor() {
     this.data = this.load();
@@ -863,6 +864,56 @@ class LocalStoreManager {
       if (!parsed.appointmentAttendees || !Array.isArray(parsed.appointmentAttendees)) {
         parsed.appointmentAttendees = [...INITIAL_APPOINTMENT_ATTENDEES];
       }
+      if (!parsed.feeAgreements || !Array.isArray(parsed.feeAgreements)) {
+        parsed.feeAgreements = [];
+      }
+      if (!parsed.feePayments || !Array.isArray(parsed.feePayments)) {
+        parsed.feePayments = [];
+      }
+      if (!parsed.expenses || !Array.isArray(parsed.expenses)) {
+        parsed.expenses = [];
+      }
+
+      // Ensure synthetic dataset is automatically merged for existing browser sessions
+      const hasSynthetic = (parsed.clients || []).some(
+        (c: any) => c.id && typeof c.id === 'string' && c.id.includes('-syn-')
+      );
+      if (!hasSynthetic) {
+        const dataset = generateSyntheticDataset();
+        const mergeCollection = <T extends { id: string }>(
+          target: T[],
+          source: T[]
+        ) => {
+          const existingIds = new Set(target.map((item) => item.id));
+          for (const item of source) {
+            if (!existingIds.has(item.id)) {
+              target.push(item);
+              existingIds.add(item.id);
+            }
+          }
+        };
+
+        mergeCollection(parsed.clients, dataset.clients);
+        mergeCollection(parsed.cases, dataset.cases);
+        mergeCollection(parsed.hearings, dataset.hearings);
+        mergeCollection(parsed.hearingDateHistory, dataset.hearingDateHistory);
+        mergeCollection(parsed.tasks, dataset.tasks);
+        if (!parsed.clientNotes) parsed.clientNotes = [];
+        mergeCollection(parsed.clientNotes, dataset.clientNotes);
+        if (!parsed.appointments) parsed.appointments = [];
+        mergeCollection(parsed.appointments, dataset.appointments);
+        if (!parsed.appointmentAttendees) parsed.appointmentAttendees = [];
+        mergeCollection(parsed.appointmentAttendees, dataset.appointmentAttendees);
+        if (!parsed.feeAgreements) parsed.feeAgreements = [];
+        mergeCollection(parsed.feeAgreements, dataset.feeAgreements);
+        if (!parsed.feePayments) parsed.feePayments = [];
+        mergeCollection(parsed.feePayments, dataset.feePayments);
+        if (!parsed.expenses) parsed.expenses = [];
+        mergeCollection(parsed.expenses, dataset.expenses);
+        mergeCollection(parsed.physicalFiles, dataset.physicalFiles);
+        mergeCollection(parsed.fileMovements, dataset.fileMovements);
+      }
+
       this.saveState(parsed);
       return parsed;
     } catch (err) {
@@ -1004,6 +1055,7 @@ class LocalStoreManager {
     created: Record<string, number>;
     skipped: Record<string, number>;
   } {
+    this.syntheticDataSuppressed = false;
     const dataset = generateSyntheticDataset();
     const created: Record<string, number> = {};
     const skipped: Record<string, number> = {};
@@ -1054,6 +1106,7 @@ class LocalStoreManager {
   }
 
   public removeSyntheticData(): { removed: Record<string, number> } {
+    this.syntheticDataSuppressed = true;
     const removed: Record<string, number> = {};
 
     const isSynthetic = (id: string) => id.includes('-syn-') || id.startsWith('syn-');
@@ -1112,6 +1165,9 @@ class LocalStoreManager {
   }
 
   public getData(): AppStoreData {
+    if (!this.syntheticDataSuppressed && !this.hasSyntheticData()) {
+      this.populateSyntheticData();
+    }
     return this.data;
   }
 

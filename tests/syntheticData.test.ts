@@ -173,6 +173,15 @@ async function runTests() {
   const finalClientCount = localStore.getData().clients.length;
   assert(finalClientCount === 103, 'Application runtime store populated with 103 total clients (100 synthetic + 3 seed)', `Got ${finalClientCount}`);
 
+  // 18. Auto-migration verification for existing browser storage
+  // When a user has a pre-existing store in localStorage lacking synthetic data, getData() auto-populates it
+  localStore.setData({
+    ...localStore.getData(),
+    clients: localStore.getData().clients.filter((c) => !c.id.includes('-syn-')),
+  }, false);
+  const autoMigratedClients = localStore.getData().clients.length;
+  assert(autoMigratedClients === 103, 'Legacy browser session without synthetic data is automatically migrated to 103 clients upon access', `Got ${autoMigratedClients}`);
+
   console.log(`\n========================================`);
   console.log(`SYNTHETIC TEST SUITE RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log(`========================================`);

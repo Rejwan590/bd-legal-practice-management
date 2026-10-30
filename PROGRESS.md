@@ -1860,3 +1860,25 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
 
 
 
+
+
+---
+
+## 100 Synthetic Clients & Practice Test Data Auto-Migration
+- **Status**: [x] COMPLETED & VERIFIED
+- **Issue**:
+  - Existing browser sessions with pre-existing `bd_legal_store_v1` in `localStorage` retained the original 3 seed clients (`client-001` to `client-003`). `load()` previously checked `if (!parsed.clients)` and skipped initialization, leaving logged-in users with only 3 clients instead of the full 100 synthetic clients.
+- **Architectural Fix**:
+  - `src/data/mockStore.ts`:
+    - Added auto-migration detection in `load()`: if `parsed.clients` does not contain synthetic clients (`-syn-`), automatically merges all 100 synthetic clients, 110 cases, 180 hearings, tasks, files, appointments, and billing records into `parsed` and persists via `this.saveState(parsed)`.
+    - Added reactive safeguard in `LocalStoreManager.prototype.getData()`: automatically invokes `populateSyntheticData()` if synthetic data is missing and not explicitly suppressed via `removeSyntheticData()`.
+  - `tests/syntheticData.test.ts`:
+    - Added automated invariant test #18 verifying auto-migration of legacy browser stores lacking synthetic records.
+- **Verification**:
+  - `npx tsx tests/syntheticData.test.ts`: PASS (47/47 tests passed)
+  - `npm run lint`: PASS (0 errors)
+  - `npm test --prefix server`: PASS (626/626 tests passed across 12 suites)
+  - `npm run test:health`: PASS (87/87 passed)
+  - `npm run test:hardening`: PASS (9/9 passed)
+  - `npm run test:restFetch`: PASS (14/14 passed)
+  - `npm run build`: PASS (Clean Vite production bundle)
