@@ -16,7 +16,11 @@ async function getPgClient(url: string) {
   try {
     const pgModule = await import('../server/node_modules/pg/lib/index.js' as any);
     const pg = pgModule.default || pgModule;
-    return new pg.Client({ connectionString: url });
+    const isSsl = url.includes('sslmode=require') || url.includes('azure.com');
+    return new pg.Client({
+      connectionString: url,
+      ssl: isSsl ? { rejectUnauthorized: false } : undefined,
+    });
   } catch (err) {
     console.warn('[SyntheticSeed] Notice: pg driver not loaded, skipping direct PostgreSQL operations.');
     return null;
@@ -308,6 +312,26 @@ export async function populatePostgres(client: any, clean: boolean = false): Pro
   counts.created['appointments'] = apptsCreated;
   counts.skipped['appointments'] = apptsSkipped;
 
+  // Appointment Attendees
+  let attCreated = 0;
+  let attSkipped = 0;
+  for (const att of dataset.appointmentAttendees) {
+    try {
+      const res = await client.query(
+        `INSERT INTO appointment_attendees (id, appointment_id, user_id, firm_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [att.id, att.appointmentId, att.userId, att.firmId, att.createdAt, att.updatedAt]
+      );
+      if (res.rowCount && res.rowCount > 0) attCreated++;
+      else attSkipped++;
+    } catch (err: any) {
+      counts.failed['appointmentAttendees'] = (counts.failed['appointmentAttendees'] || 0) + 1;
+    }
+  }
+  counts.created['appointmentAttendees'] = attCreated;
+  counts.skipped['appointmentAttendees'] = attSkipped;
+
   // Fee Agreements
   let faCreated = 0;
   let faSkipped = 0;
@@ -389,8 +413,16 @@ export async function populatePostgres(client: any, clean: boolean = false): Pro
   let expCreated = 0;
   let expSkipped = 0;
   // Ensure default categories exist first
-  for (const catName of ['Court Fees', 'Process Server / Notice', 'Certified Copy', 'Stamp Duty', 'Travel / Conveyance', 'Photocopy & Typing']) {
+  const catNames = ['Court Fees', 'Process Server / Notice', 'Certified Copy', 'Stamp Duty', 'Travel / Conveyance', 'Photocopy & Typing'];
+  for (let i = 0; i < catNames.length; i++) {
+    const catName = catNames[i];
     try {
+      await client.query(
+        `INSERT INTO expense_categories (id, firm_id, name, is_default, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, true, NOW(), NOW(), $4, $4)
+         ON CONFLICT (id) DO NOTHING`,
+        [`cat-${i}`, SYNTHETIC_FIRM_ID, catName, OWNER_USER_ID]
+      );
       await client.query(
         `INSERT INTO expense_categories (id, firm_id, name, is_default, created_at, updated_at, created_by, updated_by)
          VALUES ($1, $2, $3, true, NOW(), NOW(), $4, $4)

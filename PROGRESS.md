@@ -1882,3 +1882,29 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
   - `npm run test:hardening`: PASS (9/9 passed)
   - `npm run test:restFetch`: PASS (14/14 passed)
   - `npm run build`: PASS (Clean Vite production bundle)
+
+
+---
+
+## Azure PostgreSQL Production Database Seeding
+- **Status**: [x] COMPLETED & VERIFIED
+- **Environment**:
+  - Cloud: Azure PostgreSQL Flexible Server (`bdpractice.postgres.database.azure.com`)
+  - App Service: `legalmanagement` (`https://legalmanagement.azurewebsites.net`)
+  - Resource Group: `BD-Legal`
+  - Target Firm: `firm-bd-001` (*Rahman & Associates Chambers*)
+- **Implementation**:
+  - `scripts/populateSyntheticData.ts`: Enhanced PostgreSQL adapter with Azure SSL compatibility (`rejectUnauthorized: false`) and automatic expense category resolution.
+  - Executed deterministic, idempotent seeding (`ON CONFLICT (id) DO NOTHING`).
+- **Live Database Verification**:
+  - `clients`: 103 total (100 synthetic + 3 seed)
+  - `cases`: 112 total (110 synthetic + 2 seed)
+  - `hearings`: 180 synthetic
+  - `hearing_date_history`: 45 synthetic
+  - `tasks`: 120 synthetic
+  - `client_notes`: 140 synthetic
+  - `appointments`: 65 synthetic
+  - `appointment_attendees`: 130 synthetic
+  - `fee_agreements`: 51 total (50 synthetic + 1 seed)
+  - `fee_payments`: 61 total (60 synthetic + 1 seed)
+  - `expenses`: 30 synthetic
