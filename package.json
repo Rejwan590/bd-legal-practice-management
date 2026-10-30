@@ -18,6 +18,8 @@
     "test:restFetch": "tsx tests/restFetch.test.ts",
     "test:hardening": "tsx tests/authAndContractHardening.test.ts",
     "test:responsive": "playwright test",
+    "seed:synthetic": "tsx scripts/populateSyntheticData.ts",
+    "seed:synthetic:clean": "tsx scripts/populateSyntheticData.ts --clean",
     "postinstall": "node --input-type=module -e \"import {execSync} from 'node:child_process';if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){try{execSync('npm install --prefix server',{stdio:'inherit'});}catch(e){console.warn(e.message);}}\""
   },
   "dependencies": {

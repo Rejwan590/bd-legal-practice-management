@@ -23,6 +23,7 @@ import {
   ExpenseCategory,
   Expense,
 } from './types';
+import { generateSyntheticDataset } from './syntheticData';
 
 
 export const DEFAULT_FIRM_ID = 'firm-bd-001';
@@ -871,7 +872,7 @@ class LocalStoreManager {
   }
 
   private getInitialState(): AppStoreData {
-    return {
+    const base: AppStoreData = {
       firm: { ...INITIAL_FIRM },
       users: [...INITIAL_USERS],
       clients: [...INITIAL_CLIENTS],
@@ -980,6 +981,125 @@ class LocalStoreManager {
       ],
       customCollections: {},
     };
+
+    const syn = generateSyntheticDataset();
+    base.clients = [...base.clients, ...syn.clients];
+    base.cases = [...base.cases, ...syn.cases];
+    base.hearings = [...base.hearings, ...syn.hearings];
+    base.hearingDateHistory = [...base.hearingDateHistory, ...syn.hearingDateHistory];
+    base.tasks = [...base.tasks, ...syn.tasks];
+    base.clientNotes = [...(base.clientNotes || []), ...syn.clientNotes];
+    base.appointments = [...(base.appointments || []), ...syn.appointments];
+    base.appointmentAttendees = [...(base.appointmentAttendees || []), ...syn.appointmentAttendees];
+    base.feeAgreements = [...(base.feeAgreements || []), ...syn.feeAgreements];
+    base.feePayments = [...(base.feePayments || []), ...syn.feePayments];
+    base.expenses = [...(base.expenses || []), ...syn.expenses];
+    base.physicalFiles = [...base.physicalFiles, ...syn.physicalFiles];
+    base.fileMovements = [...base.fileMovements, ...syn.fileMovements];
+
+    return base;
+  }
+
+  public populateSyntheticData(): {
+    created: Record<string, number>;
+    skipped: Record<string, number>;
+  } {
+    const dataset = generateSyntheticDataset();
+    const created: Record<string, number> = {};
+    const skipped: Record<string, number> = {};
+
+    const mergeCollection = <T extends { id: string }>(
+      target: T[],
+      source: T[],
+      name: string
+    ) => {
+      let c = 0;
+      let s = 0;
+      const existingIds = new Set(target.map((item) => item.id));
+      for (const item of source) {
+        if (!existingIds.has(item.id)) {
+          target.push(item);
+          existingIds.add(item.id);
+          c++;
+        } else {
+          s++;
+        }
+      }
+      created[name] = c;
+      skipped[name] = s;
+    };
+
+    mergeCollection(this.data.clients, dataset.clients, 'clients');
+    mergeCollection(this.data.cases, dataset.cases, 'cases');
+    mergeCollection(this.data.hearings, dataset.hearings, 'hearings');
+    mergeCollection(this.data.hearingDateHistory, dataset.hearingDateHistory, 'hearingDateHistory');
+    mergeCollection(this.data.tasks, dataset.tasks, 'tasks');
+    if (!this.data.clientNotes) this.data.clientNotes = [];
+    mergeCollection(this.data.clientNotes, dataset.clientNotes, 'clientNotes');
+    if (!this.data.appointments) this.data.appointments = [];
+    mergeCollection(this.data.appointments, dataset.appointments, 'appointments');
+    if (!this.data.appointmentAttendees) this.data.appointmentAttendees = [];
+    mergeCollection(this.data.appointmentAttendees, dataset.appointmentAttendees, 'appointmentAttendees');
+    if (!this.data.feeAgreements) this.data.feeAgreements = [];
+    mergeCollection(this.data.feeAgreements, dataset.feeAgreements, 'feeAgreements');
+    if (!this.data.feePayments) this.data.feePayments = [];
+    mergeCollection(this.data.feePayments, dataset.feePayments, 'feePayments');
+    if (!this.data.expenses) this.data.expenses = [];
+    mergeCollection(this.data.expenses, dataset.expenses, 'expenses');
+    mergeCollection(this.data.physicalFiles, dataset.physicalFiles, 'physicalFiles');
+    mergeCollection(this.data.fileMovements, dataset.fileMovements, 'fileMovements');
+
+    this.saveState(this.data);
+    return { created, skipped };
+  }
+
+  public removeSyntheticData(): { removed: Record<string, number> } {
+    const removed: Record<string, number> = {};
+
+    const isSynthetic = (id: string) => id.includes('-syn-') || id.startsWith('syn-');
+
+    const filterCollection = <T extends { id: string }>(
+      target: T[],
+      name: string
+    ): T[] => {
+      const before = target.length;
+      const filtered = target.filter((item) => !isSynthetic(item.id));
+      removed[name] = before - filtered.length;
+      return filtered;
+    };
+
+    this.data.clients = filterCollection(this.data.clients, 'clients');
+    this.data.cases = filterCollection(this.data.cases, 'cases');
+    this.data.hearings = filterCollection(this.data.hearings, 'hearings');
+    this.data.hearingDateHistory = filterCollection(this.data.hearingDateHistory, 'hearingDateHistory');
+    this.data.tasks = filterCollection(this.data.tasks, 'tasks');
+    if (this.data.clientNotes) {
+      this.data.clientNotes = filterCollection(this.data.clientNotes, 'clientNotes');
+    }
+    if (this.data.appointments) {
+      this.data.appointments = filterCollection(this.data.appointments, 'appointments');
+    }
+    if (this.data.appointmentAttendees) {
+      this.data.appointmentAttendees = filterCollection(this.data.appointmentAttendees, 'appointmentAttendees');
+    }
+    if (this.data.feeAgreements) {
+      this.data.feeAgreements = filterCollection(this.data.feeAgreements, 'feeAgreements');
+    }
+    if (this.data.feePayments) {
+      this.data.feePayments = filterCollection(this.data.feePayments, 'feePayments');
+    }
+    if (this.data.expenses) {
+      this.data.expenses = filterCollection(this.data.expenses, 'expenses');
+    }
+    this.data.physicalFiles = filterCollection(this.data.physicalFiles, 'physicalFiles');
+    this.data.fileMovements = filterCollection(this.data.fileMovements, 'fileMovements');
+
+    this.saveState(this.data);
+    return { removed };
+  }
+
+  public hasSyntheticData(): boolean {
+    return (this.data.clients || []).some((c) => c.id.includes('-syn-'));
   }
 
   private saveState(data: AppStoreData): void {

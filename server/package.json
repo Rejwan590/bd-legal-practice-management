@@ -25,6 +25,8 @@
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "seed:synthetic": "tsx ../scripts/populateSyntheticData.ts",
+    "seed:synthetic:clean": "tsx ../scripts/populateSyntheticData.ts --clean",
     "admin:license": "tsx src/scripts/adminLicense.ts",
     "admin:create": "tsx src/scripts/createPlatformAdmin.ts",
     "admin:create:prod": "node dist/scripts/createPlatformAdmin.js",

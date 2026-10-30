@@ -3,6 +3,43 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Populate BD Legal Practice Management with 100 Realistic Synthetic Clients and Related Practice Test Data (Completed & Verified)**:
+  - **Comprehensive Data Model Inspection**:
+    - Confirmed dual-mode architecture: in-memory/mock repository (`src/data/mockStore.ts`) active by default for frontend dev (`VITE_DATA_SOURCE=mock`), and Express/PostgreSQL relational schema (`server/src/db/schema.ts` with 24 tables) for REST mode.
+    - Verified tenant isolation: firm ID strictly scoped to `firm-bd-001` ("Rahman & Associates Chambers"), preserving existing seed users (`user-owner-001`, `user-staff-002`) and existing seed clients (`client-001`, `client-002`, `client-003`).
+    - Verified integer paisa currency convention (1 BDT = 100 paisa) across fee agreements, fee payments, and expenses.
+    - Confirmed physical files are modeled in mock store, while Postgres schema does not have a physical_files table yet.
+  - **100 Synthetic Clients Created (`src/data/syntheticData.ts`)**:
+    - Exactly 100 unique, realistic Bangladeshi clients (`client-syn-001` to `client-syn-100`).
+    - Authentic mix of 85 individuals and 15 corporate/commercial entities.
+    - Dual English and Bengali script names (`nameBn`) across all records.
+    - Geographic coverage spanning Dhaka, Chattogram, Sylhet, Rajshahi, Khulna, Barishal, Rangpur, Mymensingh, Cumilla, Gazipur, Narayanganj, Cox's Bazar, Bogura.
+    - Unallocated synthetic phone numbers in range `+880 1700-9XXXXX` (guaranteed non-colliding, clearly identifiable as test data).
+    - Reserved safe email domains (`example.com`, `example.org`) with realistic optional presence.
+    - 90 active and exactly 10 archived clients to exercise archive and filter functionality.
+  - **Related Practice Records Generated**:
+    - **Cases**: 110 cases (`case-syn-001` to `case-syn-110`) linked to valid clients; civil (60), criminal GR (20), criminal CR (15), other (15); 80 ongoing, 15 pending, 15 closed with `closedOn` timestamps; 10 confidential (`restricted: true`) with central visibility rules respected.
+    - **Hearings**: 180 hearings (`hearing-syn-001` to `hearing-syn-180`) across scheduled (90), held (35), adjourned (45), cancelled (10).
+    - **Hearing Date History**: 45 history rows (`hist-syn-001` to `hist-syn-045`) capturing postponement reasons, old dates, new dates, and changing user.
+    - **Tasks**: 120 tasks (`task-syn-001` to `task-syn-120`) covering urgent (15), high (30), medium (45), normal (20), low (10); mix of pending, in-progress, completed, and cancelled.
+    - **Client Notes**: 140 consultation and case progression notes (`cnote-syn-001` to `cnote-syn-140`).
+    - **Appointments**: 65 appointments (`appt-syn-001` to `appt-syn-065`) across consultation, client meeting, phone call, internal meeting, court visit.
+    - **Billing & Accounting**: 140 total records (50 fee agreements, 60 fee payments with unique receipt numbers and idempotency keys, 30 case expenses).
+    - **Physical Files (Mock Store)**: 50 files (`file-syn-001` to `file-syn-050`) with shelf locations and 20 custody movement logs.
+  - **Repeatable & Idempotent Generator Tooling**:
+    - Created `scripts/populateSyntheticData.ts` supporting both direct PostgreSQL insertion (when `DATABASE_URL` is set) and mock store population.
+    - Added npm scripts: `npm run seed:synthetic` (populates idempotently) and `npm run seed:synthetic:clean` (removes only synthetic test data, cleanly preserving initial seed records).
+    - Added comprehensive regression suite `tests/syntheticData.test.ts` (46 assertions).
+  - **Automated Verification**:
+    - `npx tsx tests/syntheticData.test.ts`: 46/46 PASSED.
+    - `npm run test:health`: 87/87 PASSED.
+    - `npm run test:hardening`: 9/9 PASSED.
+    - `npm run test:restFetch`: 14/14 PASSED.
+    - `npm test --prefix server`: 626/626 PASSED across all 12 test suites.
+    - `npm run lint`: 0 errors.
+    - `npm run build`: 0 errors.
+    - `npm run build:admin`: 0 errors.
+
 - [x] **Application Error Boundary, Global Contract Hardening & Incident Verification (Completed & Verified)**:
   - **React Error Boundary Component**: Created `src/components/ErrorBoundary.tsx` providing visual graceful recovery with error details and one-click "Try Again" state reset. Wrapped both top-level `App` and individual tab views in `src/App.tsx`.
   - **Global Defensive Array Contract Hardening**:
