@@ -29,7 +29,6 @@ auditRouter.get(
           limit = parsedLimit;
         }
       }
-      // If not an integer (e.g. limit=abc), safely fall back to default 100
     }
 
     // Offset (default 0)
@@ -41,10 +40,37 @@ auditRouter.get(
       }
     }
 
+    const entity =
+      typeof req.query.entity === 'string' && req.query.entity.trim() !== ''
+        ? req.query.entity.trim()
+        : undefined;
+    const action =
+      typeof req.query.action === 'string' && req.query.action.trim() !== ''
+        ? req.query.action.trim()
+        : undefined;
+    const userId =
+      typeof req.query.userId === 'string' && req.query.userId.trim() !== ''
+        ? req.query.userId.trim()
+        : undefined;
+    const startDate =
+      typeof req.query.startDate === 'string' && req.query.startDate.trim() !== ''
+        ? req.query.startDate.trim()
+        : undefined;
+    const endDate =
+      typeof req.query.endDate === 'string' && req.query.endDate.trim() !== ''
+        ? req.query.endDate.trim()
+        : undefined;
+
     const canSeeRestricted =
       req.user!.role === 'Owner' ||
       Boolean(req.user!.permissions && req.user!.permissions.includes('restricted.view'));
-    const logs = await db.listAudit(req.user!.firmId, limit, offset, canSeeRestricted, req.user);
+    const logs = await db.listAudit(req.user!.firmId, limit, offset, canSeeRestricted, req.user, {
+      entity,
+      action,
+      userId,
+      startDate,
+      endDate,
+    });
 
     res.json(logs);
   }

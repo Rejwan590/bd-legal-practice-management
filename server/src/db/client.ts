@@ -81,7 +81,14 @@ export interface IDatabase {
     limit?: number,
     offset?: number,
     includeRestricted?: boolean,
-    user?: VisibilityUserContext
+    user?: VisibilityUserContext,
+    filter?: {
+      entity?: string;
+      action?: string;
+      userId?: string;
+      startDate?: string;
+      endDate?: string;
+    }
   ): Promise<schema.AuditLogEntry[]>;
   // Clients (Step 3.1)
   listClients(firmId: string, search?: string, user?: VisibilityUserContext): Promise<schema.Client[]>;
@@ -656,7 +663,14 @@ class MemoryDatabase implements IDatabase {
     limit = 100,
     offset = 0,
     includeRestricted = true,
-    user?: VisibilityUserContext
+    user?: VisibilityUserContext,
+    filter?: {
+      entity?: string;
+      action?: string;
+      userId?: string;
+      startDate?: string;
+      endDate?: string;
+    }
   ): Promise<schema.AuditLogEntry[]> {
     await this.init();
     let entries = this.auditLogs.filter((a) => a.firmId === firmId);
@@ -681,6 +695,29 @@ class MemoryDatabase implements IDatabase {
       }
       return true;
     });
+
+    if (filter?.entity) {
+      entries = entries.filter((a) => a.entity.toLowerCase() === filter.entity!.toLowerCase());
+    }
+    if (filter?.action) {
+      entries = entries.filter((a) => a.action.toLowerCase() === filter.action!.toLowerCase());
+    }
+    if (filter?.userId) {
+      entries = entries.filter((a) => a.userId === filter.userId);
+    }
+    if (filter?.startDate) {
+      const start = new Date(filter.startDate).getTime();
+      if (!isNaN(start)) {
+        entries = entries.filter((a) => new Date(a.timestamp).getTime() >= start);
+      }
+    }
+    if (filter?.endDate) {
+      const end = new Date(filter.endDate).getTime();
+      if (!isNaN(end)) {
+        entries = entries.filter((a) => new Date(a.timestamp).getTime() <= end);
+      }
+    }
+
     return entries.slice(offset, offset + limit).map((a) => ({ ...a }));
   }
 
@@ -2873,7 +2910,14 @@ class PostgresDatabase implements IDatabase {
     limit = 100,
     offset = 0,
     includeRestricted = true,
-    user?: VisibilityUserContext
+    user?: VisibilityUserContext,
+    filter?: {
+      entity?: string;
+      action?: string;
+      userId?: string;
+      startDate?: string;
+      endDate?: string;
+    }
   ): Promise<schema.AuditLogEntry[]> {
     const conditions = [eq(schema.auditLog.firmId, firmId)];
     if (user || !includeRestricted) {
@@ -2881,6 +2925,27 @@ class PostgresDatabase implements IDatabase {
       conditions.push(
         sql`(${schema.auditLog.entity} != 'Case' OR ${schema.auditLog.entityId} IN (SELECT id FROM ${schema.cases} WHERE ${caseCond}))`
       );
+    }
+    if (filter?.entity) {
+      conditions.push(sql`lower(${schema.auditLog.entity}) = lower(${filter.entity})`);
+    }
+    if (filter?.action) {
+      conditions.push(sql`lower(${schema.auditLog.action}) = lower(${filter.action})`);
+    }
+    if (filter?.userId) {
+      conditions.push(eq(schema.auditLog.userId, filter.userId));
+    }
+    if (filter?.startDate) {
+      const start = new Date(filter.startDate);
+      if (!isNaN(start.getTime())) {
+        conditions.push(gte(schema.auditLog.timestamp, start));
+      }
+    }
+    if (filter?.endDate) {
+      const end = new Date(filter.endDate);
+      if (!isNaN(end.getTime())) {
+        conditions.push(lte(schema.auditLog.timestamp, end));
+      }
     }
     return this.db
       .select()

@@ -337,12 +337,35 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
     await this.auditRepo.record(context, {
       entity: 'PhysicalFile',
       entityId: id,
-      action: 'FILE_CHECKOUT',
-      oldValue: existing as unknown as Record<string, unknown>,
+      action: 'PHYSICAL_FILE_CHECKED_OUT',
+      oldValue: {
+        fileId: id,
+        serial: existing.serial,
+        title: existing.title,
+        caseId: existing.caseId,
+        status: existing.status,
+        shelfLocation: existing.shelfLocation,
+        currentHolderId: existing.currentHolderId,
+        currentHolderName: existing.currentHolderName,
+        checkedOutAt: existing.checkedOutAt,
+        dueBackAt: existing.dueBackAt,
+      },
       newValue: {
+        fileId: id,
+        serial: finalFile.serial,
+        title: finalFile.title,
+        caseId: finalFile.caseId,
+        status: finalFile.status,
+        shelfLocation: finalFile.shelfLocation,
+        currentHolderId: finalFile.currentHolderId,
+        currentHolderName: finalFile.currentHolderName,
+        checkedOutAt: finalFile.checkedOutAt,
+        dueBackAt: finalFile.dueBackAt,
+        movementId: movId,
+        note: movement.note,
         file: finalFile,
         movement,
-      } as unknown as Record<string, unknown>,
+      },
     });
 
     if (this.reminderRepo && dueBackAt) {
@@ -426,16 +449,47 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
       throw new Error('Failed to check in physical file');
     }
 
+    // Find the latest checkout movement to connect this return event to its checkout
+    const previousCheckout = (store.fileMovements || [])
+      .filter((m) => m.fileId === id && (m.action === 'CHECKOUT' || m.action === 'COURT_DISPATCH'))
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
+
     const finalFile: PhysicalFileRecord = updatedFile;
     await this.auditRepo.record(context, {
       entity: 'PhysicalFile',
       entityId: id,
-      action: 'FILE_CHECKIN',
-      oldValue: existing as unknown as Record<string, unknown>,
+      action: 'PHYSICAL_FILE_CHECKED_IN',
+      oldValue: {
+        fileId: id,
+        serial: existing.serial,
+        title: existing.title,
+        caseId: existing.caseId,
+        status: existing.status,
+        shelfLocation: existing.shelfLocation,
+        currentHolderId: existing.currentHolderId,
+        currentHolderName: existing.currentHolderName,
+        checkedOutAt: existing.checkedOutAt,
+        dueBackAt: existing.dueBackAt,
+      },
       newValue: {
+        fileId: id,
+        serial: finalFile.serial,
+        title: finalFile.title,
+        caseId: finalFile.caseId,
+        status: finalFile.status,
+        shelfLocation: finalFile.shelfLocation,
+        currentHolderId: null,
+        currentHolderName: null,
+        checkedOutAt: null,
+        dueBackAt: null,
+        movementId: movId,
+        linkedCheckoutMovementId: previousCheckout?.id || null,
+        returnedBy: currentUser.id,
+        returnedByName: currentUser.name,
+        note: movement.note,
         file: finalFile,
         movement,
-      } as unknown as Record<string, unknown>,
+      },
     });
 
     if (this.reminderRepo) {
@@ -514,12 +568,35 @@ export class MockPhysicalFileRepository implements IPhysicalFileRepository {
     await this.auditRepo.record(context, {
       entity: 'PhysicalFile',
       entityId: id,
-      action: 'FILE_CHECKOUT',
-      oldValue: existing as unknown as Record<string, unknown>,
+      action: 'PHYSICAL_FILE_CHECKED_OUT',
+      oldValue: {
+        fileId: id,
+        serial: existing.serial,
+        title: existing.title,
+        caseId: existing.caseId,
+        status: existing.status,
+        shelfLocation: existing.shelfLocation,
+        currentHolderId: existing.currentHolderId,
+        currentHolderName: existing.currentHolderName,
+        checkedOutAt: existing.checkedOutAt,
+        dueBackAt: existing.dueBackAt,
+      },
       newValue: {
+        fileId: id,
+        serial: finalFile.serial,
+        title: finalFile.title,
+        caseId: finalFile.caseId,
+        status: finalFile.status,
+        shelfLocation: finalFile.shelfLocation,
+        currentHolderId: finalFile.currentHolderId,
+        currentHolderName: finalFile.currentHolderName,
+        checkedOutAt: finalFile.checkedOutAt,
+        dueBackAt: finalFile.dueBackAt,
+        movementId: movId,
+        note: movement.note,
         file: finalFile,
         movement,
-      } as unknown as Record<string, unknown>,
+      },
     });
 
     if (this.reminderRepo && dueBackAt) {

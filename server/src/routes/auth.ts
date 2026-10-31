@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { loginUser } from '../services/authService.js';
 import { authMiddleware, AuthenticatedRequest, revokeToken, generateAccessToken } from '../middleware/auth.js';
 import { evaluateServerSubscription, enforceSubscriptionReadOnly } from '../middleware/subscription.js';
 import { recordAudit } from '../services/auditService.js';
-import { getCookieSameSite } from '../config.js';
+import { getCookieSameSite, getJwtSecret } from '../config.js';
 
 export const authRouter = Router();
 
@@ -74,9 +75,27 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
 
 // POST /logout
 authRouter.post('/logout', async (req: AuthenticatedRequest, res: Response) => {
-  // Invalidate token server-side
+  // Invalidate token server-side and record audit log
   const token = req.cookies?.access_token;
   if (token) {
+    try {
+      const secret = getJwtSecret();
+      const payload = jwt.verify(token, secret) as { userId?: string; firmId?: string; email?: string; role?: string };
+      if (payload?.userId && payload?.firmId) {
+        await recordAudit({
+          firmId: payload.firmId,
+          userId: payload.userId,
+          userName: payload.email || 'User',
+          entity: 'Session',
+          entityId: payload.userId,
+          action: 'LOGOUT',
+          oldValue: null,
+          newValue: { email: payload.email, ipAddress: req.ip },
+        });
+      }
+    } catch {
+      // Ignore token verification errors during logout audit logging
+    }
     revokeToken(token);
   }
 
@@ -168,6 +187,17 @@ authRouter.post(
   await db.updateUser(req.user!.id, {
     passwordHash: newHash,
     mustChangePassword: false,
+  });
+
+  await recordAudit({
+    firmId: req.user!.firmId,
+    userId: req.user!.id,
+    userName: req.user!.name,
+    entity: 'User',
+    entityId: req.user!.id,
+    action: 'RESET_PASSWORD',
+    oldValue: null,
+    newValue: { selfService: true, changedAt: new Date().toISOString() },
   });
 
   return res.status(200).json({

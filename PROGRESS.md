@@ -3,6 +3,34 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Comprehensive System Audit Trail Audit, Verification, and Fix (Completed & Verified)**:
+  - **1. Physical File Custody Tracking Resolved (Problem 1 Resolved)**:
+    - Traced root cause of missing physical file check-in and check-out audit records: `file.ts` wrote non-standard custody actions with nested diff payloads missing top-level `caseId`, `restAudit.ts` queried only server routes without merging client-side custody movements, and `AuditLogScreen.tsx` hardcoded action filters omitting file custody events.
+    - Standardized audit action types to `PHYSICAL_FILE_CHECKED_OUT` and `PHYSICAL_FILE_CHECKED_IN` in `src/data/types.ts`.
+    - Structured `oldValue` and `newValue` diff payloads in `src/data/repositories/file.ts` to include top-level `fileId`, `serial`, `title`, `caseId`, `status`, `shelfLocation`, `currentHolderId`, `currentHolderName`, `checkedOutAt`, and `dueBackAt`.
+    - Connected physical file return events directly to their previous checkout event via `linkedCheckoutMovementId`.
+    - Updated `RestAuditLogRepository` to implement `record()`, dynamically merge client-tracked physical file custody movements with server logs, and support case linkage matching in `listByCaseId()`.
+    - Enhanced `src/modules/audit/AuditLogScreen.tsx` with dynamic action discovery, full custody action options, specialized color-coded badges, and inline custody preview chips (`Holder: ...`, `Location: ...`).
+  - **2. Full System-Wide Audit Gap Discovery & Resolution**:
+    - **Authentication Logout**: Added `recordAudit({ entity: 'Session', action: 'LOGOUT', ... })` in `server/src/routes/auth.ts` capturing user identity and client IP upon session invalidation.
+    - **Self-Service Password Change**: Added `recordAudit({ entity: 'User', action: 'RESET_PASSWORD', ... })` in `server/src/routes/auth.ts` upon user password change, strictly omitting raw passwords and bcrypt hashes.
+    - **Audit Log Query Filtering**: Updated `MemoryDatabase.listAudit` and `PostgresDatabase.listAudit` in `server/src/db/client.ts` to filter by `entity`, `action`, `userId`, `startDate`, and `endDate`, and updated `GET /api/v1/audit-log` in `server/src/routes/audit.ts` to expose these filters.
+    - **Dual-Mode Parity**: Ensured `MockAuditLogRepository` and `RestAuditLogRepository` maintain 100% contract and feature parity.
+    - **Architectural Invariant Upheld**: Re-verified Rule 2 of `ARCHITECTURE.md` (audit rows written only by server code; direct client write endpoint `POST /api/v1/audit-log` returns 404/405).
+  - **3. Verification & Automated Test Coverage**:
+    - Created `server/tests/auditTrailComprehensive.test.ts` (29 assertions) testing login, logout, password change, entity/action/userId query filters, pagination, immutability, firm isolation, and secret redaction.
+    - Created `tests/auditTrailFlow.test.ts` (20 assertions) testing physical file registration, checkout, checkin, court dispatch, linkage to previous checkout movements, global audit list, case activity list (`listByCaseId`), dual-mode parity, and confidential matter visibility boundaries.
+    - Added npm script `"test:auditTrail": "tsx tests/auditTrailFlow.test.ts"`.
+    - Verification commands passed:
+      - `npm run lint`: 0 errors (clean pass across app and admin-app).
+      - `npm run test:auditTrail`: 20/20 PASSED.
+      - `npm test --prefix server`: 13/13 suites PASSED (including 29/29 in `auditTrailComprehensive.test.ts`).
+      - `npm run build`: built production bundle cleanly in 1.89s.
+  - **4. Deliverables Produced**:
+    - `AUDIT_TRAIL_AUDIT.md`: Complete operation-by-operation inventory across all 12 modules.
+    - `AUDIT_TRAIL_FIX_LOG.md`: Detailed defect analysis, root causes, and code changes.
+    - `AUDIT_TRAIL_TEST_REPORT.md`: Comprehensive test execution and verification logs.
+    - `AUDIT_TRAIL_RELEASE_REPORT.md`: Release notes, deployment instructions, and risk analysis.
 - [x] **Fix Critical Bug: Client Photo Upload Reverts or Disappears (Completed & Verified)**:
   - **1. Root Cause Analysis**:
     - **Protocol & Serialization Mismatch**: In REST mode, `GET /api/v1/clients/:id/photo` served the raw binary image buffer (`Buffer.from(photo.bytes, 'base64')`) with `Content-Type: image/jpeg`. `RestClientRepository.getPhoto` called `restFetch<ClientPhotoRecord>(...)`, which attempted `JSON.parse` on the raw binary string, caught the SyntaxError, and returned the garbled text representation without `.dataUrl` or `.bytes` properties.

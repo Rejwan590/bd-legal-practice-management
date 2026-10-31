@@ -134,7 +134,7 @@ const hearingRepo: IHearingRepository = isRestMode
 const taskRepo: ITaskRepository = isRestMode
   ? new RestTaskRepository()
   : new MockTaskRepository(mockAuditLogRepo, reminderRepo);
-const physicalFileRepo = new MockPhysicalFileRepository(mockAuditLogRepo, reminderRepo);
+const physicalFileRepo = new MockPhysicalFileRepository(auditLogRepo, reminderRepo);
 const calendarRepo: ICalendarRepository = isRestMode
   ? new RestCalendarRepository()
   : new MockCalendarRepository();
@@ -144,7 +144,7 @@ const searchRepo: ISearchRepository = isRestMode
 const dashboardRepo: IDashboardRepository = isRestMode
   ? new RestDashboardRepository()
   : new MockDashboardRepository();
-const backupRepo = new MockBackupRepository(mockAuditLogRepo);
+const backupRepo = new MockBackupRepository(auditLogRepo);
 const accountsRepo: IAccountsRepository = isRestMode
   ? new RestAccountsRepository()
   : new MockAccountsRepository(mockAuditLogRepo);

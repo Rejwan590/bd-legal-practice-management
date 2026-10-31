@@ -173,11 +173,33 @@ export const AuditLogScreen: React.FC = () => {
             className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl min-h-[44px] px-3.5 py-2.5 focus:ring-2 focus:ring-slate-500 focus:outline-hidden"
           >
             <option value="ALL">{t('common.all')}</option>
-            <option value="CREATE">CREATE</option>
-            <option value="UPDATE">UPDATE</option>
-            <option value="DELETE">DELETE</option>
-            <option value="USER_SWITCH">USER_SWITCH</option>
-            <option value="LOGIN">LOGIN</option>
+            {Array.from(
+              new Set([
+                'CREATE',
+                'UPDATE',
+                'DELETE',
+                'PHYSICAL_FILE_CHECKED_OUT',
+                'PHYSICAL_FILE_CHECKED_IN',
+                'FILE_CHECKOUT',
+                'FILE_CHECKIN',
+                'HEARING_DATE_CHANGE',
+                'TASK_ASSIGN',
+                'TASK_COMPLETE',
+                'LOGIN',
+                'LOGOUT',
+                'RESET_PASSWORD',
+                'BACKUP_EXPORT',
+                'BACKUP_RESTORE',
+                'USER_SWITCH',
+                ...logs.map((l) => l.action),
+              ])
+            )
+              .sort()
+              .map((act) => (
+                <option key={act} value={act}>
+                  {act}
+                </option>
+              ))}
           </select>
         </div>
       </div>
@@ -223,12 +245,35 @@ export const AuditLogScreen: React.FC = () => {
                                 ? 'bg-rose-100 text-rose-800'
                                 : log.action === 'USER_SWITCH'
                                 ? 'bg-indigo-100 text-indigo-800'
+                                : log.action === 'PHYSICAL_FILE_CHECKED_OUT' || log.action === 'FILE_CHECKOUT' || log.action === 'COURT_DISPATCH'
+                                ? 'bg-amber-100 text-amber-800'
+                                : log.action === 'PHYSICAL_FILE_CHECKED_IN' || log.action === 'FILE_CHECKIN'
+                                ? 'bg-teal-100 text-teal-800'
+                                : log.action === 'HEARING_DATE_CHANGE'
+                                ? 'bg-purple-100 text-purple-800'
+                                : log.action === 'TASK_ASSIGN' || log.action === 'TASK_COMPLETE'
+                                ? 'bg-blue-100 text-blue-800'
+                                : log.action === 'RESET_PASSWORD'
+                                ? 'bg-red-100 text-red-800'
+                                : log.action === 'LOGIN' || log.action === 'LOGOUT'
+                                ? 'bg-slate-200 text-slate-800'
                                 : 'bg-sky-100 text-sky-800'
                             }`}
                           >
                             {log.action}
                           </span>
                           {renderAuditEntityLink(log)}
+                          {log.entity === 'PhysicalFile' && Boolean((log.newValue as any)?.currentHolderName) && (
+                            <span className="text-xs text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-medium">
+                              Holder: {(log.newValue as any).currentHolderName}
+                              {Boolean((log.newValue as any)?.dueBackAt) ? ` (Due: ${String((log.newValue as any).dueBackAt).split('T')[0]})` : ''}
+                            </span>
+                          )}
+                          {log.entity === 'PhysicalFile' && (log.action === 'PHYSICAL_FILE_CHECKED_IN' || log.action === 'FILE_CHECKIN') && Boolean((log.newValue as any)?.shelfLocation) && (
+                            <span className="text-xs text-teal-800 bg-teal-50 px-2 py-0.5 rounded font-medium">
+                              Location: {(log.newValue as any).shelfLocation}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-slate-500 mt-1 flex-wrap">
