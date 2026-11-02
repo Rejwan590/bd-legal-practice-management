@@ -79,7 +79,7 @@ export const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
         aria-modal="true"
       >
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 shrink-0 pt-safe">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 shrink-0 pt-[max(0.875rem,env(safe-area-inset-top))] md:pt-4">
           <div className="flex items-center gap-3 min-w-0">
             {Icon && (
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-slate-700">

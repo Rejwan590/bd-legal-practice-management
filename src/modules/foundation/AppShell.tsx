@@ -42,7 +42,7 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-export const SHELL_CONTAINER_CLASS = 'w-full max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8';
+export const SHELL_CONTAINER_CLASS = 'w-full min-w-0 px-3 sm:px-6 lg:px-8';
 
 export const getContentWrapperClass = (): string => {
   return `flex-1 ${SHELL_CONTAINER_CLASS} py-3.5 sm:py-5 flex gap-4 lg:gap-6 min-w-0`;

@@ -83,7 +83,7 @@ export const App: React.FC = () => {
         onLogout={handleLogout}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 overflow-x-hidden">
+      <main className="flex-1 w-full min-w-0 p-4 sm:p-6 lg:p-8">
         {currentTab === 'firms' ? (
           selectedFirmId ? (
             <FirmDetailScreen

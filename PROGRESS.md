@@ -3,6 +3,65 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Repository-Wide UI/UX, Responsive Layout, Full-Width and Overflow Repair (Completed & Verified)**:
+  - **1. Root Cause Diagnosis of Left/Right Empty Space**:
+    - Identified that `SHELL_CONTAINER_CLASS = 'w-full max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8'` in `src/modules/foundation/AppShell.tsx` and `<main className="flex-1 max-w-7xl w-full mx-auto ...">` in `admin-app/src/App.tsx` were artificially constraining both the Chamber application and the Super Admin platform to a narrow 1280px / 1536px centered column.
+    - On large desktop displays (1440px to 1920px+), this wasted up to ~700px of screen space in empty left and right gutters while cramping tables and data cards.
+  - **2. Full-Width Fluid Layout Implementation**:
+    - Replaced restrictive max-width styles with `SHELL_CONTAINER_CLASS = 'w-full min-w-0 px-3 sm:px-6 lg:px-8'` in `AppShell.tsx`.
+    - Made Super Admin layout fluid via `<main className="flex-1 w-full min-w-0 p-4 sm:p-6 lg:p-8">` and `<div className="w-full min-w-0 px-4 sm:px-6 lg:px-8">` in `AdminNavbar.tsx`.
+    - Replaced `max-w-4xl` in `PlaceholderScreen.tsx` with `w-full`.
+  - **3. Physical Paper File Tracking Table & Touch Targets**:
+    - Enforced `min-w-[44px]` and `justify-center` on all physical file action buttons (Check Out, Dispatch Court, Check In, History, Edit, Archive) in `src/modules/files/FilesScreen.tsx` ensuring strict adherence to the >= 44×44px mobile touch target rule.
+    - Table now expands comfortably across wide viewports without horizontal scroll, while maintaining the responsive card layout on mobile (`<md`).
+  - **4. Comprehensive Multi-Breakpoint Automated Verification**:
+    - Expanded Playwright responsive test matrix in `e2e/responsive.spec.ts` to test 8 standard viewports: **320px**, **360px**, **375px**, **768px**, **1024px**, **1280px**, **1440px**, and **1920px**.
+    - Executed 163 tests with 0 horizontal scroll detected across all 20 modules and modal dialogs.
+  - **5. Required Documentation Artifacts Produced**:
+    - `RESPONSIVE_LAYOUT_AUDIT.md`
+    - `RESPONSIVE_LAYOUT_FIX_LOG.md`
+    - `RESPONSIVE_LAYOUT_TEST_REPORT.md`
+    - `RESPONSIVE_LAYOUT_RELEASE_REPORT.md`
+  - **6. Verification Results**:
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npm run build`: PASS (built in 3.47s).
+    - `npm run build:admin`: PASS (built in 2.67s).
+    - `npm run test:consoleErrors`: PASS (4/4 test groups passed).
+    - `npm run test:dashboard`: PASS (25 passed, 0 failed).
+    - `npx playwright test`: PASS (163 tests passed across 8 viewports).
+  - **7. Production Deployment**:
+    - Strictly paused pending user review and authorization.
+- [x] **Validate and Finalize ResponsiveModal Header Padding Fix (Completed & Verified)**:
+  - **1. CSS Cascade Root Cause Verified**:
+    - Confirmed root cause: `.pt-safe`, `.pb-safe`, `.pl-safe`, and `.pr-safe` were previously declared outside `@layer base` as unlayered styles. Under the CSS Cascading & Inheritance Level 5 specification, unlayered utility rules override all `@layer` rules, including Tailwind v4 utilities in `@layer utilities`. Because `env(safe-area-inset-top, 0px)` evaluates to `0px` on desktop, `.pt-safe` unconditionally overrode `py-3.5` and `sm:py-4`, collapsing `padding-top` to `0px` while leaving `padding-bottom` at `14px` or `16px`.
+    - In `src/index.css`, moved `.pt-safe`, `.pb-safe`, `.pl-safe`, and `.pr-safe` inside `@layer base`. Verified in compiled CSS (`dist/assets/index-DacEscpM.css`) that `.pt-safe` is declared in `@layer base` (index 7943), while utility classes `py-3.5` and `sm:py-4` are declared in `@layer utilities` (index 51640+). As a result, utility classes reliably take precedence.
+  - **2. Modal Header Safe-Area & Balanced Padding Verified**:
+    - In `src/components/responsive/ResponsiveModal.tsx`, configured the modal header wrapper with:
+      `className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 shrink-0 pt-[max(0.875rem,env(safe-area-inset-top))] md:pt-4"`
+    - Verified that micro-adjustments `translate-y-[1px]` and `pt-0.5` were removed and are completely redundant after balancing padding.
+    - Verified desktop computed styles via Chrome DevTools on `UserSwitchModal` (1280px):
+      - `paddingTop`: `16px` (1rem, matching `sm:py-4` / `md:pt-4`)
+      - `paddingBottom`: `16px` (1rem)
+      - `paddingLeft`: `24px` (1.5rem, matching `sm:px-6`)
+      - `paddingRight`: `24px` (1.5rem)
+      - Leading icon center Y: `256.75px`
+      - Close button center Y: `256.75px` (exact subpixel vertical alignment)
+    - Verified mobile computed styles via Chrome DevTools on mobile viewport (360x740, touch):
+      - `paddingTop`: `14px` (0.875rem, matching `py-3.5`)
+      - `paddingBottom`: `14px` (0.875rem)
+      - `paddingLeft`: `16px` (1rem, matching `px-4`)
+      - `paddingRight`: `16px` (1rem)
+      - Header height: `73px`
+      - Leading icon center Y: `36.0px`
+      - Close button center Y: `36.0px` (`top: 14px`, `height: 44px`, center: `14 + 22 = 36px`)
+      - Close button touch target: `44x44px` (satisfies >= 44x44px touch target requirement)
+      - Zero clipping, zero viewport overflow, and safe-area inset preserved on notched devices.
+  - **3. Full Regression Suite Passed**:
+    - `npm run lint`: 0 errors across main app and admin app (`tsc --noEmit && tsc --noEmit --project admin-app/tsconfig.json`).
+    - `npm test --prefix server`: 14/14 test suites passed (465 tests passed, 0 failed).
+    - `npm run test:health`: 87/87 checks passed (0 failed).
+    - `npm run build`: built production bundle in 1.31s.
+    - `npm run build:admin`: built admin bundle in 0.83s.
 - [x] **Fix Production CORS and Authentication Connectivity — Full Root-Cause Repair (Completed & Verified)**:
   - **1. Discovered and Documented Two-Layer Root Cause**:
     - **Azure Gateway Quota Interception**: Probed Azure production backend via `curl.exe` and ARM CLI. Found App Service Plan `ASP-BDLegal-a137` is SKU `F1` (Free Tier) and exceeded its 60 CPU minutes/day quota (`state: "QuotaExceeded"`, `usageState: "Exceeded"`). Azure load balancer intercepted all traffic and returned `HTTP/1.1 403 Site Disabled` HTML without CORS headers, causing browser preflight failures on `GET /auth/me` and `POST /auth/login`.

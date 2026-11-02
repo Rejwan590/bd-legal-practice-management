@@ -426,7 +426,7 @@ export const FilesScreen: React.FC = () => {
                   e.stopPropagation();
                   setCheckOutModalFile(file);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-2xs transition"
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-2xs transition"
                 title={t('files.checkOut')}
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -438,7 +438,7 @@ export const FilesScreen: React.FC = () => {
                   e.stopPropagation();
                   setDispatchModalFile(file);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs transition"
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs transition"
                 title={t('files.dispatchCourt')}
               >
                 <Scale className="w-3.5 h-3.5" />
@@ -454,7 +454,7 @@ export const FilesScreen: React.FC = () => {
                 e.stopPropagation();
                 setCheckInModalFile(file);
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-2xs transition"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-2xs transition"
               title={t('files.checkIn')}
             >
               <LogIn className="w-3.5 h-3.5" />
@@ -468,7 +468,7 @@ export const FilesScreen: React.FC = () => {
               e.stopPropagation();
               setHistoryModalFile(file);
             }}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+            className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
             title={t('files.viewHistory')}
           >
             <History className="w-3.5 h-3.5 text-slate-500" />

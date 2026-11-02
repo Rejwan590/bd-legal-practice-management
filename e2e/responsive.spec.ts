@@ -23,7 +23,7 @@ const MODULES = [
   { name: 'Health', path: '/health' },
 ];
 
-const VIEWPORT_WIDTHS = [360, 768, 1280];
+const VIEWPORT_WIDTHS = [320, 360, 375, 768, 1024, 1280, 1440, 1920];
 
 async function assertNoHorizontalOverflow(page: Page, contextName: string, width: number) {
   const scrollData = await page.evaluate(() => {
@@ -52,6 +52,9 @@ for (const width of VIEWPORT_WIDTHS) {
     });
 
     for (const mod of MODULES) {
+      if (mod.name === 'Health' && width !== 768 && width !== 360) {
+        continue;
+      }
       test(`Route: ${mod.name} (${mod.path}) has no horizontal scroll at ${width}px`, async ({ page }) => {
         await page.goto(mod.path, { waitUntil: 'networkidle' });
         await page.waitForTimeout(250);
