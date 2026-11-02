@@ -12,6 +12,7 @@ import {
   VisibilityMode,
 } from '../../rolePresets';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
+import { PermissionGroupCollapsible } from './PermissionGroupCollapsible';
 import {
   Building2,
   CreditCard,
@@ -1053,46 +1054,13 @@ export const SettingsScreen: React.FC = () => {
                     ):
                   </span>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {ALL_PERMISSIONS.map((perm) => {
-                      const isOwner = user.role === 'Owner';
-                      const isSelf = user.id === currentUser.id;
-                      const hasPerm = isOwner || user.permissions.includes(perm);
-                      const permKey = perm.replace('.', '_');
-                      const label = t(`permissions.${permKey}`, perm);
-
-                      return (
-                        <label
-                          key={perm}
-                          className={`flex items-start gap-2.5 min-h-[44px] p-2.5 rounded-xl text-xs transition border ${
-                            hasPerm
-                              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                              : 'bg-white border-slate-200 text-slate-500 opacity-60'
-                          } ${
-                            !isOwner && !isSelf && canManageUsers && !isReadOnly
-                              ? 'cursor-pointer hover:bg-slate-100'
-                              : 'cursor-default'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            disabled={isOwner || isSelf || !canManageUsers || isReadOnly}
-                            checked={hasPerm}
-                            onChange={() => handleToggleStaffPermission(user.id, perm)}
-                            className="mt-0.5 rounded text-slate-900 focus:ring-slate-500 w-4 h-4 shrink-0 disabled:opacity-50"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium block leading-tight break-words">
-                              {label}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                              {perm}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <PermissionGroupCollapsible
+                    user={user}
+                    currentUser={currentUser}
+                    canManageUsers={canManageUsers}
+                    isReadOnly={isReadOnly}
+                    onTogglePermission={handleToggleStaffPermission}
+                  />
                 </div>
               </div>
             );

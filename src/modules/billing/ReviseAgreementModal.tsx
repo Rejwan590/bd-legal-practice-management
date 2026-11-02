@@ -127,9 +127,15 @@ export const ReviseAgreementModal: React.FC<ReviseAgreementModalProps> = ({
             min="1"
             value={takaAmount}
             onChange={(e) => setTakaAmount(e.target.value)}
+            placeholder={t('billing.amountInTaka', 'Amount in Taka')}
             required
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
           />
+          {Number(takaAmount) > 0 && (
+            <span className="text-xs text-blue-700 font-semibold block mt-1">
+              {formatBdt(takaToPaisa(Number(takaAmount)), { lang: i18n.language })}
+            </span>
+          )}
         </div>
 
         <div>

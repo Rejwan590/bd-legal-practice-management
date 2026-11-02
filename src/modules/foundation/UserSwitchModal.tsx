@@ -253,7 +253,10 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClos
 
                 <div className="space-y-2">
                   <input
+                    id="switch-current-password"
+                    name="currentPassword"
                     type="password"
+                    autoComplete="current-password"
                     placeholder={t('auth.currentPassword', { defaultValue: 'Current Password' })}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
@@ -261,7 +264,10 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClos
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[40px]"
                   />
                   <input
+                    id="switch-new-password"
+                    name="newPassword"
                     type="password"
+                    autoComplete="new-password"
                     placeholder={t('auth.newPassword', { defaultValue: 'New Password (min 8 chars)' })}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -269,7 +275,10 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClos
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[40px]"
                   />
                   <input
+                    id="switch-confirm-password"
+                    name="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     placeholder={t('auth.confirmNewPassword', { defaultValue: 'Confirm New Password' })}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}

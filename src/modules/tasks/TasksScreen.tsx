@@ -10,6 +10,7 @@ import { TaskCompleteModal } from './TaskCompleteModal';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { EntityLink } from '../../components/EntityLink';
+import { isDhakaMidnight } from '../../utils/dateUtils';
 import {
   CheckSquare,
   Plus,
@@ -606,9 +607,11 @@ export const TasksScreen: React.FC = () => {
                         <span>{dueDateObj.toLocaleDateString()}</span>
                       </div>
                     )}
-                    <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
-                      {dueDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    {!isDhakaMidnight(dueDateObj) && (
+                      <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
+                        {dueDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
                 );
               },

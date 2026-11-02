@@ -263,10 +263,15 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               min="1"
               value={takaAmount}
               onChange={(e) => setTakaAmount(e.target.value)}
-              placeholder="e.g. 25000"
+              placeholder={t('billing.amountInTaka', 'Amount in Taka')}
               required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px]"
             />
+            {Number(takaAmount) > 0 && (
+              <span className="text-xs text-emerald-700 font-semibold block mt-1">
+                {formatBdt(takaToPaisa(Number(takaAmount)), { lang: i18n.language })}
+              </span>
+            )}
           </div>
 
           <div>

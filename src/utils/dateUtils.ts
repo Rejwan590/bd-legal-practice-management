@@ -102,3 +102,27 @@ export function toDateTimeInputValue(val?: Date | string | number | null): strin
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * Checks whether a date or timestamp corresponds to midnight (00:00) in Bangladesh or UTC.
+ * Used to omit redundant "00:00 AM" / "12:00 AM" timestamps on task cards.
+ */
+export function isDhakaMidnight(date: Date | string | number): boolean {
+  try {
+    const d = typeof date === 'object' && date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return false;
+    const s = d.toLocaleTimeString('en-US', {
+      timeZone: BANGLADESH_TIMEZONE,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    if (s === '00:00' || s === '24:00') return true;
+    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) return true;
+    if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+

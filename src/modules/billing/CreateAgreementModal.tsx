@@ -5,7 +5,7 @@ import { getRepositories } from '../../data/repositories';
 import { CaseRecord, FeeType } from '../../data/types';
 import { FileText, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
-import { takaToPaisa } from '../../utils/currency';
+import { takaToPaisa, formatBdt } from '../../utils/currency';
 import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface CreateAgreementModalProps {
@@ -23,7 +23,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
@@ -193,10 +193,15 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
               min="1"
               value={takaAmount}
               onChange={(e) => setTakaAmount(e.target.value)}
-              placeholder="e.g. 150000"
+              placeholder={t('billing.amountInTaka', 'Amount in Taka')}
               required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
             />
+            {Number(takaAmount) > 0 && (
+              <span className="text-xs text-indigo-700 font-semibold block mt-1">
+                {formatBdt(takaToPaisa(Number(takaAmount)), { lang: i18n.language })}
+              </span>
+            )}
           </div>
         </div>
 

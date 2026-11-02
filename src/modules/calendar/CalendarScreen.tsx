@@ -26,9 +26,12 @@ import {
   FileText,
   Plus,
   Edit2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { DailyCauseListModal } from './DailyCauseListModal';
 import { getFixedForLabel } from '../../data/hearingFixedFor';
+import { getDhakaDateString } from '../../utils/dateUtils';
 
 export const CalendarScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -67,6 +70,19 @@ export const CalendarScreen: React.FC = () => {
 
   const [causeListModalOpen, setCauseListModalOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [overdueUserToggled, setOverdueUserToggled] = useState<boolean | null>(null);
+
+  const todayDhakaStr = getDhakaDateString();
+  const currentReminders = useMemo(
+    () => dueReminders.filter((r) => getDhakaDateString(r.dueAt) >= todayDhakaStr),
+    [dueReminders, todayDhakaStr]
+  );
+  const overdueReminders = useMemo(
+    () => dueReminders.filter((r) => getDhakaDateString(r.dueAt) < todayDhakaStr),
+    [dueReminders, todayDhakaStr]
+  );
+  const isOverdueExpanded =
+    overdueUserToggled !== null ? overdueUserToggled : overdueReminders.length <= 5;
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -307,49 +323,125 @@ export const CalendarScreen: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {dueReminders.map((rem) => (
-              <div
-                key={rem.id}
-                className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-amber-200/80 shadow-2xs flex items-start justify-between gap-3 text-xs"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    {rem.sourceType === 'hearing' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800">
-                        {t('calendar.hearingBadge')}
+          {/* Current and Upcoming Reminders */}
+          {currentReminders.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                {t('reminders.currentAndUpcoming')} ({currentReminders.length})
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {currentReminders.map((rem) => (
+                  <div
+                    key={rem.id}
+                    className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-amber-200/80 shadow-2xs flex items-start justify-between gap-3 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        {rem.sourceType === 'hearing' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800">
+                            {t('calendar.hearingBadge')}
+                          </span>
+                        )}
+                        {rem.sourceType === 'task' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900">
+                            {t('calendar.taskDeadlineBadge')}
+                          </span>
+                        )}
+                        {rem.sourceType === 'file_return' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800">
+                            {t('calendar.fileReturnBadge')}
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-900 line-clamp-1">{rem.title}</span>
+                      </div>
+                      {rem.description && (
+                        <p className="text-[11px] text-slate-600 line-clamp-2">{rem.description}</p>
+                      )}
+                      <span className="text-[10px] font-mono text-slate-400 block">
+                        Due: {new Date(rem.dueAt).toLocaleString()}
                       </span>
-                    )}
-                    {rem.sourceType === 'task' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900">
-                        {t('calendar.taskDeadlineBadge')}
-                      </span>
-                    )}
-                    {rem.sourceType === 'file_return' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800">
-                        {t('calendar.fileReturnBadge')}
-                      </span>
-                    )}
-                    <span className="font-bold text-slate-900 line-clamp-1">{rem.title}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDismissReminder(rem.id)}
+                      className="px-3 py-1.5 min-h-[44px] text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0 flex items-center justify-center cursor-pointer"
+                    >
+                      {t('reminders.dismiss')}
+                    </button>
                   </div>
-                  {rem.description && (
-                    <p className="text-[11px] text-slate-600 line-clamp-2">{rem.description}</p>
-                  )}
-                  <span className="text-[10px] font-mono text-slate-400 block">
-                    Due: {new Date(rem.dueAt).toLocaleString()}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Overdue Reminders Collapsible Section */}
+          {overdueReminders.length > 0 && (
+            <div className="border border-rose-200 bg-rose-50/70 rounded-xl overflow-hidden mt-2">
+              <button
+                type="button"
+                onClick={() => setOverdueUserToggled(!isOverdueExpanded)}
+                className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-bold text-rose-900 hover:bg-rose-100/60 transition min-h-[44px] cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                  <span>{t('reminders.overdue')}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-600 text-white">
+                    {overdueReminders.length}
                   </span>
                 </div>
+                <div className="flex items-center gap-1 text-[11px] text-rose-700">
+                  <span>{isOverdueExpanded ? t('reminders.hideOverdue') : t('reminders.showOverdue')}</span>
+                  {isOverdueExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </div>
+              </button>
+              {isOverdueExpanded && (
+                <div className="p-3 border-t border-rose-200 grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-white/70">
+                  {overdueReminders.map((rem) => (
+                    <div
+                      key={rem.id}
+                      className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-rose-200/80 shadow-2xs flex items-start justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          {rem.sourceType === 'hearing' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800">
+                              {t('calendar.hearingBadge')}
+                            </span>
+                          )}
+                          {rem.sourceType === 'task' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900">
+                              {t('calendar.taskDeadlineBadge')}
+                            </span>
+                          )}
+                          {rem.sourceType === 'file_return' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800">
+                              {t('calendar.fileReturnBadge')}
+                            </span>
+                          )}
+                          <span className="font-bold text-slate-900 line-clamp-1">{rem.title}</span>
+                        </div>
+                        {rem.description && (
+                          <p className="text-[11px] text-slate-600 line-clamp-2">{rem.description}</p>
+                        )}
+                        <span className="text-[10px] font-mono text-rose-700 font-semibold block">
+                          Due: {new Date(rem.dueAt).toLocaleString()}
+                        </span>
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleDismissReminder(rem.id)}
-                  className="px-3 py-1.5 min-h-[44px] text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0 flex items-center justify-center"
-                >
-                  {t('reminders.dismiss')}
-                </button>
-              </div>
-            ))}
-          </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDismissReminder(rem.id)}
+                        className="px-3 py-1.5 min-h-[44px] text-xs font-semibold text-rose-700 hover:text-rose-900 hover:bg-rose-100 rounded-xl transition shrink-0 flex items-center justify-center cursor-pointer"
+                      >
+                        {t('reminders.dismiss')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

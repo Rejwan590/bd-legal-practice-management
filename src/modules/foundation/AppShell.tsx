@@ -42,6 +42,15 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
+const FULL_WIDTH_TABS = new Set(['cases', 'hearings', 'tasks', 'files', 'calendar', 'billing']);
+
+export const getContentWrapperClass = (tab: string): string => {
+  if (FULL_WIDTH_TABS.has(tab)) {
+    return 'flex-1 w-full max-w-none px-3 sm:px-4 lg:px-6 py-4 sm:py-6 flex gap-4 lg:gap-6 min-w-0';
+  }
+  return 'flex-1 max-w-7xl 2xl:max-w-[1536px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex gap-4 lg:gap-6 min-w-0';
+};
+
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { t, i18n } = useTranslation();
   const { currentUser, currentFirm, subscription, can, isReadOnly } = useAuth();
@@ -704,7 +713,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       )}
 
       {/* Main Layout Container (Desktop sidebar + Content) */}
-      <div className="flex-1 max-w-7xl 2xl:max-w-[1536px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex gap-4 lg:gap-6 min-w-0">
+      <div className={getContentWrapperClass(currentTab)}>
         {/* Tablet / Desktop Sidebar (>=md) */}
         <aside
           className={`hidden md:flex flex-col shrink-0 transition-all duration-200 ${

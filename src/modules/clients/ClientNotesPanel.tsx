@@ -4,6 +4,7 @@ import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { ClientNoteRecord, UserRecord } from '../../data/types';
 import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
+import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { Plus, Edit2, Trash2, Calendar, User, Clock, AlertTriangle, FileText, Check, X } from 'lucide-react';
 
 interface ClientNotesPanelProps {
@@ -273,121 +274,103 @@ export const ClientNotesPanel: React.FC<ClientNotesPanelProps> = ({
       </div>
 
       {/* Composer Modal */}
-      {composerOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="text-sm font-bold text-slate-900">
-                {editingNote ? t('clients.editNote', 'Edit Note') : t('clients.newNote', 'New Note')}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setComposerOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      <ResponsiveModal
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        title={editingNote ? t('clients.editNote', 'Edit Note') : t('clients.newNote', 'New Note')}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSubmitNote} className="space-y-4">
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
+              {errorMsg}
             </div>
+          )}
 
-            <form onSubmit={handleSubmitNote} className="p-5 space-y-4">
-              {errorMsg && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
-                  {errorMsg}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('clients.noteDate', 'Date')}
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={toDateInputValue(noteDate)}
-                  onChange={(e) => setNoteDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-amber-800/20 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-700">
-                    {t('clients.noteText', 'Note / Instructions')}
-                  </label>
-                  <span className={`text-[11px] font-mono ${noteBody.length > 5000 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
-                    {noteBody.length} / 5000
-                  </span>
-                </div>
-                <textarea
-                  rows={5}
-                  required
-                  maxLength={5000}
-                  value={noteBody}
-                  onChange={(e) => setNoteBody(e.target.value)}
-                  placeholder={t('clients.notePlaceholder', 'Enter meeting notes, instructions, client updates, or historical summary...')}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:ring-2 focus:ring-amber-800/20 focus:outline-hidden leading-relaxed"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setComposerOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  {t('common.cancel', 'Cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || isReadOnly}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-800 hover:bg-amber-900 text-white shadow-xs disabled:opacity-40"
-                >
-                  {submitting ? t('common.saving', 'Saving...') : t('common.save', 'Save Note')}
-                </button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('clients.noteDate', 'Date')}
+            </label>
+            <input
+              type="date"
+              required
+              value={toDateInputValue(noteDate)}
+              onChange={(e) => setNoteDate(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-amber-800/20 focus:outline-hidden"
+            />
           </div>
-        </div>
-      )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-700">
+                {t('clients.noteText', 'Note / Instructions')}
+              </label>
+              <span className={`text-[11px] font-mono ${noteBody.length > 5000 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                {noteBody.length} / 5000
+              </span>
+            </div>
+            <textarea
+              rows={5}
+              required
+              maxLength={5000}
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+              placeholder={t('clients.notePlaceholder', 'Enter meeting notes, instructions, client updates, or historical summary...')}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:ring-2 focus:ring-amber-800/20 focus:outline-hidden leading-relaxed"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setComposerOpen(false)}
+              className="px-4 py-2 min-h-[44px] rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              {t('common.cancel', 'Cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || isReadOnly}
+              className="px-4 py-2 min-h-[44px] rounded-xl text-xs font-semibold bg-amber-800 hover:bg-amber-900 text-white shadow-xs disabled:opacity-40 cursor-pointer"
+            >
+              {submitting ? t('common.saving', 'Saving...') : t('common.save', 'Save Note')}
+            </button>
+          </div>
+        </form>
+      </ResponsiveModal>
 
       {/* Delete Confirmation Modal */}
-      {deletingNote && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xl">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {t('clients.deleteNoteConfirm', 'Delete Note')}
-                </h4>
-                <p className="text-xs text-slate-500">
-                  {t('clients.deleteNoteWarning', 'This note will be soft-deleted and archived in the audit log.')}
-                </p>
-              </div>
-            </div>
+      <ResponsiveModal
+        isOpen={Boolean(deletingNote)}
+        onClose={() => setDeletingNote(null)}
+        title={t('clients.deleteNoteConfirm', 'Delete Note')}
+        icon={AlertTriangle}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            {t('clients.deleteNoteWarning', 'This note will be soft-deleted and archived in the audit log.')}
+          </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingNote(null)}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                {t('common.cancel', 'Cancel')}
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={handleDeleteNote}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-40"
-              >
-                {submitting ? t('common.deleting', 'Deleting...') : t('common.delete', 'Delete')}
-              </button>
-            </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setDeletingNote(null)}
+              className="px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              {t('common.cancel', 'Cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={handleDeleteNote}
+              className="px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-40 cursor-pointer"
+            >
+              {submitting ? t('common.deleting', 'Deleting...') : t('common.delete', 'Delete')}
+            </button>
           </div>
         </div>
-      )}
+      </ResponsiveModal>
     </div>
   );
 };

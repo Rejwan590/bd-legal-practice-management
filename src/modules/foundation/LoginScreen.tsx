@@ -139,12 +139,14 @@ export const LoginScreen: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 block">
+              <label htmlFor="login-email" className="text-xs font-semibold uppercase tracking-wider text-slate-300 block">
                 {t('auth.email', { defaultValue: 'Email Address' })}
               </label>
               <div className="relative flex items-center">
                 <Mail className="w-5 h-5 text-slate-400 absolute left-3.5 pointer-events-none" />
                 <input
+                  id="login-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -158,12 +160,14 @@ export const LoginScreen: React.FC = () => {
 
             {/* Password Field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 block">
+              <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-wider text-slate-300 block">
                 {t('auth.password', { defaultValue: 'Password' })}
               </label>
               <div className="relative flex items-center">
                 <Lock className="w-5 h-5 text-slate-400 absolute left-3.5 pointer-events-none" />
                 <input
+                  id="login-password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

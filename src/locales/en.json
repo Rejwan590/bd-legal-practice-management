@@ -97,7 +97,22 @@
     "notePlaceholder": "Enter confidential consultation or case notes (max 5000 characters)...",
     "noNotes": "No notes recorded for this client.",
     "saveNote": "Save Note",
-    "cancelNote": "Cancel"
+    "cancelNote": "Cancel",
+    "clientNotes": "Client Notes & Instructions",
+    "confirmDeleteTitle": "Confirm Delete Client",
+    "deleteNoteConfirm": "Delete Note",
+    "deleteNoteWarning": "This note will be soft-deleted and archived in the audit log.",
+    "name": "Client Name",
+    "newNote": "New Note",
+    "noArchivedClients": "No archived clients found.",
+    "noLinkedRecords": "No linked records found for this client.",
+    "noNotesYet": "No notes recorded for this client yet. Click \"+ Add Note\" to create the first record.",
+    "noteRequired": "Note text cannot be empty",
+    "noteText": "Note / Instructions",
+    "noteTooLong": "Note text cannot exceed 5000 characters",
+    "tapToCall": "Tap to call",
+    "tapToEmail": "Tap to email",
+    "noCameraFallbackNotice": "No camera found. You can upload a photo instead."
   },
   "cases": {
     "title": "Chamber Cases Register",
@@ -218,7 +233,36 @@
       "admiralty": "Admiralty / Maritime",
       "tribunal": "Special Tribunal",
       "other": "Other Matter"
-    }
+    },
+    "case": "Case",
+    "caseNotes": "Case Notes & Running History",
+    "cases": "Cases",
+    "category": "Case Category",
+    "categoryCivil": "Civil (দেওয়ানি)",
+    "categoryCriminalCR": "Criminal CR / Complaint (সি.আর.)",
+    "categoryCriminalGR": "Criminal GR / Police (জি.আর.)",
+    "categoryOther": "Other / Special (অন্যান্য)",
+    "confirmDeleteTitle": "Confirm Delete Case",
+    "deleteNoteConfirm": "Delete Case Note",
+    "deleteNoteWarning": "This note will be soft-deleted and archived in the audit log.",
+    "linkedFiles": "Files",
+    "linkedHearings": "Hearings",
+    "linkedReminders": "Linked Reminders",
+    "linkedTasks": "Tasks",
+    "newNote": "New Case Note",
+    "noClosedCases": "No closed cases.",
+    "noNotesYet": "No case notes recorded yet. Click \"+ Add Note\" to record a note.",
+    "noSharedLawyers": "No lawyers have been shared on this case.",
+    "noUpcomingHearing": "No upcoming hearing scheduled.",
+    "noteRequired": "Note text cannot be empty",
+    "noteText": "Note / Instructions / Milestone",
+    "noteTooLong": "Note text cannot exceed 5000 characters",
+    "partiesSection": "Parties & Litigants",
+    "pending": "Pending",
+    "restrictedBadge": "Restricted Confidential Case",
+    "shareAction": "Share Case",
+    "shareWithLawyer": "Share with Lawyer",
+    "unshareAction": "Revoke Share"
   },
   "hearings": {
     "title": "Court Cause List & Hearings",
@@ -249,7 +293,7 @@
     "previousHearing": "Previous Hearing",
     "currentHearing": "Today's Hearing",
     "nextHearing": "Next Upcoming Hearing",
-    "noDateHistory": "No previous date modifications recorded for this hearing.",
+    "noDateHistory": "No date changes recorded. Status changes are shown in the Activity tab.",
     "timelineTitle": "Hearing Date History & Adjournment Log",
     "changedBy": "Changed By",
     "changedOn": "Changed On",
@@ -317,7 +361,15 @@
     "advocateNotes": "Bench Order / Advocate Notes",
     "clerkSignature": "Clerk / Moharrir Signature",
     "printA4Docket": "Print A4 Docket",
-    "printDocketSubtitle": "Official Cause List for Chamber Court Attendance"
+    "printDocketSubtitle": "Official Cause List for Chamber Court Attendance",
+    "addHearing": "Add Hearing",
+    "emptyHearings": "No hearings recorded for this case.",
+    "hearing": "Hearing",
+    "reschedule": "Reschedule Hearing",
+    "statusScheduled": "Scheduled",
+    "statusHeld": "Held",
+    "statusAdjourned": "Adjourned",
+    "statusCancelled": "Cancelled"
   },
   "tasks": {
     "title": "Chamber Tasks & Assignments",
@@ -374,7 +426,8 @@
     "taskReassigned": "Task reassigned successfully.",
     "taskDeleted": "Task archived successfully.",
     "softDeleteWarningTitle": "Archive Task?",
-    "softDeleteWarningText": "This task will be soft-deleted and removed from active queues while preserving audit records."
+    "softDeleteWarningText": "This task will be soft-deleted and removed from active queues while preserving audit records.",
+    "completeTask": "Complete Task"
   },
   "files": {
     "title": "Physical Paper File Tracking",
@@ -436,7 +489,9 @@
     "fileDispatched": "File dispatched to court with return deadline.",
     "fileDeleted": "Physical file archived.",
     "softDeleteWarningTitle": "Archive Physical File?",
-    "softDeleteWarningText": "This physical file record will be archived while preserving historical movement audit logs."
+    "softDeleteWarningText": "This physical file record will be archived while preserving historical movement audit logs.",
+    "dueBack": "Due Back Date",
+    "movementHistory": "File Movement History"
   },
   "calendar": {
     "title": "Chamber Calendar & Agenda",
@@ -509,7 +564,11 @@
     "upcomingHearing": "Upcoming Court Hearing",
     "taskDeadline": "Task Deadline Alert",
     "fileReturnOverdue": "Physical File Return Alert",
-    "autoGenerated": "Automated Chamber Alert"
+    "autoGenerated": "Automated Chamber Alert",
+    "currentAndUpcoming": "Current and Upcoming Reminders",
+    "overdue": "Overdue Reminders",
+    "showOverdue": "Show Overdue",
+    "hideOverdue": "Hide Overdue"
   },
   "common": {
     "readOnlyMode": "Read-Only Mode",
@@ -545,7 +604,21 @@
     "pass": "PASS",
     "fail": "FAIL",
     "testResults": "Test Diagnostics",
-    "runAgain": "Re-run Diagnostic Tests"
+    "runAgain": "Re-run Diagnostic Tests",
+    "accessDenied": "Access Denied",
+    "archive": "Archive",
+    "back": "Back",
+    "deleting": "Deleting...",
+    "dismiss": "Dismiss",
+    "done": "Done",
+    "edited": "edited",
+    "next": "Next",
+    "no": "No",
+    "previous": "Previous",
+    "saving": "Saving...",
+    "sortBy": "Sort by",
+    "submitting": "Submitting...",
+    "yes": "Yes"
   },
   "auth": {
     "switchUser": "Switch User",
@@ -581,7 +654,14 @@
     "passwordMismatch": "New passwords do not match.",
     "passwordLengthError": "New password must be at least 8 characters long.",
     "signOut": "Sign Out",
-    "demoModeSampleData": "Demo mode - sample data"
+    "demoModeSampleData": "Demo mode - sample data",
+    "fieldsRequired": "Please enter both email and password.",
+    "loginFailed": "Invalid email or password.",
+    "loginSubtitle": "Enter your credentials to access your chamber dashboard",
+    "loginTitle": "Chamber Member Sign In",
+    "password": "Password",
+    "signIn": "Sign In to Chamber",
+    "permissionCount": "{{count}} Granted"
   },
   "audit": {
     "title": "System Audit Trail",
@@ -596,7 +676,8 @@
     "noLogs": "No audit entries recorded yet.",
     "filterByEntity": "Filter by Entity",
     "filterByAction": "Filter by Action",
-    "restrictedAccessNotice": "Audit log is an Owner-only restricted screen."
+    "restrictedAccessNotice": "Audit log is an Owner-only restricted screen.",
+    "noEntries": "No audit records found"
   },
   "settings": {
     "title": "Chamber Settings & Administration",
@@ -664,16 +745,24 @@
     "copyPassword": "Copy Password",
     "copied": "Copied!",
     "resetPasswordSuccess": "Password reset successfully.",
-    "resetPasswordError": "Failed to reset password."
+    "resetPasswordError": "Failed to reset password.",
+    "areaCases": "Cases & Litigation",
+    "areaClients": "Clients & Contacts",
+    "areaHearings": "Court Hearings",
+    "areaTasks": "Tasks & Deadlines",
+    "areaFiles": "Physical Files",
+    "areaAppointments": "Appointments & Meetings",
+    "areaAccounts": "Accounts & Billing",
+    "areaAdmin": "Administration & Security"
   },
   "health": {
     "title": "System Diagnostic & Health Check",
     "subtitle": "Automated self-tests validating architectural invariants, permissions, and data integrity",
     "runDiagnostics": "Execute System Diagnostic Suite",
     "summary": "Diagnostics Summary",
-    "passedCount": "Tests Passed",
-    "failedCount": "Tests Failed",
-    "overallStatus": "Overall System Health",
+    "passedCount": "Passed Checks",
+    "failedCount": "Detected Issues",
+    "overallStatus": "Overall Status",
     "allPassing": "All system tests passing. Ready for next stage.",
     "failingAlert": "Critical architectural constraints violated. Fix required before proceeding.",
     "stage1Banner": "Stage 1: Foundation Architecture Tests",
@@ -683,7 +772,14 @@
     "stage5Banner": "Stage 5: Tasks Module, Staff Partitioning & Overdue Tracking Tests",
     "stage6Banner": "Stage 6: Physical Files Module, Custody Movements & Due-Back Tracking Tests",
     "stage7Banner": "Stage 7: Unified Chamber Calendar, Automated Reminders & Daily Cause List Tests",
-    "stage8Banner": "Stage 8: Executive Chamber Dashboard & Global Cross-Entity Search Tests"
+    "stage8Banner": "Stage 8: Executive Chamber Dashboard & Global Cross-Entity Search Tests",
+    "stateRunning": "Running Invariant Checks...",
+    "stateNoResults": "No Checks Executed",
+    "stateError": "Diagnostic Runner Error",
+    "statePass": "ALL INVARIANTS PASS",
+    "stateFail": "FAILURES DETECTED",
+    "checksCount": "{{passed}} / {{total}} Checks",
+    "issuesCount": "{{count}} Issues"
   },
   "dashboard": {
     "title": "Chamber Dashboard",
@@ -842,7 +938,8 @@
     "simulateExpiring": "Simulate Expiring Soon (5 Days)",
     "simulateExpired": "Simulate Expired (Read-Only)",
     "simulateSuspended": "Simulate Suspended",
-    "simulationUpdated": "Chamber subscription state updated to: {{status}}"
+    "simulationUpdated": "Chamber subscription state updated to: {{status}}",
+    "readOnlyMessage": "Chamber subscription is inactive or expired. Mutating operations are restricted."
   },
   "permissions": {
     "cases_view": "View Cases",
@@ -959,7 +1056,9 @@
     "selected": "selected",
     "type": "Appointment Type",
     "mode": "Meeting Mode",
-    "status": "Status"
+    "status": "Status",
+    "clearFilters": "Clear filters",
+    "showingCancelledNotice": "Showing all cancelled appointments (newest first)"
   },
   "billing": {
     "recordPayment": "Record Payment",
@@ -1023,11 +1122,7 @@
     "category": "Category",
     "date": "Date",
     "notes": "Terms / Notes",
-    "status": {
-      "active": "Active",
-      "closed": "Closed",
-      "void": "Void"
-    },
+    "status": "Status",
     "revise": "Revise",
     "close": "Close",
     "void": "Void",
@@ -1130,6 +1225,10 @@
     "paymentStatus": {
       "posted": "Posted",
       "void": "Void"
-    }
+    },
+    "closeAgreement": "Close Agreement",
+    "expense": "Expense",
+    "reviseAgreement": "Revise Agreed Amount",
+    "amountInTaka": "Amount in Taka"
   }
 }

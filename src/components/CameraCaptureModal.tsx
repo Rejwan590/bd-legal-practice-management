@@ -340,7 +340,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Error Banner */}
-        {errorMessage && (
+        {errorMessage && mode !== 'error' && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="flex-1">
@@ -433,21 +433,15 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           </div>
         )}
 
-        {/* Error Fallback Mode */}
+        {/* Fallback Mode */}
         {mode === 'error' && (
           <div className="p-8 text-center space-y-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
-              <Camera className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
+              <Camera className="w-6 h-6 text-slate-500" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-slate-900">
-                {t('clients.chooseFileInstead', 'Upload Image File Instead')}
-              </p>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                {t(
-                  'clients.cameraConfirmHelp',
-                  'You can select an existing photo file from your device to set as the client profile picture.'
-                )}
+              <p className="text-sm font-semibold text-slate-800">
+                {t('clients.noCameraFallbackNotice', 'No camera found. You can upload a photo instead.')}
               </p>
             </div>
             <button
@@ -455,8 +449,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               onClick={() => fileFallbackRef.current?.click()}
               className="inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs transition"
             >
-              <Upload className="w-4 h-4 text-amber-400" />
-              <span>{t('clients.chooseFileInstead', 'Upload File Instead')}</span>
+              <Upload className="w-4 h-4 text-slate-300" />
+              <span>{t('clients.chooseFileInstead', 'Upload Image File Instead')}</span>
             </button>
           </div>
         )}

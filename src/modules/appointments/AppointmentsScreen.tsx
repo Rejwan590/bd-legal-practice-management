@@ -81,7 +81,7 @@ export const AppointmentsScreen: React.FC = () => {
         repos.appointment.list(
           { currentUser },
           {
-            range: activeRangeTab,
+            range: statusFilter === 'cancelled' ? 'all' : activeRangeTab,
             status: statusFilter,
             type: typeFilter,
             search: searchQuery,
@@ -92,7 +92,13 @@ export const AppointmentsScreen: React.FC = () => {
         repos.user.list({ currentUser }).catch(() => []),
       ]);
 
-      setAppointments(Array.isArray(appts) ? appts : ((appts as any)?.appointments || []));
+      let loadedAppts = Array.isArray(appts) ? appts : ((appts as any)?.appointments || []);
+      if (statusFilter === 'cancelled') {
+        loadedAppts = [...loadedAppts].sort(
+          (a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+        );
+      }
+      setAppointments(loadedAppts);
 
       const cmap: Record<string, ClientRecord> = {};
       cls.forEach((c) => {
@@ -284,6 +290,69 @@ export const AppointmentsScreen: React.FC = () => {
             </select>
           </div>
         </div>
+
+        {/* Active Filter Chips */}
+        {(statusFilter !== 'all' || typeFilter !== 'all' || searchQuery.trim() !== '') && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+            <span className="text-slate-400 font-medium">{t('common.sortBy', 'Filters')}:</span>
+            {statusFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 font-medium">
+                <span>{t('billing.status', 'Status')}: {statusFilter}</span>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className="hover:text-rose-600 font-bold ml-1 cursor-pointer"
+                  aria-label="Remove status filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
+            {typeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 font-medium">
+                <span>Type: {typeFilter}</span>
+                <button
+                  type="button"
+                  onClick={() => setTypeFilter('all')}
+                  className="hover:text-rose-600 font-bold ml-1 cursor-pointer"
+                  aria-label="Remove type filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
+            {searchQuery.trim() !== '' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 font-medium">
+                <span>Search: &ldquo;{searchQuery}&rdquo;</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="hover:text-rose-600 font-bold ml-1 cursor-pointer"
+                  aria-label="Remove search filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('all');
+                setTypeFilter('all');
+                setSearchQuery('');
+              }}
+              className="text-indigo-600 hover:text-indigo-800 underline font-semibold ml-auto cursor-pointer"
+            >
+              {t('appointments.clearFilters', 'Clear filters')}
+            </button>
+          </div>
+        )}
+
+        {statusFilter === 'cancelled' && (
+          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            {t('appointments.showingCancelledNotice', 'Showing all cancelled appointments (newest first)')}
+          </div>
+        )}
       </div>
 
       {/* Appointments List */}

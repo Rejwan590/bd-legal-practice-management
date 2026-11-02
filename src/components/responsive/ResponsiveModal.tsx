@@ -70,7 +70,7 @@ export const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
 
       {/* Modal / Sheet Container */}
       <div
-        className={`w-full bg-white flex flex-col overflow-hidden shadow-2xl transition-all
+        className={`w-full bg-white flex flex-col min-h-0 overflow-hidden shadow-2xl transition-all
           /* Mobile (<md): Full-screen sheet with 100dvh and safe areas */
           h-[100dvh] max-h-[100dvh] rounded-t-2xl md:rounded-2xl
           /* Tablet/Desktop (>=md): Centered dialog with max-height 90dvh */
@@ -109,7 +109,7 @@ export const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
         </div>
 
         {/* Scrollable Content Body */}
-        <div className={`flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 overscroll-contain ${bodyClassName}`}>
+        <div className={`flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 overscroll-contain ${bodyClassName}`}>
           {children}
         </div>
 
