@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { getAllowedOrigins } from '../config.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -27,11 +28,7 @@ export function originCheckMiddleware(req: Request, res: Response, next: NextFun
 
   // 3. Resolve configured CORS origins
   const isProduction = process.env.NODE_ENV === 'production';
-  const rawOrigins = process.env.CORS_ORIGIN || (isProduction ? '' : 'http://localhost:3000,http://localhost:3001');
-  const allowedOrigins = rawOrigins
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const allowedOrigins = getAllowedOrigins();
 
   // 4. Resolve Origin or Referer fallback
   const originHeader = req.headers.origin as string | undefined;
@@ -48,6 +45,9 @@ export function originCheckMiddleware(req: Request, res: Response, next: NextFun
   // 5. If Origin or Referer is present, it MUST match one of the allowed origins
   if (requestOrigin) {
     if (allowedOrigins.includes(requestOrigin)) {
+      return next();
+    }
+    if (!isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(requestOrigin)) {
       return next();
     }
     return res.status(403).json({

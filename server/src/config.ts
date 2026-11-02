@@ -12,6 +12,38 @@ export const FORBIDDEN_DB_URLS = [
   'postgres://bd_legal_user:bd_legal_secret_password@localhost:5432/bd_legal_db',
 ];
 
+export const DEFAULT_PRODUCTION_ORIGINS = [
+  'https://bd-legal-practice-management.vercel.app',
+  'https://bd-legal-practice-management-legal-2b9b.vercel.app',
+];
+
+export const DEFAULT_DEVELOPMENT_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5173',
+];
+
+/**
+ * Returns the resolved list of allowed CORS origins based on environment.
+ * Ensures the production frontend origin is always recognized, while allowing
+ * dynamic configuration via CORS_ORIGIN and local development ports.
+ */
+export function getAllowedOrigins(): string[] {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const rawEnv = (process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim()).filter(Boolean);
+
+  if (isProduction) {
+    const list = [...DEFAULT_PRODUCTION_ORIGINS, ...rawEnv];
+    return Array.from(new Set(list));
+  }
+
+  const list = [...DEFAULT_DEVELOPMENT_ORIGINS, ...rawEnv];
+  return Array.from(new Set(list));
+}
+
 export type CookieSameSite = 'lax' | 'none' | 'strict';
 
 /**

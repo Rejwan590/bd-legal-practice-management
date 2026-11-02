@@ -3,6 +3,31 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Production CORS and Authentication Connectivity — Full Root-Cause Repair (Completed & Verified)**:
+  - **1. Discovered and Documented Two-Layer Root Cause**:
+    - **Azure Gateway Quota Interception**: Probed Azure production backend via `curl.exe` and ARM CLI. Found App Service Plan `ASP-BDLegal-a137` is SKU `F1` (Free Tier) and exceeded its 60 CPU minutes/day quota (`state: "QuotaExceeded"`, `usageState: "Exceeded"`). Azure load balancer intercepted all traffic and returned `HTTP/1.1 403 Site Disabled` HTML without CORS headers, causing browser preflight failures on `GET /auth/me` and `POST /auth/login`.
+    - **Code Layer Resiliency Gap**: `server/src/app.ts` relied solely on `process.env.CORS_ORIGIN` with no default production origin fallback, lacked explicit wildcard `app.options('*')` handling, and had duplicate origin logic across `app.ts` and `originCheck.ts`.
+  - **2. Application Layer Hardening**:
+    - Centralized origin resolution in `server/src/config.ts` via `getAllowedOrigins()`, with `DEFAULT_PRODUCTION_ORIGINS` (`https://bd-legal-practice-management.vercel.app`) and `DEFAULT_DEVELOPMENT_ORIGINS` (`3000`, `3001`, `5173`).
+    - Configured central `cors(corsOptions)` with explicit methods, allowedHeaders (`Content-Type`, `Authorization`, `X-Requested-With`, `Accept`, `Origin`), `exposedHeaders` (`Set-Cookie`), `maxAge: 86400`, and `optionsSuccessStatus: 204`.
+    - Registered explicit `app.options('*', cors(corsOptions))` handler before all routes.
+    - Synchronized `server/src/middleware/originCheck.ts` with `getAllowedOrigins()`.
+    - Maintained cookie security: `SameSite=none; Secure; HttpOnly; Path=/` for cross-site browser sessions between Vercel and Azure.
+  - **3. Automated Test Coverage**:
+    - Created `server/tests/corsAuthConnectivity.test.ts` (18 assertions) verifying preflight, disallowed origin rejection, domain preflight, unauthenticated 401 with CORS, login 200 with cookies, authenticated 200, error 404/400 with CORS, and admin auth isolation.
+    - Integrated into `npm test --prefix server` (all 14 suites pass, 465 total tests).
+  - **4. Verification Results**:
+    - `npm run test:cors --prefix server`: 18/18 PASSED.
+    - `npm test --prefix server`: 14/14 suites PASSED (465 passed, 0 failed).
+    - `npm run lint`: 0 errors.
+    - `npm run build`: built production bundle in 3.47s.
+    - `npm run build --prefix admin-app`: built admin app in 2.26s.
+    - `npm run test:health`: 87/87 checks passed.
+  - **5. Required Deliverables Produced**:
+    - `CORS_AUTH_CONNECTIVITY_AUDIT.md`
+    - `CORS_AUTH_FIX_LOG.md`
+    - `CORS_AUTH_TEST_REPORT.md`
+    - `CORS_AUTH_RELEASE_REPORT.md`
 - [x] **Full Repository Audit and Complete UI/UX + Functional Repair (Completed & Verified)**:
   - **1. Zero Sideways Scrolling on Mobile and Small Screens**:
     - `BillingScreen.tsx`: Implemented responsive dual-mode layout — compact cards on mobile (`block md:hidden`) and full table on desktop (`hidden md:block`). Eliminated table overflow and `whitespace-nowrap` horizontal page blowouts.

@@ -21,7 +21,7 @@ import { adminFirmsRouter } from './routes/adminFirms.js';
 import { adminDevicesRouter } from './routes/adminDevices.js';
 import { devicesRouter } from './routes/devices.js';
 import { originCheckMiddleware } from './middleware/originCheck.js';
-import { validateStartupConfig } from './config.js';
+import { validateStartupConfig, getAllowedOrigins } from './config.js';
 
 export function createApp() {
   validateStartupConfig();
@@ -34,35 +34,36 @@ export function createApp() {
 
   // Basic security and parsing middlewares
   const isProduction = process.env.NODE_ENV === 'production';
-  const rawOrigins = process.env.CORS_ORIGIN || (isProduction ? '' : 'http://localhost:3000,http://localhost:3001');
-  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean);
 
   app.use(helmet());
 
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin) {
+  const corsOptions: cors.CorsOptions = {
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      const allowedOrigins = getAllowedOrigins();
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      if (!isProduction) {
+        const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+        if (isLocalhost) {
           return callback(null, true);
         }
-        if (isProduction) {
-          if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-          } else {
-            callback(null, false);
-          }
-        } else {
-          const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-          if (allowedOrigins.includes(origin) || isLocalhost) {
-            callback(null, true);
-          } else {
-            callback(null, false);
-          }
-        }
-      },
-      credentials: true,
-    })
-  );
+      }
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Set-Cookie'],
+    maxAge: 86400,
+    optionsSuccessStatus: 204,
+  };
+
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
   app.use(cookieParser());
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
