@@ -90,7 +90,7 @@ export const DailyCauseListModal: React.FC<DailyCauseListModalProps> = ({
             No court hearings listed for {formattedDate}.
           </div>
         ) : (
-          <div className="overflow-x-auto -mx-1 sm:mx-0">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[580px] text-left text-xs border border-slate-300 divide-y divide-slate-200">
               <thead className="bg-slate-100 text-slate-800 font-bold uppercase tracking-wider text-[10px]">
                 <tr>

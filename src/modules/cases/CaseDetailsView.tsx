@@ -1050,7 +1050,8 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                               }`}
                             >
                               {t(
-                                `hearings.status${h.status.charAt(0).toUpperCase() + h.status.slice(1)}`
+                                `hearings.status${(h.status || 'scheduled').charAt(0).toUpperCase() + (h.status || 'scheduled').slice(1).toLowerCase()}`,
+                                h.status || 'Scheduled'
                               )}
                             </span>
                             <span className="text-xs font-bold text-slate-900">

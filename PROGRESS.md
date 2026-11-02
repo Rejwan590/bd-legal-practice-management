@@ -3,6 +3,43 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Full Repository Audit and Complete UI/UX + Functional Repair (Completed & Verified)**:
+  - **1. Zero Sideways Scrolling on Mobile and Small Screens**:
+    - `BillingScreen.tsx`: Implemented responsive dual-mode layout — compact cards on mobile (`block md:hidden`) and full table on desktop (`hidden md:block`). Eliminated table overflow and `whitespace-nowrap` horizontal page blowouts.
+    - `CalendarScreen.tsx`: Removed offending `-mx-2` negative margin; converted daily hearings list into responsive mobile cards (<sm) and desktop table (>=sm).
+    - `DailyCauseListModal.tsx`: Removed `-mx-1 sm:mx-0` negative margins causing modal blowout.
+  - **2. Unified Shell Alignment & Sidebar Rhythm**:
+    - `AppShell.tsx`: Standardized top header, navigation drawer, and subscription alert banners using `SHELL_CONTAINER_CLASS = 'w-full max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8'`. Aligned top header brand perfectly with the desktop sidebar across all screen resolutions (eliminating the horizontal jump on tab changes).
+    - Structured desktop sidebar navigation into 3 titled enterprise sections: *Practice Management*, *Finance & Accounts*, and *Administration*.
+    - Removed development stage badges (`S{stage}`) from both desktop sidebar and mobile drawer.
+    - Tightened button padding to `min-h-[38px] py-1.5` so all 14 navigation buttons fit comfortably on standard 1080p laptop displays without vertical scrolling.
+  - **3. Tightened UI Spacing Across Screens**:
+    - Removed redundant `max-w-7xl mx-auto` wrappers inside all screens (`DashboardScreen`, `CasesScreen`, `HearingsScreen`, `ClientsScreen`, `TasksScreen`, `FilesScreen`, `AppointmentsScreen`, `AuditLogScreen`, `BackupScreen`, `HealthScreen`, `SettingsScreen`).
+    - Tightened vertical rhythm from loose `space-y-6`/`space-y-8` to compact `space-y-4`.
+    - Tightened dashboard banner padding from `p-8` to `p-5 sm:p-6`, and KPI card padding to `p-3.5 sm:p-4`.
+  - **4. 100% Bilingual Parity (1154 Keys)**:
+    - Added 101 missing translation keys across `en.json` and `bn.json` with 100% key and structure parity.
+    - Fixed unnormalized hearing status key translation in `CaseDetailsView.tsx` and `CalendarScreen.tsx`.
+    - Translated Bangla hearing status `hearings.statusHeld` to "অনুষ্ঠিত".
+    - Added automated test suite `tests/i18nParity.test.ts` (3/3 passing).
+  - **5. Diagnostic & Form Enhancements**:
+    - `HealthScreen.tsx`: Implemented explicit states (`no-results`, `running`, `pass`, `fail`) preventing false "FAILURES DETECTED" banner when 0 checks failed.
+    - `TasksScreen.tsx`: Suppressed midnight timestamps (12:00 AM / 00:00 AM) using `isDhakaMidnight()`.
+    - `AppointmentsScreen.tsx`: Handled `statusFilter === 'cancelled'` with `range: 'all'` and newest-first sort, plus active filter chips and "Clear filters" button.
+    - `CameraCaptureModal.tsx`: Added calm file-upload fallback when camera is denied or unavailable.
+    - `ResponsiveModal.tsx`: Added `min-h-0` ensuring scrollable modals never cut off action buttons.
+  - **6. Verification Results**:
+    - `npm run lint`: 0 errors (clean pass across app and admin-app).
+    - `npm run build`: built production bundle in 2.22s.
+    - `npm run build --prefix admin-app`: built admin app in 1.59s.
+    - `npm test --prefix server`: 13/13 suites passed (447 tests passed, 0 failed).
+    - `npm run test:health`: 87/87 checks passed (0 failed).
+    - `npx tsx tests/i18nParity.test.ts`: 3/3 tests passed.
+  - **7. Deliverables**:
+    - `UI_UX_AUDIT.md`: Complete component & page inventory across all 14 modules.
+    - `UI_UX_FIX_LOG.md`: Detailed root causes, files changed, and before/after comparisons.
+    - `UI_UX_TEST_REPORT.md`: Comprehensive command outputs and test execution logs.
+    - `UI_UX_RELEASE_REPORT.md`: Release notes, deployment verification details, and risk analysis.
 - [x] **Comprehensive System Audit Trail Audit, Verification, and Fix (Completed & Verified)**:
   - **1. Physical File Custody Tracking Resolved (Problem 1 Resolved)**:
     - Traced root cause of missing physical file check-in and check-out audit records: `file.ts` wrote non-standard custody actions with nested diff payloads missing top-level `caseId`, `restAudit.ts` queried only server routes without merging client-side custody movements, and `AuditLogScreen.tsx` hardcoded action filters omitting file custody events.

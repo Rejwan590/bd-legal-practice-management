@@ -159,7 +159,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
   // If a case is selected via URL route, render the 5-tab Case Dossier Hub
   if (activeCaseId) {
     return (
-      <div className="max-w-7xl mx-auto w-full space-y-4">
+      <div className="w-full space-y-4">
         <CaseDetailsView
           caseId={activeCaseId}
           onBack={() => navigateToScreen('cases')}
@@ -190,7 +190,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
   const uniqueCourts = Array.from(new Set(safeCases.map((c) => c.court)));
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto w-full">
+    <div className="space-y-4 w-full">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>

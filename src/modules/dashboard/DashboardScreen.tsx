@@ -263,9 +263,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
   }, [urgentItems]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+    <div className="space-y-4 w-full pb-8">
       {/* Top Welcome & Executive Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-sm relative overflow-hidden">
         {/* Subtle decorative background watermark */}
         <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none translate-x-8 translate-y-8">
           <Building className="w-80 h-80" />

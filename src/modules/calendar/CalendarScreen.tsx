@@ -262,7 +262,7 @@ export const CalendarScreen: React.FC = () => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto w-full">
+    <div className="space-y-4 w-full">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
@@ -995,27 +995,24 @@ export const CalendarScreen: React.FC = () => {
               {t('calendar.noHearingsOnDate', { date: selectedDateStr })}
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-2 sm:mx-0">
-              <table className="w-full min-w-[560px] text-left text-xs divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
-                <thead className="bg-slate-100 text-slate-800 font-bold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="p-3 text-center w-10">#</th>
-                    <th className="p-3 w-48">{t('calendar.courtBench')}</th>
-                    <th className="p-3 w-52">{t('calendar.caseNumber')}</th>
-                    <th className="p-3">{t('calendar.purpose')}</th>
-                    <th className="p-3 w-32 text-center">{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedDateHearings.map((h, i) => (
-                    <tr
-                      key={h.id}
-                      onClick={() => handleEventClick(h)}
-                      className="hover:bg-slate-50 cursor-pointer"
-                    >
-                      <td className="p-3 text-center font-mono font-bold text-slate-400">{i + 1}</td>
-                      <td className="p-3 font-semibold text-slate-900">{h.court || t('calendar.courtNotFixed')}</td>
-                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+            <>
+              {/* Mobile Card List (<sm) */}
+              <div className="block sm:hidden space-y-2">
+                {selectedDateHearings.map((h, i) => (
+                  <div
+                    key={h.id}
+                    onClick={() => handleEventClick(h)}
+                    className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 text-xs hover:border-indigo-300 transition cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-bold text-[11px] text-slate-500">#{i + 1}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-800">
+                        {h.status ? t(`hearings.status${h.status.charAt(0).toUpperCase() + h.status.slice(1).toLowerCase()}`, h.status) : t('hearings.statusScheduled', 'Scheduled')}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900">{h.court || t('calendar.courtNotFixed')}</div>
+                      <div onClick={(e) => e.stopPropagation()} className="mt-0.5">
                         {h.caseId ? (
                           <EntityLink
                             type="case"
@@ -1023,37 +1020,93 @@ export const CalendarScreen: React.FC = () => {
                             caseTab="hearings"
                             label={h.caseNumber || h.title}
                             restricted={h.restricted}
-                            className="font-mono font-bold block"
+                            className="font-mono font-bold block text-indigo-700"
                           />
                         ) : (
                           <span className="font-mono font-bold text-indigo-700 block">{h.caseNumber || h.title}</span>
                         )}
                         {h.clientName && <span className="text-[11px] text-slate-500">{t('calendar.clientPrefix', { name: h.clientName })}</span>}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-medium text-slate-800">{h.title}</span>
-                          {h.fixedFor && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                              {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
-                              {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                          {t('calendar.timePrefix', { time: new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-800">
-                          {h.status || 'Scheduled'}
-                        </span>
-                      </td>
+                      </div>
+                    </div>
+                    <div className="pt-1 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-slate-800">{h.title}</span>
+                        {h.fixedFor && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                            {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {t('calendar.timePrefix', { time: new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View (>=sm) */}
+              <div className="hidden sm:block overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full min-w-[560px] text-left text-xs divide-y divide-slate-200">
+                  <thead className="bg-slate-100 text-slate-800 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="p-3 text-center w-10">#</th>
+                      <th className="p-3 w-48">{t('calendar.courtBench')}</th>
+                      <th className="p-3 w-52">{t('calendar.caseNumber')}</th>
+                      <th className="p-3">{t('calendar.purpose')}</th>
+                      <th className="p-3 w-32 text-center">{t('common.status')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedDateHearings.map((h, i) => (
+                      <tr
+                        key={h.id}
+                        onClick={() => handleEventClick(h)}
+                        className="hover:bg-slate-50 cursor-pointer"
+                      >
+                        <td className="p-3 text-center font-mono font-bold text-slate-400">{i + 1}</td>
+                        <td className="p-3 font-semibold text-slate-900">{h.court || t('calendar.courtNotFixed')}</td>
+                        <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                          {h.caseId ? (
+                            <EntityLink
+                              type="case"
+                              id={h.caseId}
+                              caseTab="hearings"
+                              label={h.caseNumber || h.title}
+                              restricted={h.restricted}
+                              className="font-mono font-bold block"
+                            />
+                          ) : (
+                            <span className="font-mono font-bold text-indigo-700 block">{h.caseNumber || h.title}</span>
+                          )}
+                          {h.clientName && <span className="text-[11px] text-slate-500">{t('calendar.clientPrefix', { name: h.clientName })}</span>}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-slate-800">{h.title}</span>
+                            {h.fixedFor && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {getFixedForLabel(h.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                                {h.fixedForNote ? ` (${h.fixedForNote})` : ''}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                            {t('calendar.timePrefix', { time: new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-800">
+                            {h.status ? t(`hearings.status${h.status.charAt(0).toUpperCase() + h.status.slice(1).toLowerCase()}`, h.status) : t('hearings.statusScheduled', 'Scheduled')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

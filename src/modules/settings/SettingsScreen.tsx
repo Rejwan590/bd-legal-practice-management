@@ -520,7 +520,7 @@ export const SettingsScreen: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto w-full pb-12">
+    <div className="space-y-4 w-full pb-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <Building2 className="w-6 h-6 text-slate-700 shrink-0" />

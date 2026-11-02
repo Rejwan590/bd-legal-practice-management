@@ -3,7 +3,10 @@
     "title": "BD Legal Practice Management",
     "tagline": "Specialized legal practice platform for Bangladesh law chambers",
     "chamberName": "Rahman & Associates Chambers",
-    "subtitle": "Supreme Court & District Court Practice"
+    "subtitle": "Supreme Court & District Court Practice",
+    "sectionPractice": "Practice & Matters",
+    "sectionFinance": "Finance & Accounts",
+    "sectionAdmin": "Chamber Administration"
   },
   "nav": {
     "dashboard": "Dashboard",

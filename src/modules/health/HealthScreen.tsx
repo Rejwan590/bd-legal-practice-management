@@ -59,7 +59,7 @@ export const HealthScreen: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto w-full pb-12">
+    <div className="space-y-4 w-full pb-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">

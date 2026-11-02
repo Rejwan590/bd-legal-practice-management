@@ -42,13 +42,10 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-const FULL_WIDTH_TABS = new Set(['cases', 'hearings', 'tasks', 'files', 'calendar', 'billing']);
+export const SHELL_CONTAINER_CLASS = 'w-full max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8';
 
-export const getContentWrapperClass = (tab: string): string => {
-  if (FULL_WIDTH_TABS.has(tab)) {
-    return 'flex-1 w-full max-w-none px-3 sm:px-4 lg:px-6 py-4 sm:py-6 flex gap-4 lg:gap-6 min-w-0';
-  }
-  return 'flex-1 max-w-7xl 2xl:max-w-[1536px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex gap-4 lg:gap-6 min-w-0';
+export const getContentWrapperClass = (): string => {
+  return `flex-1 ${SHELL_CONTAINER_CLASS} py-3.5 sm:py-5 flex gap-4 lg:gap-6 min-w-0`;
 };
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
@@ -128,41 +125,42 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     }
   };
 
-  const navItems: {
-    id: ActiveTab;
-    label: string;
-    icon: React.ElementType;
-    stage: number;
-    hide?: boolean;
-    highlight?: boolean;
-  }[] = [
-    { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, stage: 1 },
-    { id: 'clients', label: t('nav.clients'), icon: Users, stage: 1 },
-    { id: 'cases', label: t('nav.cases'), icon: Briefcase, stage: 1 },
-    { id: 'appointments', label: t('nav.appointments', 'Appointments'), icon: Clock, stage: 1, hide: !can('appointments.view') },
-    { id: 'hearings', label: t('nav.hearings'), icon: Gavel, stage: 1 },
-    { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare, stage: 1 },
-    { id: 'files', label: t('nav.files'), icon: FolderArchive, stage: 1 },
-    { id: 'calendar', label: t('nav.calendar'), icon: Calendar, stage: 1 },
-    { id: 'billing', label: t('nav.billing', 'Billing'), icon: CreditCard, stage: 1, hide: !can('accounts.view') },
-    { id: 'search', label: t('common.search'), icon: Search, stage: 1 },
+  const navSections = [
     {
-      id: 'backup',
-      label: t('nav.backup'),
-      icon: Database,
-      stage: 1,
-      hide: !can('data.export') && !can('settings.manage'),
+      titleKey: 'app.sectionPractice',
+      defaultTitle: 'Practice & Matters',
+      items: [
+        { id: 'dashboard' as ActiveTab, label: t('nav.dashboard'), icon: LayoutDashboard },
+        { id: 'cases' as ActiveTab, label: t('nav.cases'), icon: Briefcase },
+        { id: 'hearings' as ActiveTab, label: t('nav.hearings'), icon: Gavel },
+        { id: 'calendar' as ActiveTab, label: t('nav.calendar'), icon: Calendar },
+        { id: 'appointments' as ActiveTab, label: t('nav.appointments', 'Appointments'), icon: Clock, hide: !can('appointments.view') },
+        { id: 'tasks' as ActiveTab, label: t('nav.tasks'), icon: CheckSquare },
+        { id: 'files' as ActiveTab, label: t('nav.files'), icon: FolderArchive },
+        { id: 'clients' as ActiveTab, label: t('nav.clients'), icon: Users },
+      ],
     },
     {
-      id: 'auditLog',
-      label: t('nav.auditLog'),
-      icon: FileText,
-      stage: 1,
-      hide: !can('settings.manage'),
+      titleKey: 'app.sectionFinance',
+      defaultTitle: 'Finance & Accounts',
+      items: [
+        { id: 'billing' as ActiveTab, label: t('nav.billing', 'Billing'), icon: CreditCard, hide: !can('accounts.view') },
+      ],
     },
-    { id: 'settings', label: t('nav.settings'), icon: Settings, stage: 1 },
-    { id: 'health', label: t('nav.health'), icon: Activity, stage: 1, highlight: true },
+    {
+      titleKey: 'app.sectionAdmin',
+      defaultTitle: 'Chamber Administration',
+      items: [
+        { id: 'search' as ActiveTab, label: t('common.search'), icon: Search },
+        { id: 'backup' as ActiveTab, label: t('nav.backup'), icon: Database, hide: !can('data.export') && !can('settings.manage') },
+        { id: 'auditLog' as ActiveTab, label: t('nav.auditLog'), icon: FileText, hide: !can('settings.manage') },
+        { id: 'settings' as ActiveTab, label: t('nav.settings'), icon: Settings },
+        { id: 'health' as ActiveTab, label: t('nav.health'), icon: Activity, highlight: true },
+      ],
+    },
   ];
+
+  const navItems = navSections.flatMap((s) => s.items);
 
   // Mobile bottom navigation: Dashboard, Cases, Calendar, Tasks, More
   const bottomNavItems: { id: ActiveTab; label: string; icon: React.ElementType }[] = [
@@ -416,7 +414,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     <div className="min-h-[100dvh] bg-slate-50 flex flex-col w-full overflow-x-hidden selection:bg-indigo-100 selection:text-indigo-900">
       {/* Top Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs pt-safe">
-        <div className="max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
+        <div className={`${SHELL_CONTAINER_CLASS} h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3`}>
           {/* Chamber Brand & Mobile Drawer Trigger */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Hamburger button for phone drawer (<md) */}
@@ -614,8 +612,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Read-Only Mode Banner (Past Grace Period) */}
       {subscription.isReadOnly && (
-        <div className="bg-rose-900 border-b border-rose-950 text-white px-3 sm:px-6 py-2.5 shadow-sm">
-          <div className="max-w-7xl 2xl:max-w-[1536px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+        <div className="bg-rose-900 border-b border-rose-950 text-white py-2.5 shadow-sm">
+          <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5`}>
             <div className="flex items-center gap-2.5">
               <span className="p-1.5 rounded-lg bg-rose-800 text-rose-200 shrink-0">
                 <Lock className="w-4 h-4" />
@@ -644,8 +642,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Grace Period Banner */}
       {subscription.inGracePeriod && (
-        <div className="bg-rose-600 border-b border-rose-700 text-white px-3 sm:px-6 py-2.5 shadow-sm">
-          <div className="max-w-7xl 2xl:max-w-[1536px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+        <div className="bg-rose-600 border-b border-rose-700 text-white py-2.5 shadow-sm">
+          <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5`}>
             <div className="flex items-center gap-2.5">
               <span className="p-1.5 rounded-lg bg-rose-700 text-rose-100 shrink-0">
                 <AlertTriangle className="w-4 h-4" />
@@ -681,8 +679,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Expiring Soon Banner */}
       {subscription.isExpiringSoon && !subscription.isReadOnly && (
-        <div className="bg-amber-600 border-b border-amber-700 text-white px-3 sm:px-6 py-2 shadow-xs">
-          <div className="max-w-7xl 2xl:max-w-[1536px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="bg-amber-600 border-b border-amber-700 text-white py-2 shadow-xs">
+          <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2`}>
             <div className="flex items-center gap-2">
               <span className="p-1 rounded bg-amber-700/80 text-amber-100 shrink-0">
                 <Clock className="w-4 h-4" />
@@ -713,69 +711,74 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       )}
 
       {/* Main Layout Container (Desktop sidebar + Content) */}
-      <div className={getContentWrapperClass(currentTab)}>
+      <div className={getContentWrapperClass()}>
         {/* Tablet / Desktop Sidebar (>=md) */}
         <aside
           className={`hidden md:flex flex-col shrink-0 transition-all duration-200 ${
-            sidebarCollapsed ? 'w-16' : 'w-60'
+            sidebarCollapsed ? 'w-16' : 'w-56 lg:w-60'
           }`}
         >
-          {!sidebarCollapsed && (
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2 truncate">
-              Chamber Navigation
-            </div>
-          )}
-
-          <nav className="space-y-1 flex-1">
-            {navItems.map((item) => {
-              if (item.hide) return null;
-              const isActive = currentTab === item.id;
-              const Icon = item.icon;
+          <nav className="space-y-3 flex-1 overflow-y-auto pr-0.5">
+            {navSections.map((sec, sIdx) => {
+              const visibleItems = sec.items.filter((i) => !i.hide);
+              if (visibleItems.length === 0) return null;
 
               return (
-                <button
-                  key={item.id}
-                  onClick={() => handleSelectNav(item.id)}
-                  title={item.label}
-                  className={`w-full flex items-center ${
-                    sidebarCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3 py-2.5'
-                  } rounded-xl text-sm font-medium transition min-h-[44px] ${
-                    isActive
-                      ? item.highlight
-                        ? 'bg-emerald-600 text-white shadow-xs font-semibold'
-                        : 'bg-slate-900 text-white shadow-xs font-semibold'
-                      : item.highlight
-                      ? 'text-emerald-700 bg-emerald-50/70 hover:bg-emerald-100/70 font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <div className={`flex items-center gap-2.5 ${sidebarCollapsed ? 'justify-center' : 'min-w-0 truncate'}`}>
-                    <Icon className="w-5 h-5 shrink-0" />
-                    {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                  </div>
+                <div key={sec.titleKey || sIdx} className="space-y-1">
+                  {!sidebarCollapsed && (
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 pt-1 pb-0.5 truncate">
+                      {t(sec.titleKey, sec.defaultTitle)}
+                    </div>
+                  )}
 
-                  {!sidebarCollapsed && item.stage > 1 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium bg-slate-200/60 text-slate-600">
-                      S{item.stage}
-                    </span>
-                  )}
-                  {!sidebarCollapsed && item.highlight && !isActive && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  )}
-                  {sidebarCollapsed && item.highlight && !isActive && (
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
-                  )}
-                </button>
+                  {visibleItems.map((item) => {
+                    const isActive = currentTab === item.id;
+                    const Icon = item.icon;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectNav(item.id)}
+                        title={item.label}
+                        className={`w-full relative flex items-center ${
+                          sidebarCollapsed ? 'justify-center p-2' : 'justify-between px-3 py-2'
+                        } rounded-xl text-xs sm:text-sm font-semibold transition min-h-[38px] cursor-pointer ${
+                          isActive
+                            ? item.highlight
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-slate-900 text-white shadow-xs'
+                            : item.highlight
+                            ? 'text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className={`flex items-center gap-2.5 ${sidebarCollapsed ? 'justify-center' : 'min-w-0 truncate'}`}>
+                          <Icon className="w-4 h-4 shrink-0" />
+                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        </div>
+
+                        {!sidebarCollapsed && item.highlight && !isActive && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        )}
+                        {sidebarCollapsed && item.highlight && !isActive && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
           </nav>
 
           {/* Session Footer inside Sidebar */}
-          <div className="pt-4 mt-4 border-t border-slate-200">
+          <div className="pt-3 mt-3 border-t border-slate-200">
             {sidebarCollapsed ? (
               <button
+                type="button"
                 onClick={() => setUserModalOpen(true)}
-                className="w-full flex justify-center py-2 text-slate-600 hover:text-indigo-600"
+                className="w-full flex justify-center py-1 text-slate-600 hover:text-indigo-600 cursor-pointer"
                 title={`${currentUser.name} (${currentUser.role})`}
               >
                 <div
@@ -789,17 +792,18 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 </div>
               </button>
             ) : (
-              <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
-                <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">
-                  Session Active
-                </span>
+              <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
                 <div className="flex items-center gap-2 text-xs text-slate-700 min-w-0">
                   <UserCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span className="truncate font-medium">{currentUser.email}</span>
+                  <span className="truncate font-semibold text-slate-900">{currentUser.name}</span>
+                </div>
+                <div className="text-[11px] text-slate-500 truncate font-mono">
+                  {currentUser.email}
                 </div>
                 <button
+                  type="button"
                   onClick={() => setUserModalOpen(true)}
-                  className="w-full text-xs text-indigo-600 hover:text-indigo-800 font-semibold text-left underline block pt-1"
+                  className="w-full text-xs text-indigo-600 hover:text-indigo-800 font-semibold text-left underline block pt-0.5 cursor-pointer"
                 >
                   {t('auth.switchUser')} &rarr;
                 </button>
@@ -863,11 +867,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                           <Icon className="w-5 h-5 shrink-0" />
                           <span className="truncate">{item.label}</span>
                         </div>
-                        {item.stage > 1 && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-slate-100 text-slate-600 shrink-0">
-                            S{item.stage}
-                          </span>
-                        )}
                       </button>
                     );
                   })}

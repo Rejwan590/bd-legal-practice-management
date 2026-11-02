@@ -93,9 +93,9 @@ export const BillingScreen: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto" data-testid="billing-screen">
+    <div className="w-full space-y-4" data-testid="billing-screen">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <CreditCard className="w-7 h-7 text-emerald-600" />
@@ -115,8 +115,8 @@ export const BillingScreen: React.FC = () => {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-xs font-semibold uppercase tracking-wider">{t('billing.totalAgreedFee', 'Total Agreed Fee')}</span>
             <FileText className="w-4 h-4 text-blue-600" />
@@ -127,7 +127,7 @@ export const BillingScreen: React.FC = () => {
           <p className="text-xs text-slate-400 mt-1">{balances.length} {t('billing.totalClients', 'clients')}</p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-xs font-semibold uppercase tracking-wider">{t('billing.totalReceived', 'Total Received')}</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -138,7 +138,7 @@ export const BillingScreen: React.FC = () => {
           <p className="text-xs text-slate-400 mt-1">{t('billing.clearedFees', 'Collected chamber fees')}</p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-xs font-semibold uppercase tracking-wider">{t('billing.totalOutstanding', 'Total Outstanding')}</span>
             <Clock className="w-4 h-4 text-amber-600" />
@@ -149,7 +149,7 @@ export const BillingScreen: React.FC = () => {
           <p className="text-xs text-slate-400 mt-1">{t('billing.receivableBalance', 'Pending client collection')}</p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-xs font-semibold uppercase tracking-wider">{t('billing.totalAdvanceCredit', 'Advance Credit')}</span>
             <CreditCard className="w-4 h-4 text-cyan-600" />
@@ -207,73 +207,135 @@ export const BillingScreen: React.FC = () => {
             {t('billing.noClientsFound', 'No client balances found.')}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">{t('clients.name', 'Client Name')}</th>
-                  <th className="px-4 py-3 font-semibold">{t('clients.phone', 'Phone')}</th>
-                  <th className="px-4 py-3 font-semibold text-right">{t('billing.agreedFee', 'Agreed Fee')}</th>
-                  <th className="px-4 py-3 font-semibold text-right">{t('billing.totalReceived', 'Total Received')}</th>
-                  <th className="px-4 py-3 font-semibold text-right">{t('billing.balance', 'Balance')}</th>
-                  <th className="px-4 py-3 font-semibold text-center">{t('common.actions', 'Action')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredBalances.map((b) => {
-                  return (
-                    <tr
-                      key={b.clientId}
-                      className="hover:bg-slate-50/70 transition-colors cursor-pointer"
-                      onClick={() => openClientProfile(b.clientId, 'billing')}
+          <>
+            {/* Mobile Card List (<md) */}
+            <div className="block md:hidden divide-y divide-slate-100">
+              {filteredBalances.map((b) => (
+                <div
+                  key={b.clientId}
+                  onClick={() => openClientProfile(b.clientId, 'billing')}
+                  className="p-3.5 hover:bg-slate-50 transition cursor-pointer space-y-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-slate-900 text-sm">{b.clientName}</div>
+                      {b.clientNameBn && <div className="text-[11px] text-slate-400">{b.clientNameBn}</div>}
+                      <div className="text-xs text-slate-600 font-mono mt-0.5">{b.clientPhone}</div>
+                    </div>
+                    <div>
+                      {b.isCredit ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                          {formatBdt(b.creditPaisa, { lang: i18n.language })} {t('billing.creditBadge', 'Credit')}
+                        </span>
+                      ) : b.outstandingPaisa > 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          {formatBdt(b.outstandingPaisa, { lang: i18n.language })} {t('billing.dueBadge', 'Due')}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+                          ৳ 0 ({t('billing.settledBadge', 'Settled')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-100">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">{t('billing.agreedFee', 'Agreed Fee')}</span>
+                      <span className="font-medium text-slate-800">{formatBdt(b.totalAgreedPaisa, { lang: i18n.language })}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">{t('billing.totalReceived', 'Received')}</span>
+                      <span className="font-medium text-emerald-600">{formatBdt(b.totalPaidPaisa, { lang: i18n.language })}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openClientProfile(b.clientId, 'billing');
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg inline-flex items-center gap-1 min-h-[36px]"
                     >
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900">{b.clientName}</div>
-                        {b.clientNameBn && <div className="text-[11px] text-slate-400">{b.clientNameBn}</div>}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-slate-600 font-mono">
-                        {b.clientPhone}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-right font-medium text-slate-900">
-                        {formatBdt(b.totalAgreedPaisa, { lang: i18n.language })}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-right font-medium text-emerald-600">
-                        {formatBdt(b.totalPaidPaisa, { lang: i18n.language })}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-right">
-                        {b.isCredit ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
-                            {formatBdt(b.creditPaisa, { lang: i18n.language })} {t('billing.creditBadge', 'Credit')}
-                          </span>
-                        ) : b.outstandingPaisa > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            {formatBdt(b.outstandingPaisa, { lang: i18n.language })} {t('billing.dueBadge', 'Due')}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
-                            ৳ 0 ({t('billing.settledBadge', 'Settled')})
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openClientProfile(b.clientId, 'billing');
-                          }}
-                          className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg inline-flex items-center gap-1 min-h-[36px]"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          <span>{t('billing.openLedger', 'Ledger')}</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>{t('billing.openLedger', 'Ledger')}</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table (>=md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">{t('clients.name', 'Client Name')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('clients.phone', 'Phone')}</th>
+                    <th className="px-4 py-3 font-semibold text-right">{t('billing.agreedFee', 'Agreed Fee')}</th>
+                    <th className="px-4 py-3 font-semibold text-right">{t('billing.totalReceived', 'Total Received')}</th>
+                    <th className="px-4 py-3 font-semibold text-right">{t('billing.balance', 'Balance')}</th>
+                    <th className="px-4 py-3 font-semibold text-center">{t('common.actions', 'Action')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredBalances.map((b) => {
+                    return (
+                      <tr
+                        key={b.clientId}
+                        className="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                        onClick={() => openClientProfile(b.clientId, 'billing')}
+                      >
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="font-semibold text-slate-900">{b.clientName}</div>
+                          {b.clientNameBn && <div className="text-[11px] text-slate-400">{b.clientNameBn}</div>}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-slate-600 font-mono">
+                          {b.clientPhone}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-right font-medium text-slate-900">
+                          {formatBdt(b.totalAgreedPaisa, { lang: i18n.language })}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-right font-medium text-emerald-600">
+                          {formatBdt(b.totalPaidPaisa, { lang: i18n.language })}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-right">
+                          {b.isCredit ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                              {formatBdt(b.creditPaisa, { lang: i18n.language })} {t('billing.creditBadge', 'Credit')}
+                            </span>
+                          ) : b.outstandingPaisa > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              {formatBdt(b.outstandingPaisa, { lang: i18n.language })} {t('billing.dueBadge', 'Due')}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+                              ৳ 0 ({t('billing.settledBadge', 'Settled')})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openClientProfile(b.clientId, 'billing');
+                            }}
+                            className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg inline-flex items-center gap-1 min-h-[36px]"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>{t('billing.openLedger', 'Ledger')}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
