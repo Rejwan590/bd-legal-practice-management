@@ -8,6 +8,7 @@ export * from './restAppointment';
 export * from './restHearing';
 export * from './restTask';
 export * from './restAccounts';
+export * from './restChamberExpenses';
 export * from './restDashboard';
 export * from './restCalendar';
 export * from './restSearch';

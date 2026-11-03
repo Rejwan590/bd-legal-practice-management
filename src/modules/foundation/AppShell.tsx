@@ -151,7 +151,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       titleKey: 'app.sectionAdmin',
       defaultTitle: 'Chamber Administration',
       items: [
-        { id: 'search' as ActiveTab, label: t('common.search'), icon: Search },
         { id: 'backup' as ActiveTab, label: t('nav.backup'), icon: Database, hide: !can('data.export') && !can('settings.manage') },
         { id: 'auditLog' as ActiveTab, label: t('nav.auditLog'), icon: FileText, hide: !can('settings.manage') },
         { id: 'settings' as ActiveTab, label: t('nav.settings'), icon: Settings },
@@ -800,13 +799,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 <div className="text-[11px] text-slate-500 truncate font-mono">
                   {currentUser.email}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setUserModalOpen(true)}
-                  className="w-full text-xs text-indigo-600 hover:text-indigo-800 font-semibold text-left underline block pt-0.5 cursor-pointer"
-                >
-                  {t('auth.switchUser')} &rarr;
-                </button>
               </div>
             )}
           </div>
@@ -875,16 +867,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
               {/* Drawer footer session info */}
               <div className="border-t border-slate-100 pt-3 mt-2 shrink-0">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setUserModalOpen(true);
-                  }}
-                  className="w-full min-h-[44px] py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl text-xs font-semibold text-slate-800 text-center flex items-center justify-center gap-2 transition"
-                >
+                <div className="w-full py-2 px-3 bg-slate-50 rounded-xl text-xs text-slate-700 flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span className="truncate">{t('auth.switchUser')} ({currentUser.name})</span>
-                </button>
+                  <span className="truncate font-semibold">{currentUser.name}</span>
+                </div>
               </div>
             </div>
           </div>

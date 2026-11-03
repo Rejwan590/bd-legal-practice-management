@@ -40,6 +40,7 @@ import {
   UserRecord,
   AccountsSummary,
   ClientBalanceOverview,
+  CaseBalanceOverview,
   Expense,
   ExpenseCategory,
   FeeAgreement,
@@ -47,6 +48,14 @@ import {
   FeePayment,
   FeeType,
   PaymentMethod,
+  ChamberExpenseCategory,
+  ChamberAdvance,
+  ChamberAdvanceSettlement,
+  ChamberExpense,
+  ChamberExpensesSummary,
+  ChamberExpenseKind,
+  ChamberPaymentMethod,
+  ChamberSettlementType,
 } from './types';
 
 
@@ -569,6 +578,7 @@ export interface IBackupRepository {
 export interface IAccountsRepository {
   getSummary(context: SecurityContext, filter: { clientId?: string; caseId?: string }): Promise<AccountsSummary>;
   getClientBalances(context: SecurityContext): Promise<ClientBalanceOverview[]>;
+  getCaseBalances(context: SecurityContext): Promise<CaseBalanceOverview[]>;
   listAgreements(context: SecurityContext, filter?: { clientId?: string; caseId?: string; status?: string }): Promise<FeeAgreement[]>;
   getAgreementById(context: SecurityContext, id: string): Promise<FeeAgreement | null>;
   createAgreement(
@@ -624,6 +634,65 @@ export interface IAccountsRepository {
   ): Promise<Expense>;
   voidExpense(context: SecurityContext, id: string, reason: string): Promise<Expense>;
 }
+
+export interface IChamberExpenseRepository {
+  listCategories(context: SecurityContext): Promise<ChamberExpenseCategory[]>;
+  createCategory(context: SecurityContext, data: { name: string; nameBn?: string | null; kind?: ChamberExpenseKind }): Promise<ChamberExpenseCategory>;
+  listExpenses(
+    context: SecurityContext,
+    filter?: { fromDate?: string; toDate?: string; categoryId?: string; status?: string }
+  ): Promise<ChamberExpense[]>;
+  getExpenseById(context: SecurityContext, id: string): Promise<ChamberExpense | null>;
+  recordExpense(
+    context: SecurityContext,
+    expense: {
+      categoryId: string;
+      description: string;
+      amountPaisa: number;
+      expenseDate: string;
+      paidTo: string;
+      paymentMethod: ChamberPaymentMethod;
+      receiptRef?: string | null;
+      notes?: string | null;
+      advanceId?: string | null;
+    }
+  ): Promise<ChamberExpense>;
+  voidExpense(context: SecurityContext, id: string, voidReason: string): Promise<ChamberExpense>;
+  getSummary(
+    context: SecurityContext,
+    period?: { month?: string; year?: number }
+  ): Promise<ChamberExpensesSummary>;
+  listAdvances(
+    context: SecurityContext,
+    filter?: { givenToUserId?: string; status?: string }
+  ): Promise<ChamberAdvance[]>;
+  getAdvanceById(context: SecurityContext, id: string): Promise<(ChamberAdvance & { settlements: ChamberAdvanceSettlement[] }) | null>;
+  createAdvance(
+    context: SecurityContext,
+    advance: {
+      givenTo: string;
+      givenToUserId?: string | null;
+      amountPaisa: number;
+      givenDate: string;
+      purpose: string;
+      paymentMethod: ChamberPaymentMethod;
+    }
+  ): Promise<ChamberAdvance>;
+  voidAdvance(context: SecurityContext, id: string, voidReason: string): Promise<ChamberAdvance>;
+  settleAdvance(
+    context: SecurityContext,
+    advanceId: string,
+    settlement: {
+      type: ChamberSettlementType;
+      amountPaisa: number;
+      settledDate: string;
+      notes?: string | null;
+      expenseId?: string | null;
+    }
+  ): Promise<ChamberAdvanceSettlement>;
+  listSettlements(context: SecurityContext, advanceId: string): Promise<ChamberAdvanceSettlement[]>;
+}
+
 
 
 

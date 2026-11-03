@@ -55,6 +55,17 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: ['billing.view', 'accounts.view', 'accounts.manage', 'expenses.record', 'accounts.export'],
   },
   {
+    key: 'chamberExpenses',
+    labelKey: 'settings.areaChamberExpenses',
+    defaultLabel: 'Chamber Operational Expenses',
+    permissions: [
+      'chamber_expenses.view',
+      'chamber_expenses.record',
+      'chamber_expenses.manage',
+      'chamber_expenses.salary',
+    ],
+  },
+  {
     key: 'admin',
     labelKey: 'settings.areaAdmin',
     defaultLabel: 'Administration & Security',

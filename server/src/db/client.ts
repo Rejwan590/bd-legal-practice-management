@@ -269,6 +269,27 @@ export interface IDatabase {
       outstandingPaisa: number;
     }>
   >;
+  getCaseBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      caseId: string | null;
+      caseNumber: string | null;
+      caseTitle: string | null;
+      fileSerial?: string | null;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  >;
   // Fee Agreements
   listFeeAgreements(
     firmId: string,
@@ -302,6 +323,53 @@ export interface IDatabase {
   getExpenseById(id: string, firmId: string, user?: VisibilityUserContext): Promise<(schema.Expense & { categoryName?: string }) | null>;
   insertExpense(expense: schema.NewExpense): Promise<schema.Expense>;
   updateExpense(id: string, firmId: string, updates: Partial<schema.Expense>): Promise<schema.Expense>;
+
+  // Chamber Expenses & Advances
+  listChamberExpenseCategories(firmId: string): Promise<schema.ChamberExpenseCategory[]>;
+  createChamberExpenseCategory(firmId: string, data: schema.NewChamberExpenseCategory): Promise<schema.ChamberExpenseCategory>;
+  listChamberExpenses(
+    firmId: string,
+    filter?: { fromDate?: string; toDate?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }>>;
+  getChamberExpenseById(
+    firmId: string,
+    id: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }) | null>;
+  createChamberExpense(firmId: string, data: schema.NewChamberExpense): Promise<schema.ChamberExpense>;
+  updateChamberExpense(firmId: string, id: string, updates: Partial<schema.ChamberExpense>): Promise<schema.ChamberExpense>;
+  voidChamberExpense(firmId: string, id: string, voidReason: string, userId: string): Promise<schema.ChamberExpense>;
+  getChamberExpensesSummary(
+    firmId: string,
+    period?: { month?: string; year?: number },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalThisMonthPaisa: number;
+    totalLastMonthPaisa: number;
+    totalSalaryThisMonthPaisa: number;
+    byCategory: Array<{
+      categoryId: string;
+      categoryName: string;
+      categoryNameBn?: string | null;
+      categoryKind: string;
+      totalPaisa: number;
+      count: number;
+    }>;
+  }>;
+  listChamberAdvances(
+    firmId: string,
+    filter?: { givenToUserId?: string; status?: string }
+  ): Promise<Array<schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number }>>;
+  getChamberAdvanceById(
+    firmId: string,
+    id: string
+  ): Promise<(schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number; settlements: schema.ChamberAdvanceSettlement[] }) | null>;
+  createChamberAdvance(firmId: string, data: schema.NewChamberAdvance): Promise<schema.ChamberAdvance>;
+  voidChamberAdvance(firmId: string, id: string, voidReason: string, userId: string): Promise<schema.ChamberAdvance>;
+  createChamberAdvanceSettlement(firmId: string, advanceId: string, data: schema.NewChamberAdvanceSettlement): Promise<schema.ChamberAdvanceSettlement>;
+  listChamberAdvanceSettlements(firmId: string, advanceId: string): Promise<schema.ChamberAdvanceSettlement[]>;
+
   // Platform Admins & Admin Audit (Super Admin for software owner)
   getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null>;
   getPlatformAdminById(id: string): Promise<schema.PlatformAdmin | null>;
@@ -374,6 +442,10 @@ class MemoryDatabase implements IDatabase {
   public feePayments: schema.FeePayment[] = [];
   public expenseCategories: schema.ExpenseCategory[] = [];
   public expenses: schema.Expense[] = [];
+  public chamberExpenseCategories: schema.ChamberExpenseCategory[] = [];
+  public chamberAdvances: schema.ChamberAdvance[] = [];
+  public chamberExpenses: schema.ChamberExpense[] = [];
+  public chamberAdvanceSettlements: schema.ChamberAdvanceSettlement[] = [];
   private initialized = false;
 
   public async init() {
@@ -1713,6 +1785,119 @@ class MemoryDatabase implements IDatabase {
     });
   }
 
+  public async getCaseBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      caseId: string | null;
+      caseNumber: string | null;
+      caseTitle: string | null;
+      fileSerial?: string | null;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  > {
+    await this.init();
+    const clients = await this.listClients(firmId, undefined, user);
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+    const result: Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      caseId: string | null;
+      caseNumber: string | null;
+      caseTitle: string | null;
+      fileSerial?: string | null;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }> = [];
+
+    for (const c of clients) {
+      const agreements = this.feeAgreements.filter(
+        (a) => a.firmId === firmId && !a.deletedAt && a.status !== 'void' && a.clientId === c.id
+      );
+      const payments = this.feePayments.filter(
+        (p) => p.firmId === firmId && !p.deletedAt && p.status === 'posted' && p.clientId === c.id
+      );
+      const clientExpenses = this.expenses.filter(
+        (e) => e.firmId === firmId && !e.deletedAt && e.status === 'posted' && e.clientId === c.id
+      );
+
+      const caseIds = new Set<string | null>();
+      for (const a of agreements) caseIds.add(a.caseId ?? null);
+      for (const p of payments) caseIds.add(p.caseId ?? null);
+      for (const e of clientExpenses) caseIds.add(e.caseId ?? null);
+
+      for (const cid of caseIds) {
+        if (cid === null) {
+          const generalAgreements = agreements.filter((a) => !a.caseId);
+          const generalPayments = payments.filter((p) => !p.caseId);
+          const totalAgreedPaisa = generalAgreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+          const totalPaidPaisa = generalPayments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: null,
+            caseNumber: null,
+            caseTitle: 'General / no case',
+            fileSerial: null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        } else {
+          if (!visibleCaseIds.has(cid)) continue;
+          const caseRec = this.cases.find((k) => k.id === cid && !k.deletedAt);
+          if (!caseRec) continue;
+          const caseAgreements = agreements.filter((a) => a.caseId === cid);
+          const casePayments = payments.filter((p) => p.caseId === cid);
+          const totalAgreedPaisa = caseAgreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+          const totalPaidPaisa = casePayments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: caseRec.id,
+            caseNumber: caseRec.caseNumber,
+            caseTitle: caseRec.description || caseRec.matterType || null,
+            fileSerial: caseRec.fileSerial || null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
   // Fee Agreements
   public async listFeeAgreements(
     firmId: string,
@@ -2079,6 +2264,471 @@ class MemoryDatabase implements IDatabase {
     return { ...updated };
   }
 
+
+  public async listChamberExpenseCategories(firmId: string): Promise<schema.ChamberExpenseCategory[]> {
+    await this.init();
+    let cats = this.chamberExpenseCategories.filter((c) => c.firmId === firmId && !c.deletedAt);
+    if (cats.length === 0) {
+      const defaults: Array<{ name: string; nameBn: string; kind: 'general' | 'salary' }> = [
+        { name: 'Food and refreshments', nameBn: 'খাবার ও আপ্যায়ন', kind: 'general' },
+        { name: 'Office supplies', nameBn: 'অফিস স্টেশনারি ও সামগ্রী', kind: 'general' },
+        { name: 'Utilities (electricity, internet, water)', nameBn: 'ইউটিলিটি - বিদ্যুৎ, ইন্টারনেট, পানি', kind: 'general' },
+        { name: 'Rent', nameBn: 'চেম্বার ভাড়া', kind: 'general' },
+        { name: 'Staff salary', nameBn: 'কর্মচারীদের বেতন', kind: 'salary' },
+        { name: 'Payments for specific work', nameBn: 'নির্দিষ্ট কাজের পারিশ্রমিক', kind: 'general' },
+        { name: 'Transportation', nameBn: 'যাতায়াত ও পরিবহন', kind: 'general' },
+        { name: 'Miscellaneous', nameBn: 'বিবিধ খরচ', kind: 'general' },
+      ];
+      for (const d of defaults) {
+        const cat: schema.ChamberExpenseCategory = {
+          id: `ch-cat-${crypto.randomUUID()}`,
+          firmId,
+          name: d.name,
+          nameBn: d.nameBn,
+          kind: d.kind,
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          createdBy: null,
+          updatedBy: null,
+        };
+        this.chamberExpenseCategories.push(cat);
+      }
+      cats = this.chamberExpenseCategories.filter((c) => c.firmId === firmId && !c.deletedAt);
+    }
+    return [...cats].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  public async createChamberExpenseCategory(
+    firmId: string,
+    data: schema.NewChamberExpenseCategory
+  ): Promise<schema.ChamberExpenseCategory> {
+    await this.init();
+    const created: schema.ChamberExpenseCategory = {
+      id: data.id || `ch-cat-${crypto.randomUUID()}`,
+      firmId,
+      name: data.name,
+      nameBn: data.nameBn ?? null,
+      kind: data.kind || 'general',
+      isDefault: data.isDefault ?? false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: data.createdBy ?? null,
+      updatedBy: data.updatedBy ?? null,
+    };
+    this.chamberExpenseCategories.push(created);
+    return { ...created };
+  }
+
+  public async listChamberExpenses(
+    firmId: string,
+    filter?: { fromDate?: string; toDate?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }>> {
+    await this.init();
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+
+    const cats = await this.listChamberExpenseCategories(firmId);
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+
+    const list = this.chamberExpenses.filter((e) => {
+      if (e.firmId !== firmId || e.deletedAt) return false;
+      const cat = catMap.get(e.categoryId);
+      if (!canViewSalary && cat?.kind === 'salary') return false;
+      if (filter?.categoryId && e.categoryId !== filter.categoryId) return false;
+      if (filter?.status && e.status !== filter.status) return false;
+      if (filter?.fromDate && e.expenseDate < filter.fromDate) return false;
+      if (filter?.toDate && e.expenseDate > filter.toDate) return false;
+      return true;
+    });
+
+    return list
+      .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((e) => {
+        const cat = catMap.get(e.categoryId);
+        return {
+          ...e,
+          categoryName: cat?.name || 'Unknown',
+          categoryNameBn: cat?.nameBn || null,
+          categoryKind: cat?.kind || 'general',
+        };
+      });
+  }
+
+  public async getChamberExpenseById(
+    firmId: string,
+    id: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }) | null> {
+    await this.init();
+    const exp = this.chamberExpenses.find((e) => e.id === id && e.firmId === firmId && !e.deletedAt);
+    if (!exp) return null;
+    const cats = await this.listChamberExpenseCategories(firmId);
+    const cat = cats.find((c) => c.id === exp.categoryId);
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+    if (!canViewSalary && cat?.kind === 'salary') return null;
+
+    return {
+      ...exp,
+      categoryName: cat?.name || 'Unknown',
+      categoryNameBn: cat?.nameBn || null,
+      categoryKind: cat?.kind || 'general',
+    };
+  }
+
+  public async createChamberExpense(
+    firmId: string,
+    data: schema.NewChamberExpense
+  ): Promise<schema.ChamberExpense> {
+    await this.init();
+    const created: schema.ChamberExpense = {
+      id: data.id || `ch-exp-${crypto.randomUUID()}`,
+      firmId,
+      categoryId: data.categoryId,
+      description: data.description,
+      amountPaisa: data.amountPaisa,
+      expenseDate: data.expenseDate,
+      paidTo: data.paidTo,
+      paymentMethod: data.paymentMethod,
+      receiptRef: data.receiptRef ?? null,
+      notes: data.notes ?? null,
+      advanceId: data.advanceId ?? null,
+      status: data.status || 'posted',
+      voidReason: null,
+      voidedBy: null,
+      voidedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: data.createdBy ?? null,
+      updatedBy: data.updatedBy ?? null,
+    };
+    this.chamberExpenses.push(created);
+
+    // If advanceId is present, automatically record advance settlement
+    if (created.advanceId) {
+      await this.createChamberAdvanceSettlement(firmId, created.advanceId, {
+        id: `ch-set-${crypto.randomUUID()}`,
+        firmId,
+        advanceId: created.advanceId,
+        type: 'expense',
+        expenseId: created.id,
+        amountPaisa: created.amountPaisa,
+        settledDate: created.expenseDate,
+        notes: `Expense settlement: ${created.description}`,
+        createdBy: data.createdBy ?? null,
+      });
+    }
+
+    return { ...created };
+  }
+
+  public async updateChamberExpense(
+    firmId: string,
+    id: string,
+    updates: Partial<schema.ChamberExpense>
+  ): Promise<schema.ChamberExpense> {
+    await this.init();
+    const idx = this.chamberExpenses.findIndex((e) => e.id === id && e.firmId === firmId && !e.deletedAt);
+    if (idx === -1) throw new Error(`Chamber expense not found: ${id}`);
+    const updated = {
+      ...this.chamberExpenses[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.chamberExpenses[idx] = updated;
+    return { ...updated };
+  }
+
+  public async voidChamberExpense(
+    firmId: string,
+    id: string,
+    voidReason: string,
+    userId: string
+  ): Promise<schema.ChamberExpense> {
+    await this.init();
+    const exp = await this.updateChamberExpense(firmId, id, {
+      status: 'void',
+      voidReason,
+      voidedBy: userId,
+      voidedAt: new Date(),
+      updatedBy: userId,
+    });
+
+    // If linked to advance, soft-delete settlement and reopen advance if needed
+    const settlements = this.chamberAdvanceSettlements.filter(
+      (s) => s.firmId === firmId && s.expenseId === id && !s.deletedAt
+    );
+    for (const s of settlements) {
+      s.deletedAt = new Date();
+      s.updatedBy = userId;
+      // Re-evaluate advance status
+      const adv = this.chamberAdvances.find((a) => a.id === s.advanceId && a.firmId === firmId);
+      if (adv && adv.status === 'settled') {
+        const remainingSettlements = this.chamberAdvanceSettlements.filter(
+          (other) => other.advanceId === adv.id && other.firmId === firmId && !other.deletedAt
+        );
+        const settledPaisa = remainingSettlements.reduce((sum, item) => sum + Number(item.amountPaisa || 0), 0);
+        if (settledPaisa < Number(adv.amountPaisa)) {
+          adv.status = 'open';
+          adv.updatedAt = new Date();
+        }
+      }
+    }
+
+    return exp;
+  }
+
+  public async getChamberExpensesSummary(
+    firmId: string,
+    period?: { month?: string; year?: number },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalThisMonthPaisa: number;
+    totalLastMonthPaisa: number;
+    totalSalaryThisMonthPaisa: number;
+    byCategory: Array<{
+      categoryId: string;
+      categoryName: string;
+      categoryNameBn?: string | null;
+      categoryKind: string;
+      totalPaisa: number;
+      count: number;
+    }>;
+  }> {
+    await this.init();
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+
+    const cats = await this.listChamberExpenseCategories(firmId);
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+
+    const now = new Date();
+    const currentYear = period?.year ?? now.getFullYear();
+    const currentMonth = period?.month ?? String(now.getMonth() + 1).padStart(2, '0');
+    const currentMonthPrefix = `${currentYear}-${currentMonth}`;
+
+    const lastMonthDate = new Date(currentYear, Number(currentMonth) - 2, 1);
+    const lastMonthYear = lastMonthDate.getFullYear();
+    const lastMonthNum = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+    const lastMonthPrefix = `${lastMonthYear}-${lastMonthNum}`;
+
+    let totalThisMonthPaisa = 0;
+    let totalLastMonthPaisa = 0;
+    let totalSalaryThisMonthPaisa = 0;
+    const catBuckets = new Map<string, { totalPaisa: number; count: number }>();
+
+    for (const exp of this.chamberExpenses) {
+      if (exp.firmId !== firmId || exp.deletedAt || exp.status === 'void') continue;
+      const cat = catMap.get(exp.categoryId);
+      const isSalary = cat?.kind === 'salary';
+      if (isSalary && !canViewSalary) continue;
+
+      const amt = Number(exp.amountPaisa || 0);
+
+      if (exp.expenseDate.startsWith(currentMonthPrefix)) {
+        totalThisMonthPaisa += amt;
+        if (isSalary) {
+          totalSalaryThisMonthPaisa += amt;
+        }
+
+        const bucket = catBuckets.get(exp.categoryId) || { totalPaisa: 0, count: 0 };
+        bucket.totalPaisa += amt;
+        bucket.count += 1;
+        catBuckets.set(exp.categoryId, bucket);
+      } else if (exp.expenseDate.startsWith(lastMonthPrefix)) {
+        totalLastMonthPaisa += amt;
+      }
+    }
+
+    const byCategory = cats
+      .filter((c) => canViewSalary || c.kind !== 'salary')
+      .map((c) => {
+        const bucket = catBuckets.get(c.id) || { totalPaisa: 0, count: 0 };
+        return {
+          categoryId: c.id,
+          categoryName: c.name,
+          categoryNameBn: c.nameBn,
+          categoryKind: c.kind,
+          totalPaisa: bucket.totalPaisa,
+          count: bucket.count,
+        };
+      })
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.totalPaisa - a.totalPaisa);
+
+    return {
+      totalThisMonthPaisa,
+      totalLastMonthPaisa,
+      totalSalaryThisMonthPaisa,
+      byCategory,
+    };
+  }
+
+  public async listChamberAdvances(
+    firmId: string,
+    filter?: { givenToUserId?: string; status?: string }
+  ): Promise<Array<schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number }>> {
+    await this.init();
+    const advances = this.chamberAdvances.filter((a) => {
+      if (a.firmId !== firmId || a.deletedAt) return false;
+      if (filter?.givenToUserId && a.givenToUserId !== filter.givenToUserId) return false;
+      if (filter?.status && a.status !== filter.status) return false;
+      return true;
+    });
+
+    return advances
+      .sort((a, b) => b.givenDate.localeCompare(a.givenDate) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((a) => {
+        const settlements = this.chamberAdvanceSettlements.filter(
+          (s) => s.advanceId === a.id && s.firmId === firmId && !s.deletedAt
+        );
+        const settledAmountPaisa = settlements.reduce((sum, s) => sum + Number(s.amountPaisa || 0), 0);
+        const remainingAmountPaisa = Math.max(0, Number(a.amountPaisa) - settledAmountPaisa);
+        return {
+          ...a,
+          settledAmountPaisa,
+          remainingAmountPaisa,
+        };
+      });
+  }
+
+  public async getChamberAdvanceById(
+    firmId: string,
+    id: string
+  ): Promise<(schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number; settlements: schema.ChamberAdvanceSettlement[] }) | null> {
+    await this.init();
+    const adv = this.chamberAdvances.find((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (!adv) return null;
+
+    const settlements = this.chamberAdvanceSettlements.filter(
+      (s) => s.advanceId === id && s.firmId === firmId && !s.deletedAt
+    );
+    const settledAmountPaisa = settlements.reduce((sum, s) => sum + Number(s.amountPaisa || 0), 0);
+    const remainingAmountPaisa = Math.max(0, Number(adv.amountPaisa) - settledAmountPaisa);
+
+    return {
+      ...adv,
+      settledAmountPaisa,
+      remainingAmountPaisa,
+      settlements,
+    };
+  }
+
+  public async createChamberAdvance(
+    firmId: string,
+    data: schema.NewChamberAdvance
+  ): Promise<schema.ChamberAdvance> {
+    await this.init();
+    const created: schema.ChamberAdvance = {
+      id: data.id || `ch-adv-${crypto.randomUUID()}`,
+      firmId,
+      givenTo: data.givenTo,
+      givenToUserId: data.givenToUserId ?? null,
+      amountPaisa: data.amountPaisa,
+      givenDate: data.givenDate,
+      purpose: data.purpose,
+      paymentMethod: data.paymentMethod,
+      status: 'open',
+      voidReason: null,
+      voidedBy: null,
+      voidedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: data.createdBy ?? null,
+      updatedBy: data.updatedBy ?? null,
+    };
+    this.chamberAdvances.push(created);
+    return { ...created };
+  }
+
+  public async voidChamberAdvance(
+    firmId: string,
+    id: string,
+    voidReason: string,
+    userId: string
+  ): Promise<schema.ChamberAdvance> {
+    await this.init();
+    const idx = this.chamberAdvances.findIndex((a) => a.id === id && a.firmId === firmId && !a.deletedAt);
+    if (idx === -1) throw new Error(`Advance not found: ${id}`);
+
+    const settlements = this.chamberAdvanceSettlements.filter(
+      (s) => s.advanceId === id && s.firmId === firmId && !s.deletedAt
+    );
+    if (settlements.length > 0) {
+      throw new Error('Cannot void advance with existing settlements. Settle by refund or void linked expenses first.');
+    }
+
+    const updated = {
+      ...this.chamberAdvances[idx],
+      status: 'void' as const,
+      voidReason,
+      voidedBy: userId,
+      voidedAt: new Date(),
+      updatedBy: userId,
+      updatedAt: new Date(),
+    };
+    this.chamberAdvances[idx] = updated;
+    return { ...updated };
+  }
+
+  public async createChamberAdvanceSettlement(
+    firmId: string,
+    advanceId: string,
+    data: schema.NewChamberAdvanceSettlement
+  ): Promise<schema.ChamberAdvanceSettlement> {
+    await this.init();
+    const adv = this.chamberAdvances.find((a) => a.id === advanceId && a.firmId === firmId && !a.deletedAt);
+    if (!adv) throw new Error(`Advance not found: ${advanceId}`);
+    if (adv.status === 'void') throw new Error('Cannot settle a voided advance');
+
+    const settlements = this.chamberAdvanceSettlements.filter(
+      (s) => s.advanceId === advanceId && s.firmId === firmId && !s.deletedAt
+    );
+    const currentSettled = settlements.reduce((sum, s) => sum + Number(s.amountPaisa || 0), 0);
+    const remaining = Number(adv.amountPaisa) - currentSettled;
+
+    if (Number(data.amountPaisa) > remaining) {
+      throw new Error(`Settlement amount (${Number(data.amountPaisa)}) exceeds remaining balance (${remaining})`);
+    }
+
+    const created: schema.ChamberAdvanceSettlement = {
+      id: data.id || `ch-set-${crypto.randomUUID()}`,
+      firmId,
+      advanceId,
+      type: data.type,
+      expenseId: data.expenseId ?? null,
+      amountPaisa: data.amountPaisa,
+      settledDate: data.settledDate,
+      notes: data.notes ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      createdBy: data.createdBy ?? null,
+      updatedBy: data.updatedBy ?? null,
+    };
+    this.chamberAdvanceSettlements.push(created);
+
+    // If fully settled, update advance status
+    if (currentSettled + Number(data.amountPaisa) >= Number(adv.amountPaisa)) {
+      adv.status = 'settled';
+      adv.updatedAt = new Date();
+    }
+
+    return { ...created };
+  }
+
+  public async listChamberAdvanceSettlements(
+    firmId: string,
+    advanceId: string
+  ): Promise<schema.ChamberAdvanceSettlement[]> {
+    await this.init();
+    return this.chamberAdvanceSettlements
+      .filter((s) => s.advanceId === advanceId && s.firmId === firmId && !s.deletedAt)
+      .sort((a, b) => b.settledDate.localeCompare(a.settledDate));
+  }
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
     await this.init();
     const admin = this.platformAdmins.find(
@@ -2591,6 +3241,10 @@ class MemoryDatabase implements IDatabase {
       feePayments: [...this.feePayments],
       expenseCategories: [...this.expenseCategories],
       expenses: [...this.expenses],
+      chamberExpenseCategories: [...this.chamberExpenseCategories],
+      chamberAdvances: [...this.chamberAdvances],
+      chamberExpenses: [...this.chamberExpenses],
+      chamberAdvanceSettlements: [...this.chamberAdvanceSettlements],
     };
 
     try {
@@ -2623,6 +3277,10 @@ class MemoryDatabase implements IDatabase {
       this.feePayments = snapshot.feePayments;
       this.expenseCategories = snapshot.expenseCategories;
       this.expenses = snapshot.expenses;
+      this.chamberExpenseCategories = snapshot.chamberExpenseCategories;
+      this.chamberAdvances = snapshot.chamberAdvances;
+      this.chamberExpenses = snapshot.chamberExpenses;
+      this.chamberAdvanceSettlements = snapshot.chamberAdvanceSettlements;
       throw err;
     }
   }
@@ -4108,6 +4766,205 @@ class PostgresDatabase implements IDatabase {
     return result;
   }
 
+  public async getCaseBalancesOverview(
+    firmId: string,
+    user?: VisibilityUserContext
+  ): Promise<
+    Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      caseId: string | null;
+      caseNumber: string | null;
+      caseTitle: string | null;
+      fileSerial?: string | null;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }>
+  > {
+    const clients = await this.listClients(firmId, undefined, user);
+    const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
+    const result: Array<{
+      clientId: string;
+      clientName: string;
+      clientNameBn?: string | null;
+      clientPhone: string;
+      caseId: string | null;
+      caseNumber: string | null;
+      caseTitle: string | null;
+      fileSerial?: string | null;
+      totalAgreedPaisa: number;
+      totalPaidPaisa: number;
+      balancePaisa: number;
+      isCredit: boolean;
+      creditPaisa: number;
+      outstandingPaisa: number;
+    }> = [];
+
+    for (const c of clients) {
+      const agCaseRows = await this.db
+        .selectDistinct({ caseId: schema.feeAgreements.caseId })
+        .from(schema.feeAgreements)
+        .where(
+          and(
+            eq(schema.feeAgreements.firmId, firmId),
+            eq(schema.feeAgreements.clientId, c.id),
+            isNull(schema.feeAgreements.deletedAt),
+            ne(schema.feeAgreements.status, 'void')
+          )
+        );
+
+      const payCaseRows = await this.db
+        .selectDistinct({ caseId: schema.feePayments.caseId })
+        .from(schema.feePayments)
+        .where(
+          and(
+            eq(schema.feePayments.firmId, firmId),
+            eq(schema.feePayments.clientId, c.id),
+            isNull(schema.feePayments.deletedAt),
+            eq(schema.feePayments.status, 'posted')
+          )
+        );
+
+      const expCaseRows = await this.db
+        .selectDistinct({ caseId: schema.expenses.caseId })
+        .from(schema.expenses)
+        .where(
+          and(
+            eq(schema.expenses.firmId, firmId),
+            eq(schema.expenses.clientId, c.id),
+            isNull(schema.expenses.deletedAt),
+            eq(schema.expenses.status, 'posted')
+          )
+        );
+
+      const caseIds = new Set<string | null>();
+      for (const r of agCaseRows) caseIds.add(r.caseId ?? null);
+      for (const r of payCaseRows) caseIds.add(r.caseId ?? null);
+      for (const r of expCaseRows) caseIds.add(r.caseId ?? null);
+
+      for (const cid of caseIds) {
+        if (cid === null) {
+          const agRows = await this.db
+            .select({ total: sql<string>`COALESCE(SUM(${schema.feeAgreements.agreedAmountPaisa}), 0)` })
+            .from(schema.feeAgreements)
+            .where(
+              and(
+                eq(schema.feeAgreements.firmId, firmId),
+                eq(schema.feeAgreements.clientId, c.id),
+                isNull(schema.feeAgreements.caseId),
+                isNull(schema.feeAgreements.deletedAt),
+                ne(schema.feeAgreements.status, 'void')
+              )
+            );
+          const totalAgreedPaisa = Number(agRows[0]?.total || 0);
+
+          const payRows = await this.db
+            .select({ total: sql<string>`COALESCE(SUM(${schema.feePayments.amountPaisa}), 0)` })
+            .from(schema.feePayments)
+            .where(
+              and(
+                eq(schema.feePayments.firmId, firmId),
+                eq(schema.feePayments.clientId, c.id),
+                isNull(schema.feePayments.caseId),
+                isNull(schema.feePayments.deletedAt),
+                eq(schema.feePayments.status, 'posted')
+              )
+            );
+          const totalPaidPaisa = Number(payRows[0]?.total || 0);
+
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: null,
+            caseNumber: null,
+            caseTitle: 'General / no case',
+            fileSerial: null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        } else {
+          const caseRows = await this.db
+            .select()
+            .from(schema.cases)
+            .where(
+              and(
+                eq(schema.cases.id, cid),
+                eq(schema.cases.firmId, firmId),
+                isNull(schema.cases.deletedAt),
+                visCond
+              )
+            );
+          if (!caseRows.length) continue;
+          const caseRec = caseRows[0];
+
+          const agRows = await this.db
+            .select({ total: sql<string>`COALESCE(SUM(${schema.feeAgreements.agreedAmountPaisa}), 0)` })
+            .from(schema.feeAgreements)
+            .where(
+              and(
+                eq(schema.feeAgreements.firmId, firmId),
+                eq(schema.feeAgreements.clientId, c.id),
+                eq(schema.feeAgreements.caseId, cid),
+                isNull(schema.feeAgreements.deletedAt),
+                ne(schema.feeAgreements.status, 'void')
+              )
+            );
+          const totalAgreedPaisa = Number(agRows[0]?.total || 0);
+
+          const payRows = await this.db
+            .select({ total: sql<string>`COALESCE(SUM(${schema.feePayments.amountPaisa}), 0)` })
+            .from(schema.feePayments)
+            .where(
+              and(
+                eq(schema.feePayments.firmId, firmId),
+                eq(schema.feePayments.clientId, c.id),
+                eq(schema.feePayments.caseId, cid),
+                isNull(schema.feePayments.deletedAt),
+                eq(schema.feePayments.status, 'posted')
+              )
+            );
+          const totalPaidPaisa = Number(payRows[0]?.total || 0);
+
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: caseRec.id,
+            caseNumber: caseRec.caseNumber,
+            caseTitle: caseRec.description || caseRec.matterType || null,
+            fileSerial: caseRec.fileSerial || null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
   // Fee Agreements
   public async listFeeAgreements(
     firmId: string,
@@ -4421,6 +5278,542 @@ class PostgresDatabase implements IDatabase {
     return rows[0];
   }
 
+
+  public async listChamberExpenseCategories(firmId: string): Promise<schema.ChamberExpenseCategory[]> {
+    let rows = await this.db
+      .select()
+      .from(schema.chamberExpenseCategories)
+      .where(and(eq(schema.chamberExpenseCategories.firmId, firmId), isNull(schema.chamberExpenseCategories.deletedAt)))
+      .orderBy(asc(schema.chamberExpenseCategories.name));
+
+    if (rows.length === 0) {
+      const defaults: Array<{ name: string; nameBn: string; kind: 'general' | 'salary' }> = [
+        { name: 'Food and refreshments', nameBn: 'খাবার ও আপ্যায়ন', kind: 'general' },
+        { name: 'Office supplies', nameBn: 'অফিস স্টেশনারি ও সামগ্রী', kind: 'general' },
+        { name: 'Utilities (electricity, internet, water)', nameBn: 'ইউটিলিটি - বিদ্যুৎ, ইন্টারনেট, পানি', kind: 'general' },
+        { name: 'Rent', nameBn: 'চেম্বার ভাড়া', kind: 'general' },
+        { name: 'Staff salary', nameBn: 'কর্মচারীদের বেতন', kind: 'salary' },
+        { name: 'Payments for specific work', nameBn: 'নির্দিষ্ট কাজের পারিশ্রমিক', kind: 'general' },
+        { name: 'Transportation', nameBn: 'যাতায়াত ও পরিবহন', kind: 'general' },
+        { name: 'Miscellaneous', nameBn: 'বিবিধ খরচ', kind: 'general' },
+      ];
+      for (const d of defaults) {
+        await this.db.insert(schema.chamberExpenseCategories).values({
+          id: `ch-cat-${crypto.randomUUID()}`,
+          firmId,
+          name: d.name,
+          nameBn: d.nameBn,
+          kind: d.kind,
+          isDefault: true,
+        });
+      }
+      rows = await this.db
+        .select()
+        .from(schema.chamberExpenseCategories)
+        .where(and(eq(schema.chamberExpenseCategories.firmId, firmId), isNull(schema.chamberExpenseCategories.deletedAt)))
+        .orderBy(asc(schema.chamberExpenseCategories.name));
+    }
+    return rows;
+  }
+
+  public async createChamberExpenseCategory(
+    firmId: string,
+    data: schema.NewChamberExpenseCategory
+  ): Promise<schema.ChamberExpenseCategory> {
+    const [row] = await this.db
+      .insert(schema.chamberExpenseCategories)
+      .values({
+        ...data,
+        id: data.id || `ch-cat-${crypto.randomUUID()}`,
+        firmId,
+      })
+      .returning();
+    return row;
+  }
+
+  public async listChamberExpenses(
+    firmId: string,
+    filter?: { fromDate?: string; toDate?: string; categoryId?: string; status?: string },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }>> {
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+
+    const conditions = [
+      eq(schema.chamberExpenses.firmId, firmId),
+      isNull(schema.chamberExpenses.deletedAt),
+    ];
+    if (filter?.categoryId) conditions.push(eq(schema.chamberExpenses.categoryId, filter.categoryId));
+    if (filter?.status) conditions.push(eq(schema.chamberExpenses.status, filter.status as any));
+    if (filter?.fromDate) conditions.push(gte(schema.chamberExpenses.expenseDate, filter.fromDate));
+    if (filter?.toDate) conditions.push(lte(schema.chamberExpenses.expenseDate, filter.toDate));
+
+    if (!canViewSalary) {
+      conditions.push(sql`${schema.chamberExpenses.categoryId} IN (SELECT id FROM ${schema.chamberExpenseCategories} WHERE kind != 'salary')`);
+    }
+
+    const rows = await this.db
+      .select({
+        expense: schema.chamberExpenses,
+        categoryName: schema.chamberExpenseCategories.name,
+        categoryNameBn: schema.chamberExpenseCategories.nameBn,
+        categoryKind: schema.chamberExpenseCategories.kind,
+      })
+      .from(schema.chamberExpenses)
+      .leftJoin(schema.chamberExpenseCategories, eq(schema.chamberExpenses.categoryId, schema.chamberExpenseCategories.id))
+      .where(and(...conditions))
+      .orderBy(desc(schema.chamberExpenses.expenseDate), desc(schema.chamberExpenses.createdAt));
+
+    return rows.map((r) => ({
+      ...r.expense,
+      categoryName: r.categoryName || 'Unknown',
+      categoryNameBn: r.categoryNameBn || null,
+      categoryKind: r.categoryKind || 'general',
+    }));
+  }
+
+  public async getChamberExpenseById(
+    firmId: string,
+    id: string,
+    user?: VisibilityUserContext
+  ): Promise<(schema.ChamberExpense & { categoryName?: string; categoryNameBn?: string | null; categoryKind?: string }) | null> {
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+
+    const conditions = [
+      eq(schema.chamberExpenses.id, id),
+      eq(schema.chamberExpenses.firmId, firmId),
+      isNull(schema.chamberExpenses.deletedAt),
+    ];
+    if (!canViewSalary) {
+      conditions.push(sql`${schema.chamberExpenses.categoryId} IN (SELECT id FROM ${schema.chamberExpenseCategories} WHERE kind != 'salary')`);
+    }
+
+    const rows = await this.db
+      .select({
+        expense: schema.chamberExpenses,
+        categoryName: schema.chamberExpenseCategories.name,
+        categoryNameBn: schema.chamberExpenseCategories.nameBn,
+        categoryKind: schema.chamberExpenseCategories.kind,
+      })
+      .from(schema.chamberExpenses)
+      .leftJoin(schema.chamberExpenseCategories, eq(schema.chamberExpenses.categoryId, schema.chamberExpenseCategories.id))
+      .where(and(...conditions));
+
+    if (!rows.length) return null;
+    const r = rows[0];
+    return {
+      ...r.expense,
+      categoryName: r.categoryName || 'Unknown',
+      categoryNameBn: r.categoryNameBn || null,
+      categoryKind: r.categoryKind || 'general',
+    };
+  }
+
+  public async createChamberExpense(
+    firmId: string,
+    data: schema.NewChamberExpense
+  ): Promise<schema.ChamberExpense> {
+    const expenseId = data.id || `ch-exp-${crypto.randomUUID()}`;
+    const [row] = await this.db
+      .insert(schema.chamberExpenses)
+      .values({
+        ...data,
+        id: expenseId,
+        firmId,
+      })
+      .returning();
+
+    // If advanceId is present, automatically record advance settlement
+    if (data.advanceId) {
+      await this.createChamberAdvanceSettlement(firmId, data.advanceId, {
+        id: `ch-set-${crypto.randomUUID()}`,
+        firmId,
+        advanceId: data.advanceId,
+        type: 'expense',
+        expenseId: row.id,
+        amountPaisa: data.amountPaisa,
+        settledDate: data.expenseDate,
+        notes: `Expense settlement: ${data.description}`,
+        createdBy: data.createdBy ?? null,
+      });
+    }
+
+    return row;
+  }
+
+  public async updateChamberExpense(
+    firmId: string,
+    id: string,
+    updates: Partial<schema.ChamberExpense>
+  ): Promise<schema.ChamberExpense> {
+    const [row] = await this.db
+      .update(schema.chamberExpenses)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.chamberExpenses.id, id), eq(schema.chamberExpenses.firmId, firmId)))
+      .returning();
+    return row;
+  }
+
+  public async voidChamberExpense(
+    firmId: string,
+    id: string,
+    voidReason: string,
+    userId: string
+  ): Promise<schema.ChamberExpense> {
+    const [row] = await this.db
+      .update(schema.chamberExpenses)
+      .set({
+        status: 'void',
+        voidReason,
+        voidedBy: userId,
+        voidedAt: new Date(),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.chamberExpenses.id, id), eq(schema.chamberExpenses.firmId, firmId)))
+      .returning();
+
+    // If linked to advance settlement, soft delete the settlement and check advance
+    const settlements = await this.db
+      .select()
+      .from(schema.chamberAdvanceSettlements)
+      .where(
+        and(
+          eq(schema.chamberAdvanceSettlements.firmId, firmId),
+          eq(schema.chamberAdvanceSettlements.expenseId, id),
+          isNull(schema.chamberAdvanceSettlements.deletedAt)
+        )
+      );
+
+    for (const s of settlements) {
+      await this.db
+        .update(schema.chamberAdvanceSettlements)
+        .set({
+          deletedAt: new Date(),
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chamberAdvanceSettlements.id, s.id));
+
+      const [adv] = await this.db
+        .select()
+        .from(schema.chamberAdvances)
+        .where(eq(schema.chamberAdvances.id, s.advanceId));
+
+      if (adv && adv.status === 'settled') {
+        const remainingSettlements = await this.db
+          .select({ total: sql<string>`COALESCE(SUM(${schema.chamberAdvanceSettlements.amountPaisa}), 0)` })
+          .from(schema.chamberAdvanceSettlements)
+          .where(
+            and(
+              eq(schema.chamberAdvanceSettlements.advanceId, adv.id),
+              eq(schema.chamberAdvanceSettlements.firmId, firmId),
+              isNull(schema.chamberAdvanceSettlements.deletedAt)
+            )
+          );
+        const settledPaisa = Number(remainingSettlements[0]?.total || 0);
+        if (settledPaisa < Number(adv.amountPaisa)) {
+          await this.db
+            .update(schema.chamberAdvances)
+            .set({ status: 'open', updatedAt: new Date() })
+            .where(eq(schema.chamberAdvances.id, adv.id));
+        }
+      }
+    }
+
+    return row;
+  }
+
+  public async getChamberExpensesSummary(
+    firmId: string,
+    period?: { month?: string; year?: number },
+    user?: VisibilityUserContext
+  ): Promise<{
+    totalThisMonthPaisa: number;
+    totalLastMonthPaisa: number;
+    totalSalaryThisMonthPaisa: number;
+    byCategory: Array<{
+      categoryId: string;
+      categoryName: string;
+      categoryNameBn?: string | null;
+      categoryKind: string;
+      totalPaisa: number;
+      count: number;
+    }>;
+  }> {
+    const canViewSalary = !user || user.role === 'firm_owner' || user.role === 'admin' || user.permissions?.includes('chamber_expenses.salary') || user.permissions?.includes('*');
+
+    const cats = await this.listChamberExpenseCategories(firmId);
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+
+    const now = new Date();
+    const currentYear = period?.year ?? now.getFullYear();
+    const currentMonth = period?.month ?? String(now.getMonth() + 1).padStart(2, '0');
+    const currentMonthPrefix = `${currentYear}-${currentMonth}`;
+
+    const lastMonthDate = new Date(currentYear, Number(currentMonth) - 2, 1);
+    const lastMonthYear = lastMonthDate.getFullYear();
+    const lastMonthNum = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+    const lastMonthPrefix = `${lastMonthYear}-${lastMonthNum}`;
+
+    const rows = await this.listChamberExpenses(firmId, undefined, user);
+
+    let totalThisMonthPaisa = 0;
+    let totalLastMonthPaisa = 0;
+    let totalSalaryThisMonthPaisa = 0;
+    const catBuckets = new Map<string, { totalPaisa: number; count: number }>();
+
+    for (const exp of rows) {
+      if (exp.status === 'void') continue;
+      const cat = catMap.get(exp.categoryId);
+      const isSalary = cat?.kind === 'salary';
+      if (isSalary && !canViewSalary) continue;
+
+      const amt = Number(exp.amountPaisa || 0);
+
+      if (exp.expenseDate.startsWith(currentMonthPrefix)) {
+        totalThisMonthPaisa += amt;
+        if (isSalary) {
+          totalSalaryThisMonthPaisa += amt;
+        }
+
+        const bucket = catBuckets.get(exp.categoryId) || { totalPaisa: 0, count: 0 };
+        bucket.totalPaisa += amt;
+        bucket.count += 1;
+        catBuckets.set(exp.categoryId, bucket);
+      } else if (exp.expenseDate.startsWith(lastMonthPrefix)) {
+        totalLastMonthPaisa += amt;
+      }
+    }
+
+    const byCategory = cats
+      .filter((c) => canViewSalary || c.kind !== 'salary')
+      .map((c) => {
+        const bucket = catBuckets.get(c.id) || { totalPaisa: 0, count: 0 };
+        return {
+          categoryId: c.id,
+          categoryName: c.name,
+          categoryNameBn: c.nameBn,
+          categoryKind: c.kind,
+          totalPaisa: bucket.totalPaisa,
+          count: bucket.count,
+        };
+      })
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.totalPaisa - a.totalPaisa);
+
+    return {
+      totalThisMonthPaisa,
+      totalLastMonthPaisa,
+      totalSalaryThisMonthPaisa,
+      byCategory,
+    };
+  }
+
+  public async listChamberAdvances(
+    firmId: string,
+    filter?: { givenToUserId?: string; status?: string }
+  ): Promise<Array<schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number }>> {
+    const conditions = [
+      eq(schema.chamberAdvances.firmId, firmId),
+      isNull(schema.chamberAdvances.deletedAt),
+    ];
+    if (filter?.givenToUserId) conditions.push(eq(schema.chamberAdvances.givenToUserId, filter.givenToUserId));
+    if (filter?.status) conditions.push(eq(schema.chamberAdvances.status, filter.status as any));
+
+    const rows = await this.db
+      .select()
+      .from(schema.chamberAdvances)
+      .where(and(...conditions))
+      .orderBy(desc(schema.chamberAdvances.givenDate), desc(schema.chamberAdvances.createdAt));
+
+    const result = [];
+    for (const a of rows) {
+      const settlements = await this.db
+        .select({ total: sql<string>`COALESCE(SUM(${schema.chamberAdvanceSettlements.amountPaisa}), 0)` })
+        .from(schema.chamberAdvanceSettlements)
+        .where(
+          and(
+            eq(schema.chamberAdvanceSettlements.advanceId, a.id),
+            eq(schema.chamberAdvanceSettlements.firmId, firmId),
+            isNull(schema.chamberAdvanceSettlements.deletedAt)
+          )
+        );
+      const settledAmountPaisa = Number(settlements[0]?.total || 0);
+      const remainingAmountPaisa = Math.max(0, Number(a.amountPaisa) - settledAmountPaisa);
+
+      result.push({
+        ...a,
+        settledAmountPaisa,
+        remainingAmountPaisa,
+      });
+    }
+    return result;
+  }
+
+  public async getChamberAdvanceById(
+    firmId: string,
+    id: string
+  ): Promise<(schema.ChamberAdvance & { settledAmountPaisa: number; remainingAmountPaisa: number; settlements: schema.ChamberAdvanceSettlement[] }) | null> {
+    const [adv] = await this.db
+      .select()
+      .from(schema.chamberAdvances)
+      .where(
+        and(
+          eq(schema.chamberAdvances.id, id),
+          eq(schema.chamberAdvances.firmId, firmId),
+          isNull(schema.chamberAdvances.deletedAt)
+        )
+      );
+    if (!adv) return null;
+
+    const settlements = await this.db
+      .select()
+      .from(schema.chamberAdvanceSettlements)
+      .where(
+        and(
+          eq(schema.chamberAdvanceSettlements.advanceId, id),
+          eq(schema.chamberAdvanceSettlements.firmId, firmId),
+          isNull(schema.chamberAdvanceSettlements.deletedAt)
+        )
+      )
+      .orderBy(desc(schema.chamberAdvanceSettlements.settledDate));
+
+    const settledAmountPaisa = settlements.reduce((sum, s) => sum + Number(s.amountPaisa || 0), 0);
+    const remainingAmountPaisa = Math.max(0, Number(adv.amountPaisa) - settledAmountPaisa);
+
+    return {
+      ...adv,
+      settledAmountPaisa,
+      remainingAmountPaisa,
+      settlements,
+    };
+  }
+
+  public async createChamberAdvance(
+    firmId: string,
+    data: schema.NewChamberAdvance
+  ): Promise<schema.ChamberAdvance> {
+    const [row] = await this.db
+      .insert(schema.chamberAdvances)
+      .values({
+        ...data,
+        id: data.id || `ch-adv-${crypto.randomUUID()}`,
+        firmId,
+        status: 'open',
+      })
+      .returning();
+    return row;
+  }
+
+  public async voidChamberAdvance(
+    firmId: string,
+    id: string,
+    voidReason: string,
+    userId: string
+  ): Promise<schema.ChamberAdvance> {
+    const settlements = await this.db
+      .select()
+      .from(schema.chamberAdvanceSettlements)
+      .where(
+        and(
+          eq(schema.chamberAdvanceSettlements.advanceId, id),
+          eq(schema.chamberAdvanceSettlements.firmId, firmId),
+          isNull(schema.chamberAdvanceSettlements.deletedAt)
+        )
+      );
+    if (settlements.length > 0) {
+      throw new Error('Cannot void advance with existing settlements. Settle by refund or void linked expenses first.');
+    }
+
+    const [row] = await this.db
+      .update(schema.chamberAdvances)
+      .set({
+        status: 'void',
+        voidReason,
+        voidedBy: userId,
+        voidedAt: new Date(),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.chamberAdvances.id, id), eq(schema.chamberAdvances.firmId, firmId)))
+      .returning();
+    return row;
+  }
+
+  public async createChamberAdvanceSettlement(
+    firmId: string,
+    advanceId: string,
+    data: schema.NewChamberAdvanceSettlement
+  ): Promise<schema.ChamberAdvanceSettlement> {
+    const [adv] = await this.db
+      .select()
+      .from(schema.chamberAdvances)
+      .where(
+        and(
+          eq(schema.chamberAdvances.id, advanceId),
+          eq(schema.chamberAdvances.firmId, firmId),
+          isNull(schema.chamberAdvances.deletedAt)
+        )
+      );
+    if (!adv) throw new Error(`Advance not found: ${advanceId}`);
+    if (adv.status === 'void') throw new Error('Cannot settle a voided advance');
+
+    const settlements = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(${schema.chamberAdvanceSettlements.amountPaisa}), 0)` })
+      .from(schema.chamberAdvanceSettlements)
+      .where(
+        and(
+          eq(schema.chamberAdvanceSettlements.advanceId, advanceId),
+          eq(schema.chamberAdvanceSettlements.firmId, firmId),
+          isNull(schema.chamberAdvanceSettlements.deletedAt)
+        )
+      );
+    const currentSettled = Number(settlements[0]?.total || 0);
+    const remaining = Number(adv.amountPaisa) - currentSettled;
+
+    if (Number(data.amountPaisa) > remaining) {
+      throw new Error(`Settlement amount (${Number(data.amountPaisa)}) exceeds remaining balance (${remaining})`);
+    }
+
+    const [created] = await this.db
+      .insert(schema.chamberAdvanceSettlements)
+      .values({
+        ...data,
+        id: data.id || `ch-set-${crypto.randomUUID()}`,
+        firmId,
+        advanceId,
+      })
+      .returning();
+
+    if (currentSettled + Number(data.amountPaisa) >= Number(adv.amountPaisa)) {
+      await this.db
+        .update(schema.chamberAdvances)
+        .set({ status: 'settled', updatedAt: new Date() })
+        .where(eq(schema.chamberAdvances.id, advanceId));
+    }
+
+    return created;
+  }
+
+  public async listChamberAdvanceSettlements(
+    firmId: string,
+    advanceId: string
+  ): Promise<schema.ChamberAdvanceSettlement[]> {
+    return this.db
+      .select()
+      .from(schema.chamberAdvanceSettlements)
+      .where(
+        and(
+          eq(schema.chamberAdvanceSettlements.advanceId, advanceId),
+          eq(schema.chamberAdvanceSettlements.firmId, firmId),
+          isNull(schema.chamberAdvanceSettlements.deletedAt)
+        )
+      )
+      .orderBy(desc(schema.chamberAdvanceSettlements.settledDate));
+  }
   public async getPlatformAdminByEmail(email: string): Promise<schema.PlatformAdmin | null> {
     const rows = await this.db
       .select()

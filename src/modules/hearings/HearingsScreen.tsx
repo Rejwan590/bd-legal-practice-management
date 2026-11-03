@@ -6,6 +6,8 @@ import { getRepositories } from '../../data/repositories';
 import { CaseRecord, HearingRecord, HearingStatus, UserRecord } from '../../data/types';
 import { getDhakaDateString, isSameDhakaDay, toDateInputValue } from '../../utils/dateUtils';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
+import { ColumnVisibilityMenu, useColumnVisibility, ColumnOption } from '../../components/responsive/ColumnVisibilityMenu';
 import { HearingDateHistoryModal } from './HearingDateHistoryModal';
 import { RescheduleHearingModal } from './RescheduleHearingModal';
 import { AdjournHearingModal } from './AdjournHearingModal';
@@ -64,6 +66,18 @@ export const HearingsScreen: React.FC = () => {
 
   // Single-hearing Modals state
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const HEARING_COLUMNS: ColumnOption[] = [
+    { id: 'select', label: t('hearings.colSelect', 'Select'), isAlwaysVisible: true },
+    { id: 'case', label: t('hearings.colCase', 'Case / Matter'), isAlwaysVisible: true },
+    { id: 'purpose', label: t('hearings.colPurpose', 'Step / Purpose') },
+    { id: 'date', label: t('hearings.colDate', 'Date & Time') },
+    { id: 'status', label: t('hearings.colStatus', 'Status'), defaultHiddenOnTablet: true },
+    { id: 'actions', label: t('hearings.colActions', 'Actions'), isAlwaysVisible: true },
+  ];
+  const [visibleColumns, setVisibleColumns] = useColumnVisibility('hearings', HEARING_COLUMNS);
   const [editingHearing, setEditingHearing] = useState<HearingRecord | null>(null);
   const [historyHearing, setHistoryHearing] = useState<HearingRecord | null>(null);
   const [rescheduleHearing, setRescheduleHearing] = useState<HearingRecord | null>(null);
@@ -690,8 +704,9 @@ export const HearingsScreen: React.FC = () => {
             {t('common.loading')}
           </div>
         ) : (
+          <>
           <ResponsiveTable<HearingRecord>
-            data={hearings}
+            data={hearings.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
             keyExtractor={(h) => h.id}
             emptyState={
               <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
@@ -715,7 +730,7 @@ export const HearingsScreen: React.FC = () => {
                 ),
                 className: 'w-10 text-center',
                 headerClassName: 'w-10 text-center',
-                accessor: (h) => (
+                accessor: (h: HearingRecord) => (
                   <input
                     type="checkbox"
                     checked={selectedIds.has(h.id)}
@@ -729,8 +744,9 @@ export const HearingsScreen: React.FC = () => {
                 ),
               },
               {
+                id: 'case',
                 header: 'Case / Matter',
-                accessor: (h) => {
+                accessor: (h: HearingRecord) => {
                   const caseRec = casesMap[h.caseId];
                   return (
                     <div className="space-y-1">
@@ -758,8 +774,9 @@ export const HearingsScreen: React.FC = () => {
                 },
               },
               {
+                id: 'purpose',
                 header: 'Step / Purpose',
-                accessor: (h) => (
+                accessor: (h: HearingRecord) => (
                   <div className="space-y-1 max-w-md">
                     <div className="flex items-center gap-2 flex-wrap">
                       <EntityLink
@@ -794,8 +811,9 @@ export const HearingsScreen: React.FC = () => {
                 ),
               },
               {
+                id: 'date',
                 header: 'Date & Time',
-                accessor: (h) => (
+                accessor: (h: HearingRecord) => (
                   <div>
                     <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
                       <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -808,8 +826,9 @@ export const HearingsScreen: React.FC = () => {
                 ),
               },
               {
+                id: 'status',
                 header: 'Status',
-                accessor: (h) => (
+                accessor: (h: HearingRecord) => (
                   <span
                     className={`inline-block text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
                       h.status === 'scheduled'
@@ -826,10 +845,11 @@ export const HearingsScreen: React.FC = () => {
                 ),
               },
               {
+                id: 'actions',
                 header: 'Actions',
                 className: 'text-right',
                 headerClassName: 'text-right',
-                accessor: (h) => (
+                accessor: (h: HearingRecord) => (
                   <div className="flex items-center justify-end gap-1.5 flex-wrap">
                     <button
                       onClick={() => setHistoryHearing(h)}
@@ -896,7 +916,7 @@ export const HearingsScreen: React.FC = () => {
                   </div>
                 ),
               },
-            ]}
+            ].filter((col: any) => !col.id || visibleColumns.includes(col.id))}
             renderMobileCard={(h) => {
               const caseRec = casesMap[h.caseId];
               const isSelected = selectedIds.has(h.id);
@@ -1045,6 +1065,21 @@ export const HearingsScreen: React.FC = () => {
               );
             }}
           />
+          {hearings.length > 0 && (
+            <div className="mt-4">
+              <TablePagination
+                totalItems={hearings.length}
+                currentPage={currentPage}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(sz) => {
+                  setPageSize(sz);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+          )}
+          </>
         )}
       </div>
 

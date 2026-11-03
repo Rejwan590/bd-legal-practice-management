@@ -52,6 +52,7 @@ interface AuthContextType {
   switchUser: (userId: string) => Promise<void>;
   refreshState: () => Promise<void>;
   isLoading: boolean;
+  isRestMode: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -301,6 +302,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchUser,
         refreshState,
         isLoading,
+        isRestMode,
       }}
     >
       {children}

@@ -29,12 +29,11 @@ const isDemoLoginEnabled =
   typeof import.meta !== 'undefined' &&
   import.meta.env?.VITE_ENABLE_DEMO_LOGIN === 'true';
 
-// Show demo switcher only in Mock mode when VITE_ENABLE_DEMO_LOGIN is explicitly true
-const showDemoSwitcher = !isRestMode && isDemoLoginEnabled;
-
 export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { currentUser, usersList, switchUser, logout } = useAuth();
+  const { currentUser, usersList, switchUser, logout, isRestMode } = useAuth();
+
+  const showDemoSwitcher = !isRestMode;
 
   // Password change state for REST profile view
   const [showPasswordForm, setShowPasswordForm] = useState(false);

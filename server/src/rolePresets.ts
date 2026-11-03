@@ -117,6 +117,10 @@ export const ALL_PERMISSION_KEYS = [
   'users.manage',
   'settings.manage',
   'data.export',
+  'chamber_expenses.view',
+  'chamber_expenses.record',
+  'chamber_expenses.manage',
+  'chamber_expenses.salary',
 ] as const;
 
 export const VALID_JOB_TYPES: JobType[] = [

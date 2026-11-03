@@ -71,6 +71,13 @@
       "when": 1791300000000,
       "tag": "0009_accounts_per_case",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793697512009,
+      "tag": "0010_chamber_expenses",
+      "breakpoints": true
     }
   ]
 }

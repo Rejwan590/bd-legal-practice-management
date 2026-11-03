@@ -4,6 +4,7 @@ import { localStore } from '../mockStore';
 import {
   AccountsSummary,
   ClientBalanceOverview,
+  CaseBalanceOverview,
   Expense,
   ExpenseCategory,
   FeeAgreement,
@@ -170,6 +171,94 @@ export class MockAccountsRepository implements IAccountsRepository {
         outstandingPaisa,
       };
     });
+  }
+
+  async getCaseBalances(context: SecurityContext): Promise<CaseBalanceOverview[]> {
+    if (!can('accounts.view', context.currentUser)) {
+      throw new Error('Permission denied: accounts.view required');
+    }
+
+    const { currentUser } = context;
+    const store = localStore.getData();
+    const visibleCaseIds = getVisibleCaseIdsForContext(context);
+
+    const clients = (store.clients || []).filter(
+      (c) => c.firmId === currentUser.firmId && c.deletedAt === null
+    );
+
+    const result: CaseBalanceOverview[] = [];
+
+    for (const c of clients) {
+      const agreements = (store.feeAgreements || []).filter(
+        (a) => a.firmId === currentUser.firmId && a.deletedAt === null && a.status !== 'void' && a.clientId === c.id
+      );
+      const payments = (store.feePayments || []).filter(
+        (p) => p.firmId === currentUser.firmId && p.deletedAt === null && p.status === 'posted' && p.clientId === c.id
+      );
+      const clientExpenses = (store.expenses || []).filter(
+        (e) => e.firmId === currentUser.firmId && e.deletedAt === null && e.status === 'posted' && e.clientId === c.id
+      );
+
+      const caseIds = new Set<string | null>();
+      for (const a of agreements) caseIds.add(a.caseId ?? null);
+      for (const p of payments) caseIds.add(p.caseId ?? null);
+      for (const e of clientExpenses) caseIds.add(e.caseId ?? null);
+
+      for (const cid of caseIds) {
+        if (cid === null) {
+          const generalAgreements = agreements.filter((a) => !a.caseId);
+          const generalPayments = payments.filter((p) => !p.caseId);
+          const totalAgreedPaisa = generalAgreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+          const totalPaidPaisa = generalPayments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: null,
+            caseNumber: null,
+            caseTitle: 'General / no case',
+            fileSerial: null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        } else {
+          if (!visibleCaseIds.has(cid)) continue;
+          const caseRec = (store.cases || []).find((k) => k.id === cid && k.deletedAt === null);
+          if (!caseRec) continue;
+          const caseAgreements = agreements.filter((a) => a.caseId === cid);
+          const casePayments = payments.filter((p) => p.caseId === cid);
+          const totalAgreedPaisa = caseAgreements.reduce((sum, a) => sum + Number(a.agreedAmountPaisa || 0), 0);
+          const totalPaidPaisa = casePayments.reduce((sum, p) => sum + Number(p.amountPaisa || 0), 0);
+          const balancePaisa = totalAgreedPaisa - totalPaidPaisa;
+          const isCredit = balancePaisa < 0;
+          result.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientNameBn: c.nameBn,
+            clientPhone: c.phone,
+            caseId: caseRec.id,
+            caseNumber: caseRec.caseNumber,
+            caseTitle: caseRec.description || caseRec.matterType || null,
+            fileSerial: caseRec.fileSerial || null,
+            totalAgreedPaisa,
+            totalPaidPaisa,
+            balancePaisa,
+            isCredit,
+            creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
+            outstandingPaisa: isCredit ? 0 : balancePaisa,
+          });
+        }
+      }
+    }
+
+    return result;
   }
 
   async listAgreements(

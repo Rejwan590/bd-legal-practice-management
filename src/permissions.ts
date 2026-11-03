@@ -26,7 +26,11 @@ export type PermissionKey =
   | 'accounts.view'
   | 'accounts.manage'
   | 'expenses.record'
-  | 'accounts.export';
+  | 'accounts.export'
+  | 'chamber_expenses.view'
+  | 'chamber_expenses.record'
+  | 'chamber_expenses.manage'
+  | 'chamber_expenses.salary';
 
 export type UserRole = 'Owner' | 'Staff';
 
@@ -68,6 +72,10 @@ export const ALL_PERMISSIONS: PermissionKey[] = [
   'accounts.manage',
   'expenses.record',
   'accounts.export',
+  'chamber_expenses.view',
+  'chamber_expenses.record',
+  'chamber_expenses.manage',
+  'chamber_expenses.salary',
 ];
 
 export const DEFAULT_STAFF_PERMISSIONS: PermissionKey[] = [

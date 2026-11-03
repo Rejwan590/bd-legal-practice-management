@@ -35,6 +35,7 @@ import { FileCheckInModal } from './FileCheckInModal';
 import { FileCourtDispatchModal } from './FileCourtDispatchModal';
 import { FileHistoryModal } from './FileHistoryModal';
 import { ResponsiveTable, ColumnDef } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { EntityLink } from '../../components/EntityLink';
 
@@ -54,6 +55,8 @@ export const FilesScreen: React.FC = () => {
 
   // Modals state
   const [formModalOpen, setFormModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [editingFile, setEditingFile] = useState<PhysicalFileRecord | null>(null);
 
   const [checkOutModalFile, setCheckOutModalFile] = useState<PhysicalFileRecord | null>(null);
@@ -147,6 +150,10 @@ export const FilesScreen: React.FC = () => {
   }, [files, nowMs]);
 
   // Filtering
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, shelfFilter]);
+
   const filteredFiles = useMemo(() => {
     return files.filter((f) => {
       // Overdue filter
@@ -935,13 +942,29 @@ export const FilesScreen: React.FC = () => {
           {t('common.loading')}
         </div>
       ) : (
+        <>
         <ResponsiveTable<PhysicalFileRecord>
-          data={filteredFiles}
+          data={filteredFiles.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
           keyExtractor={(file) => file.id}
           columns={columns}
           renderMobileCard={renderMobileCard}
           emptyState={emptyState}
         />
+        {filteredFiles.length > 0 && (
+          <div className="mt-4">
+            <TablePagination
+              totalItems={filteredFiles.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz: number) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        )}
+        </>
       )}
 
       {/* File Form Modal (Register / Edit) */}

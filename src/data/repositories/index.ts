@@ -14,6 +14,7 @@ import {
   ITaskRepository,
   IUserRepository,
   IAccountsRepository,
+  IChamberExpenseRepository,
 } from '../interfaces';
 import { MockAppointmentRepository } from './appointment';
 import { MockAuditLogRepository } from './audit';
@@ -31,6 +32,7 @@ import { MockSearchRepository } from './search';
 import { MockTaskRepository } from './task';
 import { MockUserRepository } from './user';
 import { MockAccountsRepository } from './accounts';
+import { MockChamberExpenseRepository } from './chamberExpenses';
 import {
   RestAuditLogRepository,
   RestFirmRepository,
@@ -41,6 +43,7 @@ import {
   RestHearingRepository,
   RestTaskRepository,
   RestAccountsRepository,
+  RestChamberExpenseRepository,
   RestDashboardRepository,
   RestCalendarRepository,
   RestSearchRepository,
@@ -64,6 +67,8 @@ export {
   MockSearchRepository,
   MockTaskRepository,
   MockUserRepository,
+  MockAccountsRepository,
+  MockChamberExpenseRepository,
   syncCaseNextHearing,
   RestAuditLogRepository,
   RestFirmRepository,
@@ -74,6 +79,7 @@ export {
   RestHearingRepository,
   RestTaskRepository,
   RestAccountsRepository,
+  RestChamberExpenseRepository,
   RestDashboardRepository,
   RestCalendarRepository,
   RestSearchRepository,
@@ -96,6 +102,7 @@ export interface Repositories {
   dashboard: IDashboardRepository;
   backup: IBackupRepository;
   accounts: IAccountsRepository;
+  chamberExpenses: IChamberExpenseRepository;
 }
 
 const isRestMode =
@@ -148,6 +155,9 @@ const backupRepo = new MockBackupRepository(auditLogRepo);
 const accountsRepo: IAccountsRepository = isRestMode
   ? new RestAccountsRepository()
   : new MockAccountsRepository(mockAuditLogRepo);
+const chamberExpensesRepo: IChamberExpenseRepository = isRestMode
+  ? new RestChamberExpenseRepository()
+  : new MockChamberExpenseRepository(mockAuditLogRepo);
 
 export const repositories: Repositories = {
   auditLog: auditLogRepo,
@@ -165,6 +175,7 @@ export const repositories: Repositories = {
   dashboard: dashboardRepo,
   backup: backupRepo,
   accounts: accountsRepo,
+  chamberExpenses: chamberExpensesRepo,
 };
 
 export function getRepositories(): Repositories {

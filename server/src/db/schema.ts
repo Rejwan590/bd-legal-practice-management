@@ -625,4 +625,105 @@ export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
 export type Expense = typeof expenses.$inferSelect;
 export type NewExpense = typeof expenses.$inferInsert;
 
+// Chamber Operational Expense Categories Table
+export const chamberExpenseCategories = pgTable('chamber_expense_categories', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  name: text('name').notNull(),
+  nameBn: text('name_bn'),
+  kind: text('kind').$type<'general' | 'salary'>().default('general').notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_chamber_expense_categories_firm_id').on(table.firmId),
+]);
+
+// Chamber Advances Table
+export const chamberAdvances = pgTable('chamber_advances', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  givenTo: text('given_to').notNull(),
+  givenToUserId: text('given_to_user_id').references(() => users.id),
+  amountPaisa: bigint('amount_paisa', { mode: 'number' }).notNull(),
+  givenDate: text('given_date').notNull(),
+  purpose: text('purpose').notNull(),
+  paymentMethod: text('payment_method').$type<'cash' | 'bank' | 'mobile_banking' | 'cheque' | 'other'>().notNull(),
+  status: text('status').$type<'open' | 'settled' | 'void'>().default('open').notNull(),
+  voidReason: text('void_reason'),
+  voidedBy: text('voided_by'),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_chamber_advances_firm_id').on(table.firmId),
+  index('idx_chamber_advances_status').on(table.status),
+  index('idx_chamber_advances_given_date').on(table.givenDate),
+]);
+
+// Chamber Expenses Table
+export const chamberExpenses = pgTable('chamber_expenses', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  categoryId: text('category_id').references(() => chamberExpenseCategories.id).notNull(),
+  description: text('description').notNull(),
+  amountPaisa: bigint('amount_paisa', { mode: 'number' }).notNull(),
+  expenseDate: text('expense_date').notNull(),
+  paidTo: text('paid_to').notNull(),
+  paymentMethod: text('payment_method').$type<'cash' | 'bank' | 'mobile_banking' | 'cheque' | 'other'>().notNull(),
+  receiptRef: text('receipt_ref'),
+  notes: text('notes'),
+  advanceId: text('advance_id').references(() => chamberAdvances.id),
+  status: text('status').$type<'posted' | 'void'>().default('posted').notNull(),
+  voidReason: text('void_reason'),
+  voidedBy: text('voided_by'),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_chamber_expenses_firm_id').on(table.firmId),
+  index('idx_chamber_expenses_expense_date').on(table.expenseDate),
+  index('idx_chamber_expenses_category_id').on(table.categoryId),
+  index('idx_chamber_expenses_status').on(table.status),
+]);
+
+// Chamber Advance Settlements Table
+export const chamberAdvanceSettlements = pgTable('chamber_advance_settlements', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  advanceId: text('advance_id').references(() => chamberAdvances.id).notNull(),
+  type: text('type').$type<'expense' | 'refund'>().notNull(),
+  expenseId: text('expense_id').references(() => chamberExpenses.id),
+  amountPaisa: bigint('amount_paisa', { mode: 'number' }).notNull(),
+  settledDate: text('settled_date').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_chamber_advance_settlements_firm_id').on(table.firmId),
+  index('idx_chamber_advance_settlements_advance_id').on(table.advanceId),
+]);
+
+export type ChamberExpenseCategory = typeof chamberExpenseCategories.$inferSelect;
+export type NewChamberExpenseCategory = typeof chamberExpenseCategories.$inferInsert;
+export type ChamberExpense = typeof chamberExpenses.$inferSelect;
+export type NewChamberExpense = typeof chamberExpenses.$inferInsert;
+export type ChamberAdvance = typeof chamberAdvances.$inferSelect;
+export type NewChamberAdvance = typeof chamberAdvances.$inferInsert;
+export type ChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferSelect;
+export type NewChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferInsert;
+
+
 

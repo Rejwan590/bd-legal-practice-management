@@ -8,6 +8,7 @@ import { TaskFormModal } from './TaskFormModal';
 import { TaskReassignModal } from './TaskReassignModal';
 import { TaskCompleteModal } from './TaskCompleteModal';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { EntityLink } from '../../components/EntityLink';
 import { isDhakaMidnight } from '../../utils/dateUtils';
@@ -51,6 +52,8 @@ export const TasksScreen: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<'all' | TaskPriority>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | TaskStatus>('all');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   // Modals state
   const [formModalOpen, setFormModalOpen] = useState(false);
@@ -181,6 +184,10 @@ export const TasksScreen: React.FC = () => {
 
   // Filter tasks client-side for immediate responsive search and status/priority
   const now = Date.now();
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, priorityFilter, assigneeFilter]);
+
   const filteredTasks = tasks.filter((task) => {
     // Search filter
     if (searchQuery.trim()) {
@@ -421,8 +428,9 @@ export const TasksScreen: React.FC = () => {
           {t('common.loading')}
         </div>
       ) : (
+        <>
         <ResponsiveTable<TaskRecord>
-          data={filteredTasks}
+          data={filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
           keyExtractor={(task) => task.id}
           emptyState={
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
@@ -897,6 +905,21 @@ export const TasksScreen: React.FC = () => {
             );
           }}
         />
+        {filteredTasks.length > 0 && (
+          <div className="mt-4">
+            <TablePagination
+              totalItems={filteredTasks.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz: number) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        )}
+      </>
       )}
 
       {/* Task Form Modal */}

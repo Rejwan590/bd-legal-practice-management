@@ -22,6 +22,10 @@ import {
   FeePayment,
   ExpenseCategory,
   Expense,
+  ChamberExpenseCategory,
+  ChamberAdvance,
+  ChamberAdvanceSettlement,
+  ChamberExpense,
 } from './types';
 import { generateSyntheticDataset } from './syntheticData';
 
@@ -780,6 +784,10 @@ export interface AppStoreData {
   feePayments?: FeePayment[];
   expenseCategories?: ExpenseCategory[];
   expenses?: Expense[];
+  chamberExpenseCategories?: ChamberExpenseCategory[];
+  chamberAdvances?: ChamberAdvance[];
+  chamberExpenses?: ChamberExpense[];
+  chamberAdvanceSettlements?: ChamberAdvanceSettlement[];
   customCollections: Record<string, unknown[]>;
 }
 
@@ -820,6 +828,7 @@ class LocalStoreManager {
           jobType: u.jobType || (u.role === 'Owner' ? 'lawyer_senior' : 'other'),
           jobTitleLabel: u.jobTitleLabel ?? null,
           reportsToUserId: u.reportsToUserId ?? null,
+          permissions: u.role === 'Owner' ? ALL_PERMISSIONS : (u.permissions || []),
         }));
       }
       if (!parsed.clients || !Array.isArray(parsed.clients)) {
@@ -872,6 +881,27 @@ class LocalStoreManager {
       }
       if (!parsed.expenses || !Array.isArray(parsed.expenses)) {
         parsed.expenses = [];
+      }
+      if (!parsed.chamberExpenseCategories || !Array.isArray(parsed.chamberExpenseCategories)) {
+        parsed.chamberExpenseCategories = [
+          { id: 'ch-cat-1', firmId: DEFAULT_FIRM_ID, name: 'Food and refreshments', nameBn: 'খাবার ও আপ্যায়ন', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-2', firmId: DEFAULT_FIRM_ID, name: 'Office supplies', nameBn: 'অফিস স্টেশনারি ও সামগ্রী', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-3', firmId: DEFAULT_FIRM_ID, name: 'Utilities (electricity, internet, water)', nameBn: 'ইউটিলিটি - বিদ্যুৎ, ইন্টারনেট, পানি', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-4', firmId: DEFAULT_FIRM_ID, name: 'Rent', nameBn: 'চেম্বার ভাড়া', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-5', firmId: DEFAULT_FIRM_ID, name: 'Staff salary', nameBn: 'কর্মচারীদের বেতন', kind: 'salary', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-6', firmId: DEFAULT_FIRM_ID, name: 'Payments for specific work', nameBn: 'নির্দিষ্ট কাজের পারিশ্রমিক', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-7', firmId: DEFAULT_FIRM_ID, name: 'Transportation', nameBn: 'যাতায়াত ও পরিবহন', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+          { id: 'ch-cat-8', firmId: DEFAULT_FIRM_ID, name: 'Miscellaneous', nameBn: 'বিবিধ খরচ', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        ];
+      }
+      if (!parsed.chamberAdvances || !Array.isArray(parsed.chamberAdvances)) {
+        parsed.chamberAdvances = [];
+      }
+      if (!parsed.chamberExpenses || !Array.isArray(parsed.chamberExpenses)) {
+        parsed.chamberExpenses = [];
+      }
+      if (!parsed.chamberAdvanceSettlements || !Array.isArray(parsed.chamberAdvanceSettlements)) {
+        parsed.chamberAdvanceSettlements = [];
       }
 
       // Ensure synthetic dataset is automatically merged for existing browser sessions
@@ -1016,6 +1046,19 @@ class LocalStoreManager {
           updatedBy: 'user-owner-001',
         },
       ],
+      chamberExpenseCategories: [
+        { id: 'ch-cat-1', firmId: DEFAULT_FIRM_ID, name: 'Food and refreshments', nameBn: 'খাবার ও আপ্যায়ন', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-2', firmId: DEFAULT_FIRM_ID, name: 'Office supplies', nameBn: 'অফিস স্টেশনারি ও সামগ্রী', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-3', firmId: DEFAULT_FIRM_ID, name: 'Utilities (electricity, internet, water)', nameBn: 'ইউটিলিটি - বিদ্যুৎ, ইন্টারনেট, পানি', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-4', firmId: DEFAULT_FIRM_ID, name: 'Rent', nameBn: 'চেম্বার ভাড়া', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-5', firmId: DEFAULT_FIRM_ID, name: 'Staff salary', nameBn: 'কর্মচারীদের বেতন', kind: 'salary', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-6', firmId: DEFAULT_FIRM_ID, name: 'Payments for specific work', nameBn: 'নির্দিষ্ট কাজের পারিশ্রমিক', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-7', firmId: DEFAULT_FIRM_ID, name: 'Transportation', nameBn: 'যাতায়াত ও পরিবহন', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+        { id: 'ch-cat-8', firmId: DEFAULT_FIRM_ID, name: 'Miscellaneous', nameBn: 'বিবিধ খরচ', kind: 'general', isDefault: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', deletedAt: null, createdBy: 'system', updatedBy: 'system' },
+      ],
+      chamberAdvances: [],
+      chamberExpenses: [],
+      chamberAdvanceSettlements: [],
       auditLogs: [
         {
           id: 'audit-init-001',

@@ -2181,3 +2181,43 @@ Clients, Cases, and Appointments modules completed and fully verified across ser
   - `npm run lint`: PASS (0 errors across main app and admin-app)
   - `npm run build`: PASS (Vite production bundle generated with 0 errors)
   - `npm test --prefix server`: PASS (626/626 passed across 12 suites)
+
+---
+
+## Chamber Expenses, Navigation Cleanup, User Switch Cleanup, Responsive Tables & Case-Level Billing
+- **Status**: [x] COMPLETED & VERIFIED
+- **Branch**: `feature/chamber-expenses-nav-tables-billing`
+- **Scope of Work**:
+  1. **Chamber Expenses (Change C)**:
+     - Drizzle schema: Added `chamberExpenseCategories`, `chamberAdvances`, `chamberExpenses`, `chamberAdvanceSettlements` tables in `server/src/db/schema.ts`.
+     - Migration: Generated `server/drizzle/0010_chamber_expenses.sql` and updated `server/drizzle/meta/_journal.json`.
+     - Dual Database Parity: Implemented all chamber expense methods in `IDatabase`, `MemoryDatabase` (with transactional snapshot & rollback), and `PostgresDatabase` in `server/src/db/client.ts`. Auto-seeds 8 default categories on first access.
+     - Backend API: Mounted `/api/v1/chamber-expenses` router in `server/src/app.ts` (`server/src/routes/chamberExpenses.ts`) supporting 12 endpoints: categories CRUD, expenses CRUD with voiding & audit trail, staff advances with partial/full settlements, summary aggregations, and permission checks (`chamber_expenses.view`, `chamber_expenses.record`, `chamber_expenses.manage`, `chamber_expenses.salary`).
+     - Data Layer Dual Parity: Implemented `IChamberExpensesRepository` in `src/data/interfaces.ts`, `src/data/repositories/chamberExpenses.ts` (mock repository with `localStore.mutate`), and `src/data/repositories/rest/restChamberExpenses.ts` (REST repository with `restFetch`).
+     - Frontend UI: Built `ChamberExpensesCard` and `ChamberExpensesModal` in `src/modules/dashboard/chamberExpenses/` and mounted to `DashboardScreen.tsx`.
+     - Role Presets & Permissions: Added `chamber_expenses.*` permissions in `src/permissions.ts`, `server/src/rolePresets.ts`, and `PermissionGroupCollapsible.tsx`.
+  2. **Navigation Cleanup (Change A)**:
+     - `src/modules/foundation/AppShell.tsx`: Removed duplicate `search` item from sidebar navigation links while preserving `'search'` in `ActiveTab` type, `NavigationContext.tsx`, `App.tsx`, and `e2e/responsive.spec.ts`.
+     - `src/modules/dashboard/DashboardScreen.tsx`: Removed duplicate "Quick Action Shortcuts" bar from top of dashboard while preserving all modal definitions and dashboard banner search bar.
+  3. **User Switch Cleanup (Change B)**:
+     - `src/modules/foundation/AppShell.tsx`: Removed duplicate "Switch user" links from desktop sidebar and mobile drawer footers.
+     - `src/modules/foundation/AuthContext.tsx`: Exposed `isRestMode: boolean`.
+     - `src/modules/foundation/UserSwitchModal.tsx`: Guarded demo user switcher with `!isRestMode`. In REST mode, strictly displays current account details and Logout button without demo user switching.
+  4. **Responsive Tables (Change D)**:
+     - Reusable components: Built `src/components/responsive/TablePagination.tsx` (page sizes 25/50/100, minimum touch target >= 44px on mobile) and `src/components/responsive/ColumnVisibilityMenu.tsx` (local storage persistence, default tablet column hiding, reset to default).
+     - Integrated pagination and sticky header support across `CasesScreen.tsx`, `ClientsScreen.tsx`, `FilesScreen.tsx`, `HearingsScreen.tsx`, `TasksScreen.tsx`, and `BillingScreen.tsx`.
+     - Added optional `id?: string;` to `ColumnDef<T>` in `src/components/responsive/ResponsiveTable.tsx`.
+  5. **Case-Level Billing List (Change E)**:
+     - Backend: Added `getCaseBalancesOverview` to `server/src/db/client.ts` (`IDatabase`, `MemoryDatabase`, `PostgresDatabase`) and added `GET /api/v1/accounts/case-balances` endpoint in `server/src/routes/accounts.ts`.
+     - Data layer: Added `CaseBalanceOverview` to `src/data/types.ts` and `getCaseBalances` to `IAccountsRepository`, implemented in `src/data/repositories/accounts.ts` and `src/data/repositories/rest/restAccounts.ts`.
+     - UI: Rebuilt `src/modules/billing/BillingScreen.tsx` with "By case | By client" view toggle, Case & Client search/sorting, TablePagination, and clickable rows directing to `openCaseDossier(caseId, 'billing')` or `openClientProfile(clientId, 'billing')`.
+  6. **Bilingual i18n Parity**:
+     - Added 105 missing translation keys in both `src/locales/en.json` and `src/locales/bn.json` with 100% key parity.
+- **Verification**:
+  - `npm run lint`: PASS (0 errors across root and admin-app)
+  - `npm run build`: PASS (Vite production bundle generated cleanly)
+  - `npx tsx tests/i18nParity.test.ts`: PASS (3 passed, 0 failed, 100% key parity)
+  - `npm run test:dashboard`: PASS (25 passed, 0 failed)
+  - `npm run test:hardening`: PASS (9 passed, 0 failed)
+  - `npm test --prefix server`: PASS (654 passed across 15 suites, including 28 new tests in `chamberExpenses.test.ts`)
+  - `playwright test e2e/responsive.spec.ts`: PASS (all 163 tests passed across viewports 320px, 360px, 375px, 768px, 1024px, 1280px, 1440px, 1920px)

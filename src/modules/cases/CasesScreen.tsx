@@ -5,6 +5,8 @@ import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { CaseRecord, ClientRecord, UserRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
+import { ColumnVisibilityMenu, useColumnVisibility, ColumnOption } from '../../components/responsive/ColumnVisibilityMenu';
 import { EntityLink } from '../../components/EntityLink';
 import { ClientAvatar } from '../../components/ClientAvatar';
 import { formatCasePartyTitle } from '../../data/caseRoles';
@@ -54,6 +56,20 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
   const [scopeFilter, setScopeFilter] = useState<'all' | 'my' | 'team'>('all');
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const CASE_COLUMNS: ColumnOption[] = [
+    { id: 'fileSerial', label: t('cases.colFileSerial', 'File / Serial') },
+    { id: 'caseNumber', label: t('cases.colCaseNumber', 'Case Number'), isAlwaysVisible: true },
+    { id: 'court', label: t('cases.colCourt', 'Court') },
+    { id: 'parties', label: t('cases.colParties', 'Parties'), defaultHiddenOnTablet: true },
+    { id: 'nextHearing', label: t('cases.colNextHearing', 'Next Hearing') },
+    { id: 'assigned', label: t('cases.colAssigned', 'Assigned Lawyer'), defaultHiddenOnTablet: true },
+    { id: 'client', label: t('cases.colClient', 'Client') },
+    { id: 'actions', label: t('cases.colActions', 'Actions'), isAlwaysVisible: true },
+  ];
+  const [visibleColumns, setVisibleColumns] = useColumnVisibility('cases', CASE_COLUMNS);
   const [editingCase, setEditingCase] = useState<CaseRecord | null>(null);
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -381,6 +397,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               ),
             },
             {
+              id: 'caseNumber',
               header: 'Case Number',
               accessor: (c) => (
                 <div className="space-y-1">
@@ -429,6 +446,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               ),
             },
             {
+              id: 'court',
               header: 'Court',
               accessor: (c) => (
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 max-w-xs">
@@ -438,6 +456,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               ),
             },
             {
+              id: 'parties',
               header: 'Parties',
               accessor: (c) => (
                 <div className="space-y-1 max-w-xs">
@@ -475,6 +494,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               },
             },
             {
+              id: 'client',
               header: 'Client',
               accessor: (c) => {
                 const linkedClient = clientsMap[c.clientId];

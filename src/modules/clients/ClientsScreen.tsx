@@ -5,6 +5,8 @@ import { useNavigation } from '../foundation/NavigationContext';
 import { getRepositories } from '../../data/repositories';
 import { ClientRecord } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
+import { ColumnVisibilityMenu, useColumnVisibility, ColumnOption } from '../../components/responsive/ColumnVisibilityMenu';
 import { EntityLink } from '../../components/EntityLink';
 import { ClientAvatar } from '../../components/ClientAvatar';
 import { ClientFormModal } from './ClientFormModal';
@@ -49,6 +51,16 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const CLIENT_COLUMNS: ColumnOption[] = [
+    { id: 'client', label: t('clients.colClient', 'Client'), isAlwaysVisible: true },
+    { id: 'contact', label: t('clients.colContact', 'Phone / Email') },
+    { id: 'address', label: t('clients.colAddress', 'Address'), defaultHiddenOnTablet: true },
+    { id: 'actions', label: t('clients.colActions', 'Actions'), isAlwaysVisible: true },
+  ];
+  const [visibleColumns, setVisibleColumns] = useColumnVisibility('clients', CLIENT_COLUMNS);
   const [editingClient, setEditingClient] = useState<ClientRecord | null>(null);
 
   const repos = getRepositories();
@@ -120,6 +132,10 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
   const activeCount = clients.filter((c) => !c.archived).length;
   const archivedCount = clients.filter((c) => Boolean(c.archived)).length;
   const totalCount = clients.length;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   const displayedClients = clients.filter((c) => {
     if (statusFilter === 'active') return !c.archived;
@@ -334,14 +350,16 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
           )}
         </div>
       ) : (
+        <>
         <ResponsiveTable<ClientRecord>
-          data={displayedClients}
+          data={displayedClients.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
           keyExtractor={(client) => client.id}
           onRowClick={(client) => openClientProfile(client.id, 'cases')}
           columns={[
             {
+              id: 'client',
               header: 'Client',
-              accessor: (client) => (
+              accessor: (client: ClientRecord) => (
                 <div className="flex items-center gap-3">
                   <ClientAvatar
                     clientId={client.id}
@@ -375,8 +393,9 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               ),
             },
             {
+              id: 'contact',
               header: 'Phone / Email',
-              accessor: (client) => (
+              accessor: (client: ClientRecord) => (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
                     <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -391,8 +410,9 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               ),
             },
             {
+              id: 'address',
               header: 'Address',
-              accessor: (client) => (
+              accessor: (client: ClientRecord) => (
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 max-w-xs">
                   <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span className="line-clamp-2">{client.address || '—'}</span>
@@ -400,9 +420,10 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
               ),
             },
             {
+              id: 'actions',
               header: '',
               className: 'text-right',
-              accessor: (client) => (
+              accessor: (client: ClientRecord) => (
                 <div
                   className="flex items-center justify-end gap-1.5"
                   onClick={(e) => e.stopPropagation()}
@@ -442,7 +463,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
                 </div>
               ),
             },
-          ]}
+          ].filter((col: any) => !col.id || visibleColumns.includes(col.id))}
           renderMobileCard={(client) => (
             <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition space-y-3">
               <div className="flex items-start justify-between gap-2">
@@ -504,6 +525,21 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({ initialSelectedCli
             </div>
           )}
         />
+        {displayedClients.length > 0 && (
+          <div className="mt-4">
+            <TablePagination
+              totalItems={displayedClients.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        )}
+        </>
       )}
 
       {/* Client Form Modal */}

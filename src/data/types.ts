@@ -552,6 +552,94 @@ export interface ClientBalanceOverview {
   outstandingPaisa: number;
 }
 
+export interface CaseBalanceOverview {
+  clientId: string;
+  clientName: string;
+  clientNameBn?: string | null;
+  clientPhone: string;
+  caseId: string | null;
+  caseNumber: string | null;
+  caseTitle: string | null;
+  fileSerial?: string | null;
+  totalAgreedPaisa: number;
+  totalPaidPaisa: number;
+  balancePaisa: number;
+  isCredit: boolean;
+  creditPaisa: number;
+  outstandingPaisa: number;
+}
+
+export type ChamberExpenseKind = 'general' | 'salary';
+export type ChamberPaymentMethod = 'cash' | 'bank' | 'mobile_banking' | 'cheque' | 'other';
+export type ChamberAdvanceStatus = 'open' | 'settled' | 'void';
+export type ChamberExpenseStatus = 'posted' | 'void';
+export type ChamberSettlementType = 'expense' | 'refund';
+
+export interface ChamberExpenseCategory extends BaseRecord {
+  name: string;
+  nameBn?: string | null;
+  kind: ChamberExpenseKind;
+  isDefault: boolean;
+}
+
+export interface ChamberAdvance extends BaseRecord {
+  givenTo: string;
+  givenToUserId?: string | null;
+  amountPaisa: number;
+  givenDate: string;
+  purpose: string;
+  paymentMethod: ChamberPaymentMethod;
+  status: ChamberAdvanceStatus;
+  voidReason?: string | null;
+  voidedBy?: string | null;
+  voidedAt?: string | null;
+  settledAmountPaisa?: number;
+  remainingAmountPaisa?: number;
+}
+
+export interface ChamberAdvanceSettlement extends BaseRecord {
+  advanceId: string;
+  type: ChamberSettlementType;
+  expenseId?: string | null;
+  amountPaisa: number;
+  settledDate: string;
+  notes?: string | null;
+}
+
+export interface ChamberExpense extends BaseRecord {
+  categoryId: string;
+  categoryName?: string;
+  categoryNameBn?: string | null;
+  categoryKind?: ChamberExpenseKind;
+  description: string;
+  amountPaisa: number;
+  expenseDate: string;
+  paidTo: string;
+  paymentMethod: ChamberPaymentMethod;
+  receiptRef?: string | null;
+  notes?: string | null;
+  advanceId?: string | null;
+  status: ChamberExpenseStatus;
+  voidReason?: string | null;
+  voidedBy?: string | null;
+  voidedAt?: string | null;
+}
+
+export interface ChamberExpensesSummary {
+  totalThisMonthPaisa: number;
+  totalLastMonthPaisa: number;
+  totalSalaryThisMonthPaisa: number;
+  byCategory: Array<{
+    categoryId: string;
+    categoryName: string;
+    categoryNameBn?: string | null;
+    categoryKind: string;
+    totalPaisa: number;
+    count: number;
+  }>;
+}
+
+
 
 
 

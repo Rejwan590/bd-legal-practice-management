@@ -2,6 +2,7 @@ import { IAccountsRepository } from '../../interfaces';
 import {
   AccountsSummary,
   ClientBalanceOverview,
+  CaseBalanceOverview,
   Expense,
   ExpenseCategory,
   FeeAgreement,
@@ -27,6 +28,11 @@ export class RestAccountsRepository implements IAccountsRepository {
 
   async getClientBalances(_context: SecurityContext): Promise<ClientBalanceOverview[]> {
     const res = await restFetch<ClientBalanceOverview[]>('/accounts/client-balances');
+    return Array.isArray(res) ? res : [];
+  }
+
+  async getCaseBalances(_context: SecurityContext): Promise<CaseBalanceOverview[]> {
+    const res = await restFetch<CaseBalanceOverview[]>('/accounts/case-balances');
     return Array.isArray(res) ? res : [];
   }
 

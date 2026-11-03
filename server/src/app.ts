@@ -15,6 +15,7 @@ import { tasksRouter } from './routes/tasks.js';
 import { feeAgreementsRouter } from './routes/feeAgreements.js';
 import { feePaymentsRouter } from './routes/feePayments.js';
 import { expensesRouter } from './routes/expenses.js';
+import { chamberExpensesRouter } from './routes/chamberExpenses.js';
 import { accountsRouter } from './routes/accounts.js';
 import { adminAuthRouter } from './routes/adminAuth.js';
 import { adminFirmsRouter } from './routes/adminFirms.js';
@@ -106,6 +107,7 @@ export function createApp() {
   app.use('/api/v1/fee-agreements', feeAgreementsRouter);
   app.use('/api/v1/fee-payments', feePaymentsRouter);
   app.use('/api/v1/expenses', expensesRouter);
+  app.use('/api/v1/chamber-expenses', chamberExpensesRouter);
   app.use('/api/v1/accounts', accountsRouter);
   app.use('/api/v1/devices', devicesRouter);
   app.use('/api/v1/audit-log', auditRouter);

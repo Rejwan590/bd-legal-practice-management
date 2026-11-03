@@ -52,3 +52,16 @@ accountsRouter.get(
     res.json(balances);
   }
 );
+
+// GET /api/v1/accounts/case-balances - Case-level balances overview
+accountsRouter.get(
+  '/case-balances',
+  requirePermission('accounts.view'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const db = getDatabase();
+    const firmId = req.user!.firmId;
+
+    const balances = await db.getCaseBalancesOverview(firmId, req.user);
+    res.json(balances);
+  }
+);

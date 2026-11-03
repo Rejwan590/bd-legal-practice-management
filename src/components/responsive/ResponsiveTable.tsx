@@ -1,6 +1,7 @@
 import React from 'react';
 
 export interface ColumnDef<T> {
+  id?: string;
   header: React.ReactNode;
   accessor?: (row: T, index: number) => React.ReactNode;
   className?: string;

@@ -12,6 +12,7 @@ import {
   UserRecord,
 } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { TablePagination } from '../../components/responsive/TablePagination';
 import { EntityLink } from '../../components/EntityLink';
 import { ClientAvatar } from '../../components/ClientAvatar';
 import { AppointmentFormModal } from './AppointmentFormModal';
@@ -59,6 +60,8 @@ export const AppointmentsScreen: React.FC = () => {
 
   // Modals
   const [modalOpen, setModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentRecord | null>(null);
 
   // Delete confirm
@@ -380,8 +383,9 @@ export const AppointmentsScreen: React.FC = () => {
           )}
         </div>
       ) : (
+        <>
         <ResponsiveTable<AppointmentRecord>
-          data={appointments}
+          data={appointments.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
           keyExtractor={(a) => a.id}
           columns={[
             {
@@ -650,6 +654,21 @@ export const AppointmentsScreen: React.FC = () => {
             );
           }}
         />
+        {appointments.length > 0 && (
+          <div className="mt-4">
+            <TablePagination
+              totalItems={appointments.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        )}
+        </>
       )}
 
       {/* Appointment Form Modal */}

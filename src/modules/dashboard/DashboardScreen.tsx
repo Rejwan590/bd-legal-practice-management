@@ -14,7 +14,6 @@ import {
 } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
 import { EntityLink } from '../../components/EntityLink';
-import { GlobalSearchModal } from '../search/GlobalSearchModal';
 import { CaseFormModal } from '../cases/CaseFormModal';
 import { ClientFormModal } from '../clients/ClientFormModal';
 import { TaskFormModal } from '../tasks/TaskFormModal';
@@ -28,7 +27,6 @@ import {
   CheckSquare,
   FolderArchive,
   Bell,
-  Search,
   Plus,
   Printer,
   Calendar,
@@ -92,7 +90,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
   const [, setLoading] = useState(true);
 
   // Modals state
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [caseModalOpen, setCaseModalOpen] = useState(false);
   const [clientModalOpen, setClientModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -151,17 +148,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
     loadDashboardData();
   }, [loadDashboardData, refreshVersion]);
 
-  // Global Ctrl+K / Cmd+K listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setSearchModalOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   const handleCreateCase = async (caseData: Parameters<typeof repos.case.create>[1]) => {
     await repos.case.create(securityContext, caseData);
@@ -271,7 +257,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
           <Building className="w-80 h-80" />
         </div>
 
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="relative z-10">
           <div>
             <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold tracking-wider uppercase">
               <Calendar className="w-4 h-4" />
@@ -288,24 +274,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
                 firmName: currentFirm?.name || 'Rahman & Associates Chambers',
               })}
             </p>
-          </div>
-
-          {/* Quick Search Trigger Bar */}
-          <div className="w-full lg:w-96 shrink-0">
-            <button
-              onClick={() => setSearchModalOpen(true)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/20 hover:border-white/30 rounded-xl text-left text-slate-300 hover:text-white transition group shadow-xs backdrop-blur-xs"
-            >
-              <div className="flex items-center gap-2.5 truncate">
-                <Search className="w-4 h-4 text-indigo-400 group-hover:text-indigo-300" />
-                <span className="text-xs sm:text-sm font-medium truncate">
-                  {t('dashboard.quickSearchPlaceholder')}
-                </span>
-              </div>
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[11px] font-mono px-2 py-0.5 rounded bg-white/15 text-slate-200 border border-white/10 shrink-0">
-                ⌘K
-              </kbd>
-            </button>
           </div>
         </div>
       </div>
@@ -460,64 +428,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
               {t('dashboard.metrics.pendingReminders')}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Quick Action Shortcuts Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-indigo-600" />
-            {t('dashboard.shortcuts.title')}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {can('cases.create') && (
-            <button
-              onClick={() => setCaseModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 transition shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('dashboard.shortcuts.registerCase')}</span>
-            </button>
-          )}
-
-          {can('clients.edit') && (
-            <button
-              onClick={() => setClientModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/60 transition shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('dashboard.shortcuts.registerClient')}</span>
-            </button>
-          )}
-
-          {can('tasks.assign') && (
-            <button
-              onClick={() => setTaskModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/60 transition shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('dashboard.shortcuts.assignTask')}</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setCauseListModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300/70 transition shadow-2xs"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-600" />
-            <span>{t('dashboard.shortcuts.printCauseList')}</span>
-          </button>
-
-          <button
-            onClick={() => setSearchModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white transition shadow-2xs"
-          >
-            <Search className="w-3.5 h-3.5" />
-            <span>{t('dashboard.shortcuts.globalSearch')}</span>
-          </button>
         </div>
       </div>
 
@@ -1225,12 +1135,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
         </div>
       </div>
 
-      {/* Global Search Modal */}
-      <GlobalSearchModal
-        isOpen={searchModalOpen}
-        onClose={() => setSearchModalOpen(false)}
-        onNavigate={onNavigate}
-      />
 
       {/* Quick Action Modals */}
       {caseModalOpen && (
