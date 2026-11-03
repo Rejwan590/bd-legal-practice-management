@@ -1092,7 +1092,8 @@
     "mode": "বৈঠকের মাধ্যম",
     "status": "অবস্থা",
     "clearFilters": "ফিল্টার সাফ করুন",
-    "showingCancelledNotice": "সকল বাতিল অ্যাপয়েন্টমেন্ট প্রদর্শিত হচ্ছে (নতুনগুলো প্রথমে)"
+    "showingCancelledNotice": "সকল বাতিল অ্যাপয়েন্টমেন্ট প্রদর্শিত হচ্ছে (নতুনগুলো প্রথমে)",
+    "linkedClientCaseAttendees": "যুক্ত ক্লায়েন্ট / মামলা ও উপস্থিতিবৃন্দ"
   },
   "billing": {
     "recordPayment": "পেমেন্ট গ্রহণ",

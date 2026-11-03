@@ -3,6 +3,32 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **UI Polish: Case Dossier Links, Hearings Date Actions, Appointments 3-Column Hierarchy & Compact Files Table (Completed & Verified)**:
+  - **1. Remove Redundant Open Dossier Button**:
+    - Removed redundant Open Dossier button (cases.viewDetails) and its column from CasesScreen.tsx desktop table and mobile card bottom bar.
+    - Removed redundant Open Dossier button from ClientProfileView.tsx.
+    - Enhanced EntityLink.tsx with explicit keyboard focus ring and Enter key navigation preserving accessibility.
+  - **2. Hearing Table Layout Improvement**:
+    - In HearingsScreen.tsx, moved Edit and Date Change History directly underneath the hearing date and time inside the Hearing Date cell in a compact wrapping button group.
+    - Removed Edit and Date Change History from the desktop Actions column, keeping lifecycle actions clean.
+    - Updated mobile card layout with consistent compact date-action positioning.
+  - **3. Refine Appointments Table (3-Column Layout)**:
+    - In AppointmentsScreen.tsx, consolidated Linked Client / Case and Staff / Lawyer Attendees into a single 3rd column: Linked Client / Case & Attendees.
+    - Implemented visual hierarchy: Client Name (bold) -> Case Name -> Attendees (+N badge and tooltip).
+    - Removed separate Attendees column, reclaiming horizontal space.
+    - Added bilingual i18n key parity in en.json and bn.json (appointments.linkedClientCaseAttendees).
+  - **4. Compact Physical Paper File Tracking Table (Preserve All Actions)**:
+    - Restructured FilesScreen.tsx desktop table into 4 columns: Physical File, Case & Client, Custody & Holder, Actions.
+    - Fully preserved all 4 actions: primary custody action on top; secondary icon actions row (Edit, History, Delete) underneath.
+    - Added compact={true} prop support to ResponsiveTable.tsx providing 8-10px vertical cell padding.
+    - Authored comprehensive artifact report in PHYSICAL_FILE_TRACKING_COMPACT_LAYOUT_REPORT.md.
+  - **5. Verification Results**:
+    - npx tsx tests/i18nParity.test.ts: PASS (100% key parity).
+    - npm run lint: PASS (0 errors).
+    - npm run test:dashboard: PASS (25 passed, 0 failed).
+    - npm run build: PASS (Vite production build succeeded).
+    - npm test --prefix server: PASS (15/15 test suites passed).
+
 - [x] **Remove Redundant User Information Card from Dashboard / App Navigation Shell (Completed & Verified)**:
   - **1. Component Identification & Root Cause**:
     - Located redundant user identity cards in `src/modules/foundation/AppShell.tsx`:

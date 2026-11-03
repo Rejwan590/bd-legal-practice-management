@@ -1157,13 +1157,6 @@ const ClientCaseRow: React.FC<ClientCaseRowProps> = ({
             <span>{t('common.edit')}</span>
           </button>
         )}
-        <EntityLink
-          type="case"
-          id={caseItem.id}
-          label={t('cases.viewDetails')}
-          restricted={caseItem.restricted}
-          className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold min-h-[34px]"
-        />
       </div>
     </div>
   );

@@ -1092,7 +1092,8 @@
     "mode": "Meeting Mode",
     "status": "Status",
     "clearFilters": "Clear filters",
-    "showingCancelledNotice": "Showing all cancelled appointments (newest first)"
+    "showingCancelledNotice": "Showing all cancelled appointments (newest first)",
+    "linkedClientCaseAttendees": "Linked Client / Case & Attendees"
   },
   "billing": {
     "recordPayment": "Record Payment",

@@ -18,7 +18,6 @@ import {
   Plus,
   Building,
   Lock,
-  ChevronRight,
   ShieldAlert,
   AlertCircle,
   CheckCircle2,
@@ -516,24 +515,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                 );
               },
             },
-            {
-              header: '',
-              className: 'text-right',
-              accessor: (c) => (
-                <div
-                  className="flex items-center justify-end gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => openCaseDossier(c.id, 'overview')}
-                    className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition"
-                  >
-                    <span>{t('cases.viewDetails')}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ),
-            },
+
           ]}
           renderMobileCard={(c) => {
             const linkedClient = clientsMap[c.clientId];
@@ -637,18 +619,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                   )}
                 </div>
 
-                <div
-                  className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => openCaseDossier(c.id, 'overview')}
-                    className="min-h-[44px] flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition border border-indigo-200/60"
-                  >
-                    <span>{t('cases.viewDetails')}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+
               </div>
             );
           }}

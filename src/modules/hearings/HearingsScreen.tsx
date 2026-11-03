@@ -812,16 +812,44 @@ export const HearingsScreen: React.FC = () => {
               },
               {
                 id: 'date',
-                header: 'Date & Time',
+                header: 'Hearing Date',
                 accessor: (h: HearingRecord) => (
-                  <div>
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
-                      <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                      <span>{new Date(h.scheduledAt).toLocaleDateString()}</span>
+                  <div className="space-y-1.5 min-w-[150px]">
+                    <div>
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <span>{new Date(h.scheduledAt).toLocaleDateString()}</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
+                        {new Date(h.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
-                    <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
-                      {new Date(h.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5" onClick={(e) => e.stopPropagation()}>
+                      {canUpdate && !isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingHearing(h);
+                            setScheduleModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition shadow-2xs"
+                          title={t('common.edit')}
+                        >
+                          <Edit2 className="w-3 h-3 text-slate-500" />
+                          <span>{t('common.edit')}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setHistoryHearing(h)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition shadow-2xs"
+                        title={t('hearings.dateHistory')}
+                      >
+                        <History className="w-3 h-3 text-slate-500" />
+                        <span>{t('hearings.dateHistory')}</span>
+                      </button>
+                    </div>
                   </div>
                 ),
               },
@@ -851,28 +879,8 @@ export const HearingsScreen: React.FC = () => {
                 headerClassName: 'text-right',
                 accessor: (h: HearingRecord) => (
                   <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setHistoryHearing(h)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-                      title={t('hearings.dateHistory')}
-                    >
-                      <History className="w-3.5 h-3.5" />
-                      <span>{t('hearings.dateHistory')}</span>
-                    </button>
-
                     {canUpdate && !isReadOnly && (
                       <>
-                        <button
-                          onClick={() => {
-                            setEditingHearing(h);
-                            setScheduleModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-                          title={t('common.edit')}
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>{t('common.edit')}</span>
-                        </button>
 
                         {h.status === 'scheduled' && (
                           <>
@@ -1007,7 +1015,7 @@ export const HearingsScreen: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-600">
+                  <div className="pt-1 border-t border-slate-100 text-xs text-slate-600 space-y-2">
                     <div className="flex items-center gap-1.5 font-semibold text-slate-900">
                       <Calendar className="w-4 h-4 text-indigo-600" />
                       <span>{new Date(h.scheduledAt).toLocaleDateString()}</span>
@@ -1015,52 +1023,53 @@ export const HearingsScreen: React.FC = () => {
                         ({new Date(h.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                       </span>
                     </div>
-                  </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={() => setHistoryHearing(h)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
-                    >
-                      <History className="w-4 h-4" />
-                      <span>{t('hearings.dateHistory')}</span>
-                    </button>
-
-                    {canUpdate && !isReadOnly && (
-                      <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {canUpdate && !isReadOnly && (
                         <button
+                          type="button"
                           onClick={() => {
                             setEditingHearing(h);
                             setScheduleModalOpen(true);
                           }}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+                          title={t('common.edit')}
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="w-3.5 h-3.5 text-slate-500" />
                           <span>{t('common.edit')}</span>
                         </button>
-
-                        {h.status === 'scheduled' && (
-                          <>
-                            <button
-                              onClick={() => setRescheduleHearing(h)}
-                              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                              <span>Reschedule</span>
-                            </button>
-
-                            <button
-                              onClick={() => setAdjournHearing(h)}
-                              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl transition"
-                            >
-                              <FastForward className="w-4 h-4 text-amber-700" />
-                              <span>Adjourn & Next</span>
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setHistoryHearing(h)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+                        title={t('hearings.dateHistory')}
+                      >
+                        <History className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{t('hearings.dateHistory')}</span>
+                      </button>
+                    </div>
                   </div>
+
+                  {canUpdate && !isReadOnly && h.status === 'scheduled' && (
+                    <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => setRescheduleHearing(h)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Reschedule</span>
+                      </button>
+
+                      <button
+                        onClick={() => setAdjournHearing(h)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl transition"
+                      >
+                        <FastForward className="w-4 h-4 text-amber-700" />
+                        <span>Adjourn & Next</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             }}

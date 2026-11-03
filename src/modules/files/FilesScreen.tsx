@@ -277,42 +277,20 @@ export const FilesScreen: React.FC = () => {
     }
   };
 
-  // Desktop table columns
+  // Desktop table columns (Compact 4-column structure)
   const columns: ColumnDef<PhysicalFileRecord>[] = [
     {
-      header: t('files.title'),
+      header: 'Physical File',
       accessor: (file) => (
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1">
-              <FileCheck className="w-3 h-3 text-indigo-600" />
-              {file.serial}
-            </span>
-            <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
-              <MapPin className="w-3 h-3 text-slate-400" />
-              {file.shelfLocation || 'Chamber Rack'}
-            </span>
+        <div className="space-y-0.5">
+          <div className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1">
+            <FileCheck className="w-3 h-3 text-indigo-600" />
+            <span>{file.serial}</span>
           </div>
-          <div className="font-bold text-sm text-slate-900">
-            <EntityLink
-              type="file"
-              id={file.id}
-              label={file.title}
-              showIcon={false}
-              onClickOverride={() => {
-                if (canManage && !isReadOnly) {
-                  setEditingFile(file);
-                  setFormModalOpen(true);
-                } else {
-                  setHistoryModalFile(file);
-                }
-              }}
-              className="text-sm text-slate-900"
-            />
+          <div className="text-[11px] text-slate-500 flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+            <span className="truncate">{file.shelfLocation || 'Cabinet A · Shelf 1'}</span>
           </div>
-          {file.notes && (
-            <p className="text-xs text-slate-500 line-clamp-1 max-w-xs">{file.notes}</p>
-          )}
         </div>
       ),
     },
@@ -321,98 +299,90 @@ export const FilesScreen: React.FC = () => {
       accessor: (file) => {
         const linkedCase = file.caseId ? cases[file.caseId] : null;
         const linkedClient = file.clientId ? clients[file.clientId] : null;
-        if (!linkedCase && !linkedClient) {
-          return <span className="text-slate-400 text-xs italic">-</span>;
-        }
+
         return (
-          <div className="space-y-1">
-            {linkedCase && (
+          <div className="space-y-0.5 max-w-xs">
+            {linkedCase ? (
               <div>
                 <EntityLink
                   type="case"
                   id={linkedCase.id}
                   label={linkedCase.caseNumber}
                   isRestricted={linkedCase.restricted}
-                  className="text-xs font-mono text-indigo-800"
+                  className="font-semibold text-xs text-indigo-800 block truncate"
                 />
               </div>
+            ) : (
+              <span className="text-slate-400 text-xs italic">—</span>
             )}
             {linkedClient && (
-              <div className="flex items-center gap-1 text-xs text-slate-700">
+              <div className="text-xs font-medium text-slate-700 truncate">
                 <EntityLink
                   type="client"
                   id={linkedClient.id}
                   label={linkedClient.name}
-                  className="text-xs text-slate-700"
+                  className="text-xs text-slate-700 truncate"
                 />
               </div>
             )}
+            {file.title && (
+              <p className="text-[11px] text-slate-500 line-clamp-1 italic" title={file.title}>
+                {file.title}
+              </p>
+            )}
           </div>
         );
       },
     },
     {
-      header: t('files.status'),
+      header: 'Custody & Holder',
       accessor: (file) => {
         const overdue = isFileOverdue(file);
         const overdueDays = overdue && file.dueBackAt ? getOverdueDays(file.dueBackAt) : 0;
+
         return (
-          <div className="space-y-1">
-            {file.status === 'in_chamber' && (
-              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                {t('files.in_chamber')}
-              </span>
-            )}
-            {file.status === 'checked_out' && (
-              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                <LogOut className="w-3.5 h-3.5 text-amber-700" />
-                {t('files.checked_out')}
-              </span>
-            )}
-            {file.status === 'in_court' && (
-              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold bg-indigo-100 text-indigo-900 border border-indigo-300">
-                <Scale className="w-3.5 h-3.5 text-indigo-700" />
-                {t('files.in_court')}
-              </span>
-            )}
-            {overdue && (
-              <div>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
-                  <AlertTriangle className="w-3 h-3 text-rose-600" />
-                  {t('files.overdueByDays', { days: overdueDays })}
+          <div className="space-y-1 text-xs min-w-[130px]">
+            <div>
+              {file.status === 'in_chamber' && (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  {t('files.in_chamber')}
                 </span>
+              )}
+              {file.status === 'checked_out' && (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                  <LogOut className="w-3 h-3 text-amber-700" />
+                  {t('files.checked_out')}
+                </span>
+              )}
+              {file.status === 'in_court' && (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-900 border border-indigo-300">
+                  <Scale className="w-3 h-3 text-indigo-700" />
+                  {t('files.in_court')}
+                </span>
+              )}
+            </div>
+
+            {file.status !== 'in_chamber' && file.currentHolderName && (
+              <div className="font-medium text-slate-700 flex items-center gap-1 text-[11px]">
+                <User className="w-3 h-3 text-slate-400 shrink-0" />
+                <span className="truncate">{file.currentHolderName}</span>
               </div>
             )}
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Holder & Due Date',
-      accessor: (file) => {
-        if (file.status === 'in_chamber') {
-          return (
-            <span className="text-xs text-slate-500 font-mono">
-              {file.shelfLocation || 'Chamber Rack'}
-            </span>
-          );
-        }
-        const overdue = isFileOverdue(file);
-        return (
-          <div className="space-y-1 text-xs">
-            <div className="font-medium text-slate-800 flex items-center gap-1">
-              <User className="w-3 h-3 text-slate-400" />
-              {file.currentHolderName || 'Advocate'}
-            </div>
-            {file.dueBackAt && (
+
+            {file.status !== 'in_chamber' && file.dueBackAt && (
               <div
                 className={`font-mono text-[11px] flex items-center gap-1 ${
                   overdue ? 'text-rose-700 font-semibold' : 'text-slate-500'
                 }`}
               >
-                <Clock className="w-3 h-3" />
-                {new Date(file.dueBackAt).toLocaleDateString()}
+                <Clock className="w-3 h-3 shrink-0" />
+                <span>{new Date(file.dueBackAt).toLocaleDateString()}</span>
+                {overdue && (
+                  <span className="text-[10px] px-1 rounded bg-rose-100 text-rose-800 font-bold ml-1">
+                    {overdueDays}d late
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -424,90 +394,78 @@ export const FilesScreen: React.FC = () => {
       className: 'text-right',
       headerClassName: 'text-right',
       accessor: (file) => (
-        <div className="flex items-center justify-end gap-1 flex-wrap">
+        <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {/* Primary Custody Action Button (Top) */}
           {canManage && !isReadOnly && file.status === 'in_chamber' && (
-            <>
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCheckOutModalFile(file);
-                }}
-                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-2xs transition"
+                onClick={() => setCheckOutModalFile(file)}
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md shadow-2xs transition"
                 title={t('files.checkOut')}
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">{t('files.checkOut')}</span>
+                <LogOut className="w-3 h-3" />
+                <span>{t('files.checkOut')}</span>
               </button>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDispatchModalFile(file);
-                }}
-                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs transition"
+                onClick={() => setDispatchModalFile(file)}
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition"
                 title={t('files.dispatchCourt')}
               >
-                <Scale className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">{t('files.dispatchCourt')}</span>
+                <Scale className="w-3 h-3" />
+                <span>Court</span>
               </button>
-            </>
+            </div>
           )}
 
           {canManage && !isReadOnly && (file.status === 'checked_out' || file.status === 'in_court') && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCheckInModalFile(file);
-              }}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-2xs transition"
+              onClick={() => setCheckInModalFile(file)}
+              className="inline-flex items-center justify-center gap-1 px-3 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-2xs transition"
               title={t('files.checkIn')}
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">{t('files.checkIn')}</span>
+              <LogIn className="w-3 h-3" />
+              <span>{t('files.checkIn')}</span>
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setHistoryModalFile(file);
-            }}
-            className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 min-h-[44px] min-w-[44px] text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
-            title={t('files.viewHistory')}
-          >
-            <History className="w-3.5 h-3.5 text-slate-500" />
-          </button>
+          {/* Compact Secondary Action Row Underneath: Edit, History, Delete */}
+          <div className="flex items-center justify-end gap-1 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setHistoryModalFile(file)}
+              className="p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+              title={t('files.viewHistory')}
+            >
+              <History className="w-3.5 h-3.5 text-slate-500" />
+            </button>
 
-          {canManage && !isReadOnly && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingFile(file);
-                  setFormModalOpen(true);
-                }}
-                className="p-2 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
-                title={t('common.edit')}
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteConfirmFile(file);
-                }}
-                className="p-2 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                title={t('common.delete')}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          )}
+            {canManage && !isReadOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingFile(file);
+                    setFormModalOpen(true);
+                  }}
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+                  title={t('common.edit')}
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmFile(file)}
+                  className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                  title={t('common.delete')}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ),
     },
@@ -944,6 +902,7 @@ export const FilesScreen: React.FC = () => {
       ) : (
         <>
         <ResponsiveTable<PhysicalFileRecord>
+          compact={true}
           data={filteredFiles.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
           keyExtractor={(file) => file.id}
           columns={columns}

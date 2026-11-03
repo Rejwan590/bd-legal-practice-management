@@ -194,10 +194,11 @@ export const EntityLink: React.FC<EntityLinkProps> = ({
     <a
       href={getHref()}
       onClick={handleClick}
+      onKeyDown={(e) => { if (e.key === "Enter") handleClick(e as any); }}
       title={title}
       data-entity-link={type}
       data-entity-id={id}
-      className={`inline-flex items-center gap-1 font-semibold text-indigo-700 hover:text-indigo-900 hover:underline underline-offset-2 transition cursor-pointer max-w-full ${className}`}
+      className={`inline-flex items-center gap-1 font-semibold text-indigo-700 hover:text-indigo-900 hover:underline underline-offset-2 transition cursor-pointer max-w-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xs ${className}`}
     >
       {renderIcon()}
       <span className="truncate">{label}</span>

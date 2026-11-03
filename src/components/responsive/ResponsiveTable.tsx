@@ -16,6 +16,7 @@ interface ResponsiveTableProps<T> {
   onRowClick?: (row: T) => void;
   emptyState?: React.ReactNode;
   className?: string;
+  compact?: boolean;
   children?: React.ReactNode; // Optional custom desktop table content
 }
 
@@ -27,6 +28,7 @@ export function ResponsiveTable<T>({
   onRowClick,
   emptyState,
   className = '',
+  compact = false,
   children,
 }: ResponsiveTableProps<T>) {
   const safeData = Array.isArray(data) ? data : [];
@@ -61,7 +63,7 @@ export function ResponsiveTable<T>({
                 {columns.map((col, cIdx) => (
                   <th
                     key={cIdx}
-                    className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap ${
+                    className={`${compact ? 'px-3 py-2 text-[11px]' : 'px-4 py-3 text-xs'} font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap ${
                       col.headerClassName || col.className || ''
                     }`}
                   >
@@ -82,7 +84,7 @@ export function ResponsiveTable<T>({
                   {columns.map((col, cIdx) => (
                     <td
                       key={cIdx}
-                      className={`px-4 py-3.5 text-slate-700 align-middle ${
+                      className={`${compact ? 'px-3 py-2 sm:py-2.5 text-xs' : 'px-4 py-3.5'} text-slate-700 align-middle ${
                         col.className || ''
                       }`}
                     >

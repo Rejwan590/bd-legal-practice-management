@@ -450,60 +450,75 @@ export const AppointmentsScreen: React.FC = () => {
               ),
             },
             {
-              header: t('appointments.linkedTo', 'Client / Case'),
+              header: t('appointments.linkedClientCaseAttendees', 'Linked Client / Case & Attendees'),
               accessor: (a) => {
                 const client = a.clientId ? clientsMap[a.clientId] : null;
                 const caseItem = a.caseId ? casesMap[a.caseId] : null;
+                const attIds = a.attendees || [];
+                const attendeeNames = attIds
+                  .map((id: string) => usersMap[id]?.name)
+                  .filter(Boolean);
 
-                if (!client && !caseItem) {
+                if (!client && !caseItem && attendeeNames.length === 0) {
                   return <span className="text-xs text-slate-400">—</span>;
                 }
 
+                const maxDisplayAttendees = 2;
+                const visibleAttendees = attendeeNames.slice(0, maxDisplayAttendees);
+                const extraAttendeeCount = attendeeNames.length - maxDisplayAttendees;
+
                 return (
-                  <div className="space-y-1 text-xs">
-                    {client && (
+                  <div className="space-y-1.5 text-xs max-w-sm">
+                    {/* Client Name (Primary, prominent and readable) */}
+                    {client ? (
                       <div className="flex items-center gap-1.5">
                         <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
                         <EntityLink
                           type="client"
                           id={client.id}
                           label={client.name}
-                          className="font-semibold block truncate"
+                          className="font-bold text-slate-900 block truncate"
                         />
                       </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No linked client</span>
                     )}
+
+                    {/* Case Name (Secondary text directly underneath client name) */}
                     {caseItem && (
-                      <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                        <Briefcase className="w-3 h-3 text-slate-400" />
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-700 pl-0.5">
+                        <span className="text-slate-400 font-medium">Case:</span>
                         <EntityLink
                           type="case"
                           id={caseItem.id}
                           label={caseItem.caseNumber}
                           restricted={caseItem.restricted}
-                          className="truncate"
+                          className="font-medium text-indigo-700 truncate"
                         />
                       </div>
                     )}
-                  </div>
-                );
-              },
-            },
-            {
-              header: t('appointments.attendees', 'Attendees'),
-              accessor: (a) => {
-                const attIds = a.attendees || [];
-                if (attIds.length === 0) {
-                  return <span className="text-xs text-slate-400">—</span>;
-                }
-                const names = attIds
-                  .map((id: string) => usersMap[id]?.name)
-                  .filter(Boolean);
-                return (
-                  <div className="text-xs space-y-0.5 max-w-xs">
-                    <div className="flex items-center gap-1 text-slate-700 font-medium truncate">
-                      <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{names.join(', ')}</span>
-                    </div>
+
+                    {/* Staff / Lawyer Attendees (Smaller muted text underneath case name) */}
+                    {attendeeNames.length > 0 && (
+                      <div
+                        className="flex items-center gap-1 text-[11px] text-slate-500 pl-0.5"
+                        title={attendeeNames.join(', ')}
+                      >
+                        <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="text-slate-400 font-medium">Attendees:</span>
+                        <span className="text-slate-600 truncate font-medium">
+                          {visibleAttendees.join(', ')}
+                        </span>
+                        {extraAttendeeCount > 0 && (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0"
+                            title={attendeeNames.join(', ')}
+                          >
+                            +{extraAttendeeCount}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               },
@@ -611,12 +626,37 @@ export const AppointmentsScreen: React.FC = () => {
                   </div>
                 </div>
 
-                {client && (
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
-                    <EntityLink type="client" id={client.id} label={client.name} className="font-medium" />
-                  </div>
-                )}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100 text-xs">
+                  {client && (
+                    <div className="flex items-center gap-1.5">
+                      <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
+                      <EntityLink type="client" id={client.id} label={client.name} className="font-bold text-slate-900" />
+                    </div>
+                  )}
+
+                  {caseItem && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-600 pl-0.5">
+                      <span className="text-slate-400 font-medium">Case:</span>
+                      <EntityLink
+                        type="case"
+                        id={caseItem.id}
+                        label={caseItem.caseNumber}
+                        restricted={caseItem.restricted}
+                        className="font-medium text-indigo-700 truncate"
+                      />
+                    </div>
+                  )}
+
+                  {a.attendees && a.attendees.length > 0 && (
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500 pl-0.5">
+                      <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="text-slate-400 font-medium">Attendees:</span>
+                      <span className="text-slate-600 truncate font-medium">
+                        {a.attendees.map((id) => usersMap[id]?.name).filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {a.location && (
                   <div className="text-xs text-slate-500 flex items-center gap-1">
