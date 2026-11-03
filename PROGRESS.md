@@ -3,6 +3,26 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Remove Redundant User Information Card from Dashboard / App Navigation Shell (Completed & Verified)**:
+  - **1. Component Identification & Root Cause**:
+    - Located redundant user identity cards in `src/modules/foundation/AppShell.tsx`:
+      - Desktop sidebar session footer (`<div className="pt-3 mt-3 border-t border-slate-200">`) rendering `UserCheck` icon, `currentUser.name`, and `currentUser.email` directly underneath the navigation menu.
+      - Mobile slide-out drawer session info (`<div className="border-t border-slate-100 pt-3 mt-2 shrink-0">`) rendering duplicate user name and `UserCheck` icon.
+    - Verified that neither `DashboardScreen.tsx` nor Super Admin dashboards (`admin-app`) contain duplicate user info cards; the header navbar is the canonical location for authenticated identity across all layouts.
+  - **2. Surgical Removal & Container Cleanup**:
+    - Completely removed the desktop sidebar session footer and mobile drawer session info containers from `AppShell.tsx`.
+    - Removed unused `UserCheck` icon import from `lucide-react`.
+    - No empty borders, margins, or residual spacing containers were left behind in the sidebar or drawer.
+    - Preserved existing header user profile button and augmented its tooltip `title` with dynamic user name and email (`${currentUser.name} (${currentUser.email})`) for full accessibility.
+    - Verified that user data, authentication state, role permissions, and `UserSwitchModal` dialog remain completely intact.
+  - **3. Verification Results**:
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npm run build`: PASS (built in 2.93s).
+    - `npm run test:dashboard`: PASS (25 passed, 0 failed).
+    - `npx tsx tests/i18nParity.test.ts`: PASS (100% key parity).
+    - `npm test --prefix server`: PASS (15 test suites passed, 0 failed).
+    - `npx playwright test`: PASS (responsive no-overflow tests verified across mobile, tablet, and desktop breakpoints).
+
 - [x] **Repository-Wide UI/UX, Responsive Layout, Full-Width and Overflow Repair (Completed & Verified)**:
   - **1. Root Cause Diagnosis of Left/Right Empty Space**:
     - Identified that `SHELL_CONTAINER_CLASS = 'w-full max-w-7xl 2xl:max-w-[1536px] mx-auto px-3 sm:px-6 lg:px-8'` in `src/modules/foundation/AppShell.tsx` and `<main className="flex-1 max-w-7xl w-full mx-auto ...">` in `admin-app/src/App.tsx` were artificially constraining both the Chamber application and the Super Admin platform to a narrow 1280px / 1536px centered column.

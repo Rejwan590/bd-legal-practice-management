@@ -20,7 +20,6 @@ import {
   Menu,
   X,
   Building,
-  UserCheck,
   Search,
   Database,
   Lock,
@@ -577,6 +576,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               onClick={() => setUserModalOpen(true)}
               className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 h-11 rounded-xl border border-slate-200 hover:border-slate-300 bg-white text-left transition shadow-2xs group shrink-0 active:bg-slate-50"
               aria-label="Switch User Profile"
+              title={`${currentUser.name} (${currentUser.email})`}
             >
               <div
                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
@@ -770,38 +770,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               );
             })}
           </nav>
-
-          {/* Session Footer inside Sidebar */}
-          <div className="pt-3 mt-3 border-t border-slate-200">
-            {sidebarCollapsed ? (
-              <button
-                type="button"
-                onClick={() => setUserModalOpen(true)}
-                className="w-full flex justify-center py-1 text-slate-600 hover:text-indigo-600 cursor-pointer"
-                title={`${currentUser.name} (${currentUser.role})`}
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                    currentUser.role === 'Owner'
-                      ? 'bg-purple-100 text-purple-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}
-                >
-                  {currentUser.name.slice(0, 2).toUpperCase()}
-                </div>
-              </button>
-            ) : (
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
-                <div className="flex items-center gap-2 text-xs text-slate-700 min-w-0">
-                  <UserCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span className="truncate font-semibold text-slate-900">{currentUser.name}</span>
-                </div>
-                <div className="text-[11px] text-slate-500 truncate font-mono">
-                  {currentUser.email}
-                </div>
-              </div>
-            )}
-          </div>
         </aside>
 
         {/* Mobile Slide-Out Drawer (<md) */}
@@ -863,14 +831,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                     );
                   })}
                 </nav>
-              </div>
-
-              {/* Drawer footer session info */}
-              <div className="border-t border-slate-100 pt-3 mt-2 shrink-0">
-                <div className="w-full py-2 px-3 bg-slate-50 rounded-xl text-xs text-slate-700 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span className="truncate font-semibold">{currentUser.name}</span>
-                </div>
               </div>
             </div>
           </div>
