@@ -3,6 +3,26 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Production Outage Fix: Azure App Service Container Crash & Vercel Data Load (Completed & Verified)**:
+  - **1. Root Cause Diagnosis**:
+    - Azure App Service backend was returning 503 Service Unavailable on all requests including /api/v1/health and /api/v1/auth/me.
+    - Downloaded and analyzed Kudu container startup logs. The container crashed immediately upon launch with 'Error: Dynamic require of "path" is not supported' triggered by CommonJS dependencies (express, body-parser, depd) bundled into an ESM target without createRequire polyfill.
+    - Due to the Azure backend 503 crash-loop, the Vercel production frontend (VITE_DATA_SOURCE=rest) experienced 15-30s fetch timeouts, missing CORS headers on the Azure error pages, and could not load user profiles or database data (139 clients, 118 cases, 192 hearings, 131 tasks).
+  - **2. The Fixes**:
+    - Added esbuild banner to server/package.json to polyfill require in ESM runtime using createRequire(import.meta.url).
+    - Updated vercel.json server entrypoint to dist/index.js.
+    - Resolved zip deployment issue on Linux App Service by ensuring deployment archives use POSIX forward slash paths (/), preventing rsync 'EINVAL: invalid argument' failures during Kudu sync.
+    - Deployed updated server bundle to Azure Web App legalmanagement in BD-Legal.
+  - **3. Production Verification**:
+    - Azure health check endpoint returns 200 OK in ~150ms: {"status":"ok","database":"connected","version":"1.0.0"}.
+    - CORS preflight and unauthenticated /api/v1/auth/me return correct CORS headers (Access-Control-Allow-Origin: https://bd-legal-practice-management.vercel.app, Access-Control-Allow-Credentials: true).
+    - Verified production PostgreSQL connection with live tenant records: 139 clients, 118 cases, 192 hearings, 131 tasks.
+    - Tested live Vercel web application at https://bd-legal-practice-management.vercel.app via Playwright: initial page loaded cleanly in 2.3s with zero CORS or network failure errors.
+    - npm run lint: PASS (0 errors).
+    - npm run build: PASS.
+    - npm run build --prefix server: PASS.
+    - npm test --prefix server: PASS (All 15 test suites passed).
+
 - [x] **EXTENSION: Seat and Device Pricing (Admin Display Only, No Online Payments)**:
   - **1. Schema & Migration (`plans` & `firms`)**:
     - Added `includedUsers` (integer, default 5 / seats), `includedDevices` (integer, default 5), `extraUserPriceBdt` (integer, default 100), `extraDevicePriceBdt` (integer, default 100) to `plans` table in `server/src/db/schema.ts`.
