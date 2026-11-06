@@ -56,11 +56,8 @@
       "root": "server",
       "framework": "express",
       "entrypoint": "src/index.ts",
-      "functions": {
-        "src/index.ts": {
-          "includeFiles": "src/**"
-        }
-      }
+      "installCommand": "npm install",
+      "buildCommand": "npm run build"
     }
   },
   "rewrites": [
