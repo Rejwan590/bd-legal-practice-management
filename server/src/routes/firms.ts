@@ -4,6 +4,7 @@ import { requireOwner } from '../middleware/permission.js';
 import { enforceFirmIsolation } from '../middleware/firmIsolation.js';
 import { enforceSubscriptionReadOnly, evaluateServerSubscription } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
+import { calculateMonthlyPriceBdt } from '../utils/pricing.js';
 import * as schema from '../db/schema.js';
 import { recordAudit } from '../services/auditService.js';
 
@@ -21,10 +22,30 @@ firmsRouter.get('/current', async (req: AuthenticatedRequest, res: Response) => 
   }
 
   const subscription = evaluateServerSubscription(firm);
-  res.json({
+  const approvedDeviceCount = await db.countApprovedDevices(firm.id);
+  const users = await db.listUsers(firm.id);
+  const activeUsersCount = users.filter((u) => !u.deletedAt && !(u as any).deactivatedAt).length;
+
+  const responseData: any = {
     ...firm,
     subscription,
-  });
+    userCount: activeUsersCount,
+    deviceCount: approvedDeviceCount,
+  };
+
+  // Only Owner sees renewal amount and breakdown
+  if (req.user?.role === 'Owner') {
+    const plan = firm.planId ? await db.getPlan(firm.planId) : null;
+    if (plan) {
+      const pricing = calculateMonthlyPriceBdt(plan, firm);
+      responseData.plan = plan;
+      responseData.monthlyPriceBdt = pricing.monthlyPriceBdt;
+      responseData.renewalPriceBdt = pricing.monthlyPriceBdt;
+      responseData.pricingBreakdown = pricing;
+    }
+  }
+
+  res.json(responseData);
 });
 
 // PATCH /api/v1/firms/current - Owner-only, blocked if read-only

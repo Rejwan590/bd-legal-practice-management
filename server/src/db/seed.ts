@@ -37,6 +37,10 @@ export const SEED_PLANS = [
     durationMonths: 12,
     priceBdt: 50000,
     seats: 10,
+    includedUsers: 10,
+    includedDevices: 5,
+    extraUserPriceBdt: 100,
+    extraDevicePriceBdt: 100,
     features: ['cases', 'hearings', 'tasks', 'files', 'calendar', 'backup', 'audit'],
     createdAt: new Date('2024-01-01T00:00:00.000Z'),
     updatedAt: new Date('2024-01-01T00:00:00.000Z'),
@@ -56,6 +60,7 @@ export const SEED_FIRMS = [
     courtAffiliations: 'Supreme Court of Bangladesh (High Court & Appellate Division), Dhaka District & Sessions Judge Court',
     planId: 'annual-standard',
     contact: '+880 1711-000000',
+    maxUsers: 10,
     maxDevices: 100,
     devicePolicy: 'auto-approve' as const,
     allowOwnerDeviceRemoval: false,
@@ -281,25 +286,26 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
 
     for (const plan of SEED_PLANS) {
       await client.query(
-        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, features, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, included_users, included_devices, extra_user_price_bdt, extra_device_price_bdt, features, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (id) DO NOTHING`,
-        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
+        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, (plan as any).includedUsers ?? plan.seats, (plan as any).includedDevices ?? 5, (plan as any).extraUserPriceBdt ?? 100, (plan as any).extraDevicePriceBdt ?? 100, JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
       );
     }
 
     for (const firm of SEED_FIRMS) {
       await client.query(
-        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, contact, max_devices, device_policy, allow_owner_device_removal, license_starts_at, license_expires_at, status, visibility_mode, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        `INSERT INTO firms (id, firm_id, name, bar_council_reg, office_address, court_affiliations, plan_id, contact, max_users, max_devices, device_policy, allow_owner_device_removal, license_starts_at, license_expires_at, status, visibility_mode, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
          ON CONFLICT (id) DO UPDATE SET
+           max_users = EXCLUDED.max_users,
            max_devices = EXCLUDED.max_devices,
            device_policy = EXCLUDED.device_policy,
            allow_owner_device_removal = EXCLUDED.allow_owner_device_removal,
            visibility_mode = EXCLUDED.visibility_mode,
            license_expires_at = EXCLUDED.license_expires_at,
            status = EXCLUDED.status`,
-        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.contact, firm.maxDevices, firm.devicePolicy, firm.allowOwnerDeviceRemoval, firm.licenseStartsAt, firm.licenseExpiresAt, firm.status, firm.visibilityMode, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
+        [firm.id, firm.firmId, firm.name, firm.barCouncilReg, firm.officeAddress, firm.courtAffiliations, firm.planId, firm.contact, (firm as any).maxUsers ?? 10, firm.maxDevices, firm.devicePolicy, firm.allowOwnerDeviceRemoval, firm.licenseStartsAt, firm.licenseExpiresAt, firm.status, firm.visibilityMode, firm.createdAt, firm.updatedAt, firm.createdBy, firm.updatedBy]
       );
     }
 

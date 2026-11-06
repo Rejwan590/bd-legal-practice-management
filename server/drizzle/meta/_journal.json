@@ -78,6 +78,13 @@
       "when": 1793697512009,
       "tag": "0010_chamber_expenses",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793700000000,
+      "tag": "0011_seat_and_device_pricing",
+      "breakpoints": true
     }
   ]
 }

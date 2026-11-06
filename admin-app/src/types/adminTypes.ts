@@ -17,7 +17,11 @@ export interface Firm {
   barCouncilReg: string | null;
   courtAffiliations: string | null;
   planId: string | null;
+  maxUsers?: number;
   maxDevices: number;
+  monthlyPriceBdt?: number;
+  pricingBreakdown?: any;
+  plan?: Plan | null;
   devicePolicy?: 'auto-approve' | 'manual';
   allowOwnerDeviceRemoval?: boolean;
   pendingDeviceCount?: number;
@@ -36,11 +40,16 @@ export interface Plan {
   durationMonths: number;
   priceBdt: number;
   seats: number;
+  includedUsers?: number;
+  includedDevices?: number;
+  extraUserPriceBdt?: number;
+  extraDevicePriceBdt?: number;
   features: string[];
 }
 
 export interface LicenseInfo {
   planId: string | null;
+  maxUsers?: number;
   maxDevices: number;
   licenseStartsAt: string | null;
   licenseExpiresAt: string;
@@ -122,6 +131,7 @@ export interface CreateFirmPayload {
   courtAffiliations?: string;
   planId?: string;
   months?: number;
+  maxUsers?: number;
   maxDevices?: number;
 }
 

@@ -3,6 +3,33 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **EXTENSION: Seat and Device Pricing (Admin Display Only, No Online Payments)**:
+  - **1. Schema & Migration (`plans` & `firms`)**:
+    - Added `includedUsers` (integer, default 5 / seats), `includedDevices` (integer, default 5), `extraUserPriceBdt` (integer, default 100), `extraDevicePriceBdt` (integer, default 100) to `plans` table in `server/src/db/schema.ts`.
+    - Added `maxUsers` (integer, default 10) to `firms` table in `server/src/db/schema.ts` to mirror `maxDevices` limit enforcement.
+    - Generated migration `0011_seat_and_device_pricing.sql` and registered idx 11 in `server/drizzle/meta/_journal.json`.
+    - Updated `SEED_PLANS` and `SEED_FIRMS` in `server/src/db/seed.ts`, and updated `MemoryDatabase` and `PostgresDatabase` in `server/src/db/client.ts` with `updatePlan` support.
+  - **2. Computed Pricing Logic**:
+    - Created `server/src/utils/pricing.ts`, `admin-app/src/utils/pricing.ts`, and `src/utils/pricing.ts` implementing:
+      `monthlyPriceBdt = plan.priceBdt + max(0, firm.maxUsers - plan.includedUsers) * plan.extraUserPriceBdt + max(0, firm.maxDevices - plan.includedDevices) * plan.extraDevicePriceBdt`.
+    - Computed dynamically on integers only; price follows configured limits, not live counts.
+  - **3. Admin App Frontend & Endpoints**:
+    - Created `server/src/routes/adminPlans.ts` (`GET /`, `GET /:id`, `PATCH /:id` with Zod validation and admin audit logging) mounted at `/api/admin/plans` and `/api/v1/admin/plans`.
+    - In `LicenseModal`: Added `maxUsers` alongside `maxDevices`, live computed price breakdown (`Base + Extra Users + Extra Devices = Total Monthly`), and collapsible plan parameter editor allowing platform admin to configure plan defaults.
+    - In `FirmListScreen`: Added Monthly Price column to desktop table and mobile card view with breakdown tooltip / details.
+    - In `adminApi`: Added `listPlans()`, `updatePlan(id, updates)`, and updated `updateLicense` with `maxUsers`.
+  - **4. Chamber App & Settings Screen (Owner vs Staff Privacy)**:
+    - Updated `GET /api/v1/firms/current`: Enriched with `userCount` (active users) and `deviceCount` (approved devices). Attaches `renewalPriceBdt`, `monthlyPriceBdt`, and `pricingBreakdown` strictly when `req.user.role === 'Owner'`. For staff, pricing details are omitted.
+    - In `SettingsScreen`: Under Subscription card, renders usage summary and `To add more, contact support`. Owner sees renewal BDT amount; staff do not.
+    - Added bilingual keys `settings.usageSummaryOwner`, `settings.usageSummaryStaff`, and `settings.contactSupportToAddMore` to `en.json` and `bn.json` with 100% key and parameter parity.
+  - **5. Verification Results**:
+    - `npx tsx server/tests/seatAndDevicePricing.test.ts`: PASS (33/33 assertions passed: formula with no extras, only extra users, only extra devices, both; only platform admin can edit; owner sees amount, staff do not).
+    - `npm test --prefix server`: PASS (All 15 server test suites passed).
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npm run build`: PASS (Vite root build completed cleanly).
+    - `npm run build:admin`: PASS (Admin app Vite build completed cleanly).
+    - `npx tsx tests/i18nParity.test.ts`: PASS (100% key parity).
+
 - [x] **Calendar Month Grid: Expand "+N More" Hidden Matters & Date-Key Bug Fix (Completed & Verified)**:
   - **1. Part 1 — Date Key Timezone Bug Fix in Asia/Dhaka (UTC+6)**:
     - Root cause: `daysInMonthGrid`, `goToToday`, and `todayStr` previously used `date.toISOString().slice(0, 10)`. At local midnight in Bangladesh Standard Time (UTC+6), ISO representation rolls back to the previous day (18:00 UTC), assigning key `2026-11-11` to the 12 Nov cell.

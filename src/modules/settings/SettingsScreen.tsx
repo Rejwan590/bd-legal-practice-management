@@ -727,6 +727,29 @@ export const SettingsScreen: React.FC = () => {
                 </div>
               </div>
 
+              {/* Usage & Seat/Device Pricing Summary */}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1">
+                <div className="text-xs font-medium text-slate-800">
+                  {currentUser.role === 'Owner'
+                    ? t('settings.usageSummaryOwner', {
+                        usersCount: firm?.userCount ?? (users.length > 0 ? users.filter((u) => u.active).length : 1),
+                        maxUsers: firm?.maxUsers ?? firm?.seatLimit ?? 10,
+                        devicesCount: firm?.deviceCount ?? 1,
+                        maxDevices: firm?.maxDevices ?? 5,
+                        renewalBdt: (firm?.renewalPriceBdt ?? firm?.monthlyPriceBdt ?? 50000).toLocaleString(),
+                      })
+                    : t('settings.usageSummaryStaff', {
+                        usersCount: firm?.userCount ?? (users.length > 0 ? users.filter((u) => u.active).length : 1),
+                        maxUsers: firm?.maxUsers ?? firm?.seatLimit ?? 10,
+                        devicesCount: firm?.deviceCount ?? 1,
+                        maxDevices: firm?.maxDevices ?? 5,
+                      })}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {t('settings.contactSupportToAddMore')}
+                </p>
+              </div>
+
               {subscription.inGracePeriod ? (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs space-y-1">
                   <span className="font-bold flex items-center gap-1.5">

@@ -61,6 +61,14 @@ export interface FirmRecord extends BaseRecord {
   status: 'active' | 'expired' | 'suspended';
   visibilityMode: VisibilityMode;
   seatLimit?: number;
+  maxUsers?: number;
+  maxDevices?: number;
+  userCount?: number;
+  deviceCount?: number;
+  renewalPriceBdt?: number;
+  monthlyPriceBdt?: number;
+  pricingBreakdown?: any;
+  plan?: any;
 }
 
 export interface UserRecord extends BaseRecord {

@@ -788,7 +788,10 @@
     "areaFiles": "Physical Files",
     "areaAppointments": "Appointments & Meetings",
     "areaAccounts": "Accounts & Billing",
-    "areaAdmin": "Administration & Security"
+    "areaAdmin": "Administration & Security",
+    "usageSummaryOwner": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices, renewal BDT {{renewalBdt}}",
+    "usageSummaryStaff": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices",
+    "contactSupportToAddMore": "To add more, contact support."
   },
   "health": {
     "title": "System Diagnostic & Health Check",

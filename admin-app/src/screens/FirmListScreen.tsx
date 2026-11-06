@@ -170,6 +170,7 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                     <th className="px-4 py-3.5">Status</th>
                     <th className="px-4 py-3.5">License Expiry</th>
                     <th className="px-4 py-3.5">Devices Allowed</th>
+                    <th className="px-4 py-3.5">Monthly Price</th>
                     <th className="px-4 py-3.5">Contact</th>
                     <th className="px-4 py-3.5 text-right">Actions</th>
                   </tr>
@@ -220,6 +221,23 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                                 <ShieldAlert className="w-3 h-3" />
                                 {firm.pendingDeviceCount} pending approval
                               </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="font-mono text-xs font-semibold text-slate-100">
+                            {firm.monthlyPriceBdt != null ? `BDT ${firm.monthlyPriceBdt.toLocaleString()}/mo` : '—'}
+                          </div>
+                          {firm.pricingBreakdown && (
+                            <div className="text-[11px] text-slate-400 font-mono space-y-0.5 mt-0.5">
+                              <div>Base: BDT {firm.pricingBreakdown.basePriceBdt.toLocaleString()}</div>
+                              {(firm.pricingBreakdown.extraUsersCostBdt > 0 || firm.pricingBreakdown.extraDevicesCostBdt > 0) && (
+                                <div className="text-indigo-400 text-[10px]">
+                                  +{firm.pricingBreakdown.extraUsersCostBdt > 0 ? `Users: BDT ${firm.pricingBreakdown.extraUsersCostBdt.toLocaleString()}` : ''}
+                                  {firm.pricingBreakdown.extraUsersCostBdt > 0 && firm.pricingBreakdown.extraDevicesCostBdt > 0 ? ', ' : ''}
+                                  {firm.pricingBreakdown.extraDevicesCostBdt > 0 ? `Devices: BDT ${firm.pricingBreakdown.extraDevicesCostBdt.toLocaleString()}` : ''}
+                                </div>
+                              )}
                             </div>
                           )}
                         </td>
@@ -288,6 +306,24 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                       )}
                     </div>
                   </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 text-[11px]">Monthly Price</span>
+                    <span className="font-mono font-semibold text-indigo-400">
+                      {firm.monthlyPriceBdt != null ? `BDT ${firm.monthlyPriceBdt.toLocaleString()}/mo` : '—'}
+                    </span>
+                  </div>
+                  {firm.pricingBreakdown && (
+                    <div className="text-[10px] text-slate-400 font-mono flex flex-wrap gap-x-2">
+                      <span>Base: BDT {firm.pricingBreakdown.basePriceBdt.toLocaleString()}</span>
+                      {firm.pricingBreakdown.extraUsersCostBdt > 0 && (
+                        <span>+Users: BDT {firm.pricingBreakdown.extraUsersCostBdt.toLocaleString()}</span>
+                      )}
+                      {firm.pricingBreakdown.extraDevicesCostBdt > 0 && (
+                        <span>+Devices: BDT {firm.pricingBreakdown.extraDevicesCostBdt.toLocaleString()}</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-1 text-xs text-slate-400">
                     <span>{firm.contact || 'No contact phone'}</span>

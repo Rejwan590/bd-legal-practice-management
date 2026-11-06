@@ -159,7 +159,9 @@ usersRouter.post(
     let seatLimit = 100;
     if (typeof (firm as any).seatLimit === 'number' && (firm as any).seatLimit > 0) {
       seatLimit = (firm as any).seatLimit;
-    } else if (firm.planId) {
+    } else if (firm?.maxUsers && firm.maxUsers > 0) {
+      seatLimit = firm.maxUsers;
+    } else if (firm?.planId) {
       const plan = await db.getPlan(firm.planId);
       if (plan && plan.seats > 0) {
         seatLimit = plan.seats;
@@ -635,7 +637,11 @@ usersRouter.post(
       const activeUsersCount = firmUsers.filter((u) => u.active && !u.deletedAt).length;
 
       let seatLimit = 100;
-      if (firm?.planId) {
+      if (typeof (firm as any)?.seatLimit === 'number' && (firm as any).seatLimit > 0) {
+        seatLimit = (firm as any).seatLimit;
+      } else if (firm?.maxUsers && firm.maxUsers > 0) {
+        seatLimit = firm.maxUsers;
+      } else if (firm?.planId) {
         const plan = await db.getPlan(firm.planId);
         if (plan && plan.seats > 0) {
           seatLimit = plan.seats;

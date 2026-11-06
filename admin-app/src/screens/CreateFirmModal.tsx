@@ -24,6 +24,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
     barCouncilReg: '',
     courtAffiliations: '',
     months: 12,
+    maxUsers: 10,
     maxDevices: 5,
   });
 
@@ -69,6 +70,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
       barCouncilReg: '',
       courtAffiliations: '',
       months: 12,
+      maxUsers: 10,
       maxDevices: 5,
     });
     onClose();
@@ -189,7 +191,19 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-300">Allowed Devices / Seats</label>
+              <label className="text-xs font-medium text-slate-300">Allowed Users (Seats)</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={formData.maxUsers}
+                onChange={(e) => setFormData({ ...formData, maxUsers: parseInt(e.target.value) || 10 })}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 min-h-[44px]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Allowed Devices</label>
               <input
                 type="number"
                 min={1}

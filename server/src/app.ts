@@ -19,6 +19,7 @@ import { chamberExpensesRouter } from './routes/chamberExpenses.js';
 import { accountsRouter } from './routes/accounts.js';
 import { adminAuthRouter } from './routes/adminAuth.js';
 import { adminFirmsRouter } from './routes/adminFirms.js';
+import { adminPlansRouter } from './routes/adminPlans.js';
 import { adminDevicesRouter } from './routes/adminDevices.js';
 import { devicesRouter } from './routes/devices.js';
 import { originCheckMiddleware } from './middleware/originCheck.js';
@@ -83,6 +84,8 @@ export function createApp() {
   // Mount platform super admin routes
   app.use('/api/admin/auth', adminAuthRouter);
   app.use('/api/admin/firms', adminFirmsRouter);
+  app.use('/api/admin/plans', adminPlansRouter);
+  app.use('/api/v1/admin/plans', adminPlansRouter);
   app.use('/api/admin', adminDevicesRouter);
   app.get('/api/admin/audit', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const { adminAuthMiddleware } = await import('./middleware/adminAuth.js');

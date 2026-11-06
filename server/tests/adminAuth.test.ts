@@ -1,5 +1,6 @@
 process.env.JWT_SECRET = 'valid_test_secret_key_at_least_32_chars_long_1234567890';
 process.env.ADMIN_JWT_SECRET = 'valid_admin_secret_key_at_least_32_chars_long_9876543210';
+delete process.env.COOKIE_SAMESITE;
 
 import http from 'http';
 import jwt from 'jsonwebtoken';

@@ -65,6 +65,7 @@ export interface IDatabase {
   getPlan(id: string): Promise<schema.Plan | null>;
   listPlans(): Promise<schema.Plan[]>;
   insertPlan(plan: schema.Plan): Promise<schema.Plan>;
+  updatePlan(id: string, updates: Partial<schema.Plan>): Promise<schema.Plan>;
   getUserByEmail(email: string): Promise<schema.User | null>;
   getUserById(id: string): Promise<schema.User | null>;
   listUsers(firmId: string): Promise<schema.User[]>;
@@ -536,6 +537,7 @@ class MemoryDatabase implements IDatabase {
       officeAddress: firm.officeAddress ?? null,
       courtAffiliations: firm.courtAffiliations ?? null,
       contact: firm.contact ?? null,
+      maxUsers: firm.maxUsers ?? 10,
       maxDevices: firm.maxDevices ?? 5,
       devicePolicy: firm.devicePolicy ?? 'auto-approve',
       allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
@@ -611,6 +613,21 @@ class MemoryDatabase implements IDatabase {
       this.plans.push({ ...plan });
     }
     return { ...plan };
+  }
+
+  public async updatePlan(id: string, updates: Partial<schema.Plan>): Promise<schema.Plan> {
+    await this.init();
+    const idx = this.plans.findIndex((p) => p.id === id && !p.deletedAt);
+    if (idx === -1) {
+      throw new Error(`Plan ${id} not found`);
+    }
+    const updated = {
+      ...this.plans[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.plans[idx] = updated;
+    return { ...updated };
   }
 
   public async getUserByEmail(email: string): Promise<schema.User | null> {
@@ -3447,6 +3464,21 @@ class PostgresDatabase implements IDatabase {
       .values(plan)
       .onConflictDoUpdate({ target: schema.plans.id, set: plan })
       .returning();
+    return rows[0];
+  }
+
+  public async updatePlan(id: string, updates: Partial<schema.Plan>): Promise<schema.Plan> {
+    const rows = await this.db
+      .update(schema.plans)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.plans.id, id), isNull(schema.plans.deletedAt)))
+      .returning();
+    if (!rows[0]) {
+      throw new Error(`Plan ${id} not found`);
+    }
     return rows[0];
   }
 

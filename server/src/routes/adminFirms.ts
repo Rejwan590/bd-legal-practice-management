@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { adminAuthMiddleware, AuthenticatedAdminRequest } from '../middleware/adminAuth.js';
 import { getDatabase } from '../db/client.js';
+import { calculateMonthlyPriceBdt } from '../utils/pricing.js';
 import { recordAdminAudit } from '../services/adminAuditService.js';
 import { recordAudit } from '../services/auditService.js';
 import { ALL_PERMISSIONS } from '../db/seed.js';
@@ -24,6 +25,7 @@ const createFirmSchema = z.object({
   name: z.string().trim().min(2, 'Firm name must be at least 2 characters').max(255),
   planId: z.string().optional().default('annual-standard'),
   months: z.number().int().min(1).max(120).optional().default(12),
+  maxUsers: z.number().int().min(1).max(100).optional().default(10),
   maxDevices: z.number().int().min(1).max(100).optional().default(5),
   ownerName: z.string().trim().min(2, 'Owner name must be at least 2 characters').max(100),
   ownerEmail: z.string().trim().toLowerCase().email('Invalid owner email address'),
@@ -54,6 +56,7 @@ const softDeleteFirmSchema = z.object({
 
 const updateLicenseSchema = z.object({
   planId: z.string().optional(),
+  maxUsers: z.number().int().min(1).max(100).optional(),
   maxDevices: z.number().int().min(1).max(100).optional(),
   startDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   expiryDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
@@ -130,6 +133,7 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
       barCouncilReg: data.barCouncilReg ?? null,
       courtAffiliations: data.courtAffiliations ?? null,
       planId: data.planId,
+      maxUsers: data.maxUsers,
       maxDevices: data.maxDevices,
       licenseStartsAt: startsAt,
       licenseExpiresAt: expiresAt,
@@ -223,18 +227,30 @@ adminFirmsRouter.get('/', async (req: AuthenticatedAdminRequest, res: Response) 
 
   const result = await db.listFirms({ page, limit, search, status });
 
+  const allPlans = await db.listPlans();
+  const planMap = new Map(allPlans.map((p) => [p.id, p]));
+
   const enrichedFirms = await Promise.all(
     result.firms.map(async (f) => {
       const pendingDeviceCount = await db.countPendingDevices(f.id);
       const approvedDeviceCount = await db.countApprovedDevices(f.id);
+      const plan = f.planId ? planMap.get(f.planId) || null : null;
+      let monthlyPriceBdt: number | undefined;
+      let pricingBreakdown: any = undefined;
+      if (plan) {
+        pricingBreakdown = calculateMonthlyPriceBdt(plan, f);
+        monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+      }
       return {
         ...f,
         pendingDeviceCount,
         approvedDeviceCount,
+        plan,
+        monthlyPriceBdt,
+        pricingBreakdown,
       };
     })
   );
-
   return res.status(200).json({
     firms: enrichedFirms,
     total: result.total,
@@ -261,6 +277,7 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
 
   const license = {
     planId: firm.planId,
+    maxUsers: firm.maxUsers,
     maxDevices: firm.maxDevices,
     licenseStartsAt: firm.licenseStartsAt,
     licenseExpiresAt: firm.licenseExpiresAt,
@@ -268,10 +285,23 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
     isExpired,
   };
 
+  let monthlyPriceBdt: number | undefined;
+  let pricingBreakdown: any = undefined;
+  if (plan) {
+    pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
+    monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+  }
+
   return res.status(200).json({
-    firm,
+    firm: {
+      ...firm,
+      monthlyPriceBdt,
+      pricingBreakdown,
+    },
     plan,
     license,
+    monthlyPriceBdt,
+    pricingBreakdown,
     userCount: metrics.userCount,
     deviceCount: metrics.deviceCount,
     pendingDeviceCount: metrics.pendingDeviceCount,
@@ -532,6 +562,7 @@ adminFirmsRouter.put('/:id/license', async (req: AuthenticatedAdminRequest, res:
 
   const updates: any = {};
   if (data.planId) updates.planId = data.planId;
+  if (data.maxUsers) updates.maxUsers = data.maxUsers;
   if (data.maxDevices) updates.maxDevices = data.maxDevices;
   if (data.startDate) updates.licenseStartsAt = new Date(data.startDate);
   if (data.expiryDate) {

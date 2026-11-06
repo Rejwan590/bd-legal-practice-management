@@ -1,6 +1,7 @@
 import {
   PlatformAdmin,
   Firm,
+  Plan,
   FirmDetailResponse,
   CreateFirmPayload,
   CreateFirmResponse,
@@ -195,10 +196,30 @@ export const adminApi = {
     );
   },
 
+  // Plans
+  async listPlans(): Promise<{ plans: Plan[] }> {
+    return adminFetch<{ plans: Plan[] }>('/api/admin/plans');
+  },
+
+  async updatePlan(
+    id: string,
+    payload: {
+      includedUsers?: number;
+      includedDevices?: number;
+      extraUserPriceBdt?: number;
+      extraDevicePriceBdt?: number;
+    }
+  ): Promise<{ message: string; plan: Plan }> {
+    return adminFetch<{ message: string; plan: Plan }>(`/api/admin/plans/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // License & Payments
   async updateLicense(
     id: string,
-    payload: { planId?: string; maxDevices?: number; startDate?: string; expiryDate?: string }
+    payload: { planId?: string; maxUsers?: number; maxDevices?: number; startDate?: string; expiryDate?: string }
   ): Promise<{ message: string; firm: Firm }> {
     return adminFetch<{ message: string; firm: Firm }>(`/api/admin/firms/${id}/license`, {
       method: 'PUT',

@@ -788,7 +788,10 @@
     "areaFiles": "শারীরিক নথিপত্র",
     "areaAppointments": "অ্যাপয়েন্টমেন্ট ও বৈঠক",
     "areaAccounts": "হিসাব ও বিলিং",
-    "areaAdmin": "প্রশাসন ও নিরাপত্তা"
+    "areaAdmin": "প্রশাসন ও নিরাপত্তা",
+    "usageSummaryOwner": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices, renewal BDT {{renewalBdt}}",
+    "usageSummaryStaff": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices",
+    "contactSupportToAddMore": "আরও যোগ করতে সাপোর্টে যোগাযোগ করুন।"
   },
   "health": {
     "title": "সিস্টেম ডায়াগনস্টিক ও স্বাস্থ্য পরীক্ষা",
