@@ -9,6 +9,7 @@ export interface RecordAdminAuditParams {
   old?: Record<string, unknown> | null;
   new?: Record<string, unknown> | null;
   ip?: string | null;
+  at?: Date;
 }
 
 export async function recordAdminAudit(params: RecordAdminAuditParams): Promise<schema.AdminAuditEntry> {
@@ -21,6 +22,6 @@ export async function recordAdminAudit(params: RecordAdminAuditParams): Promise<
     old: params.old ?? null,
     new: params.new ?? null,
     ip: params.ip ?? null,
-    at: new Date(),
+    at: params.at ?? new Date(),
   });
 }

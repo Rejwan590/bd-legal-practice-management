@@ -67,7 +67,6 @@ adminPlansRouter.patch('/:id', async (req: AuthenticatedAdminRequest, res: Respo
     old: oldValues,
     new: updates,
     ip: req.ip,
-    at: new Date(),
   });
 
   return res.status(200).json({
