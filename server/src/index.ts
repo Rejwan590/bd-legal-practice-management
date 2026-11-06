@@ -1,21 +1,15 @@
 import express from 'express';
+import { createApp } from './app.js';
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 let initializedApp: express.Express | null = null;
 
-app.use(async (req, res, next) => {
+app.use((req, res, next) => {
   try {
     if (!initializedApp) {
-      let appModule: any;
-      try {
-        appModule = await import('./app.bundle.cjs' as string);
-      } catch {
-        appModule = await import('./app.js');
-      }
-      const createAppFn = appModule.createApp || appModule.default?.createApp;
-      initializedApp = createAppFn();
+      initializedApp = createApp();
     }
     return initializedApp!(req, res, next);
   } catch (err: unknown) {

@@ -3310,10 +3310,19 @@ class PostgresDatabase implements IDatabase {
   private seatLimitOverrides = new Map<string, number>();
 
   constructor(connectionString: string) {
+    const isRemote =
+      !connectionString.includes('localhost') &&
+      !connectionString.includes('127.0.0.1');
+    const ssl =
+      connectionString.includes('sslmode=') || isRemote
+        ? { rejectUnauthorized: false }
+        : undefined;
+
     this.pool = new pg.Pool({
       connectionString,
-      connectionTimeoutMillis: 3000,
+      connectionTimeoutMillis: 5000,
       allowExitOnIdle: true,
+      ...(ssl ? { ssl } : {}),
     });
     this.db = drizzle(this.pool, { schema });
   }
