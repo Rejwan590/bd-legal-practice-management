@@ -3,6 +3,32 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Calendar Month Grid: Expand "+N More" Hidden Matters & Date-Key Bug Fix (Completed & Verified)**:
+  - **1. Part 1 — Date Key Timezone Bug Fix in Asia/Dhaka (UTC+6)**:
+    - Root cause: `daysInMonthGrid`, `goToToday`, and `todayStr` previously used `date.toISOString().slice(0, 10)`. At local midnight in Bangladesh Standard Time (UTC+6), ISO representation rolls back to the previous day (18:00 UTC), assigning key `2026-11-11` to the 12 Nov cell.
+    - Added `formatLocalDateKey(date)` helper in `src/utils/dateUtils.ts` formatting local year, month, and day components into standard `YYYY-MM-DD`.
+    - Applied `formatLocalDateKey` to all month grid cells, `goToToday`, `setSelectedDateStr`, and `todayStr`.
+    - Added `tests/calendarDateKey.test.ts` proving under both `TZ=Asia/Dhaka` and `TZ=UTC` that the 12 Nov 2026 cell produces key `2026-11-12`.
+  - **2. Part 2 — Expand "+N More" Hidden Matters (Tablet / Desktop, >= sm)**:
+    - Added `expandedDateStr: string | null` state for single-date expansion in `src/modules/calendar/CalendarScreen.tsx`.
+    - Replaced static `<span>` with accessible `<button type="button">` (`min-h-[28px]`, hover, focus ring, `aria-expanded="false"`, descriptive `aria-label`).
+    - Handled `e.stopPropagation()` on click to keep day selection and expansion independent.
+    - When expanded, renders all matters using matching badges and click handlers; displays "Show less" button (`min-h-[28px]`, `aria-expanded="true"`, `ChevronUp`) at the bottom.
+    - Ensured mutual exclusion: expanding another date collapses the previous one.
+    - State reset guards: automatically reset `expandedDateStr` on month navigation (`prevMonth`, `nextMonth`, `goToToday`) and on `typeFilter` changes.
+    - Natural CSS grid row expansion: week row grows naturally with no overlay, clipping, or horizontal scroll.
+    - Mobile layout (`< sm`) preserved with dots and selected day list below.
+    - Added bilingual key `calendar.showLess` ("Show less" / "কম দেখান") to `en.json` and `bn.json`.
+  - **3. Verification Results**:
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npm run build`: PASS (built in 2.05s).
+    - `npx tsx tests/i18nParity.test.ts`: PASS (100% key parity).
+    - `npx tsx tests/calendarDateKey.test.ts`: PASS (8/8 passed in `Asia/Dhaka` and `UTC`).
+    - `npx tsx tests/dashboard.test.ts`: PASS (25/25 passed).
+    - `npm run test:responsive`: PASS (163/163 passed, 0 horizontal scroll).
+    - `npx playwright test e2e/calendarExpandMore.spec.ts`: PASS (3/3 viewports @ 768px, 1024px, 1280px).
+    - Note: Branch `feature/calendar-expand-more` created; changes remain uncommitted and unpushed awaiting explicit user approval.
+
 - [x] **UI Polish: Case Dossier Links, Hearings Date Actions, Appointments 3-Column Hierarchy & Compact Files Table (Completed & Verified)**:
   - **1. Remove Redundant Open Dossier Button**:
     - Removed redundant Open Dossier button (cases.viewDetails) and its column from CasesScreen.tsx desktop table and mobile card bottom bar.

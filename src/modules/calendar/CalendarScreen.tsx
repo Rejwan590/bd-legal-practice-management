@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { DailyCauseListModal } from './DailyCauseListModal';
 import { getFixedForLabel } from '../../data/hearingFixedFor';
-import { getDhakaDateString } from '../../utils/dateUtils';
+import { getDhakaDateString, formatLocalDateKey } from '../../utils/dateUtils';
 
 export const CalendarScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -50,8 +50,9 @@ export const CalendarScreen: React.FC = () => {
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDateStr, setSelectedDateStrLocal] = useState(
-    () => selectedCalendarDate || new Date().toISOString().slice(0, 10)
+    () => selectedCalendarDate || formatLocalDateKey(new Date())
   );
+  const [expandedDateStr, setExpandedDateStr] = useState<string | null>(null);
   const setSelectedDateStr = useCallback(
     (d: string) => {
       setSelectedDateStrLocal(d);
@@ -157,16 +158,19 @@ export const CalendarScreen: React.FC = () => {
   // Month navigation
   const prevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    setExpandedDateStr(null);
   };
 
   const nextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    setExpandedDateStr(null);
   };
 
   const goToToday = () => {
     const today = new Date();
     setCurrentDate(today);
-    setSelectedDateStr(today.toISOString().slice(0, 10));
+    setSelectedDateStr(formatLocalDateKey(today));
+    setExpandedDateStr(null);
   };
 
   // Month grid calculations
@@ -174,6 +178,10 @@ export const CalendarScreen: React.FC = () => {
   const month = currentDate.getMonth();
 
   const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  useEffect(() => {
+    setExpandedDateStr(null);
+  }, [typeFilter]);
 
   // Filter events by type
   const filteredEvents = useMemo(() => {
@@ -206,7 +214,7 @@ export const CalendarScreen: React.FC = () => {
       const d = new Date(year, month - 1, daysInPrevMonth - i);
       days.push({
         date: d,
-        dateStr: d.toISOString().slice(0, 10),
+        dateStr: formatLocalDateKey(d),
         isCurrentMonth: false,
       });
     }
@@ -216,7 +224,7 @@ export const CalendarScreen: React.FC = () => {
       const d = new Date(year, month, i);
       days.push({
         date: d,
-        dateStr: d.toISOString().slice(0, 10),
+        dateStr: formatLocalDateKey(d),
         isCurrentMonth: true,
       });
     }
@@ -227,7 +235,7 @@ export const CalendarScreen: React.FC = () => {
       const d = new Date(year, month + 1, i);
       days.push({
         date: d,
-        dateStr: d.toISOString().slice(0, 10),
+        dateStr: formatLocalDateKey(d),
         isCurrentMonth: false,
       });
     }
@@ -259,7 +267,7 @@ export const CalendarScreen: React.FC = () => {
     return { hearings, tasks, files };
   }, [events]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = formatLocalDateKey(new Date());
 
   return (
     <div className="space-y-4 w-full">
@@ -639,35 +647,72 @@ export const CalendarScreen: React.FC = () => {
                     )}
 
                     {/* Desktop / Tablet Event Mini Badges (>= sm) */}
-                    <div className="hidden sm:block space-y-1 mt-1">
-                      {dayEvents.slice(0, 3).map((ev) => (
-                        <div
-                          key={ev.id}
-                          data-testid={`calendar-grid-event-${ev.sourceId}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEventClick(ev);
-                          }}
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate border cursor-pointer hover:opacity-85 ${
-                            ev.type === 'hearing'
-                              ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
-                              : ev.type === 'task'
-                              ? 'bg-amber-50 text-amber-900 border-amber-200'
-                              : 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                          }`}
-                          title={ev.title}
-                        >
-                          {ev.type === 'hearing' ? '⚖️ ' : ev.type === 'task' ? '📋 ' : '📁 '}
-                          {ev.caseNumber || ev.title}
-                        </div>
-                      ))}
+                    {(() => {
+                      const isExpanded = dayObj.dateStr === expandedDateStr;
+                      const visibleEvents = isExpanded ? dayEvents : dayEvents.slice(0, 3);
+                      const hiddenCount = dayEvents.length - 3;
 
-                      {dayEvents.length > 3 && (
-                        <span className="text-[9px] text-slate-400 font-bold block text-right">
-                          {t('calendar.moreCount', { count: dayEvents.length - 3 })}
-                        </span>
-                      )}
-                    </div>
+                      return (
+                        <div className="hidden sm:block space-y-1 mt-1">
+                          {visibleEvents.map((ev) => (
+                            <div
+                              key={ev.id}
+                              data-testid={`calendar-grid-event-${ev.sourceId}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEventClick(ev);
+                              }}
+                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate border cursor-pointer hover:opacity-85 ${
+                                ev.type === 'hearing'
+                                  ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                                  : ev.type === 'task'
+                                  ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                              }`}
+                              title={ev.title}
+                            >
+                              {ev.type === 'hearing' ? '⚖️ ' : ev.type === 'task' ? '📋 ' : '📁 '}
+                              {ev.caseNumber || ev.title}
+                            </div>
+                          ))}
+
+                          {/* When collapsed and more than 3 events, show interactive +N more button */}
+                          {!isExpanded && hiddenCount > 0 && (
+                            <button
+                              type="button"
+                              data-testid={`calendar-expand-more-${dayObj.dateStr}`}
+                              aria-expanded={false}
+                              aria-label={`Show ${hiddenCount} more matters on ${dayObj.date.getDate()} ${monthName.split(' ')[0]}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDateStr(dayObj.dateStr);
+                              }}
+                              className="w-full flex items-center justify-end px-1 py-0.5 min-h-[28px] text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50/70 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-indigo-500 transition text-right"
+                            >
+                              {t('calendar.moreCount', { count: hiddenCount })}
+                            </button>
+                          )}
+
+                          {/* When expanded, show Show Less button at the bottom */}
+                          {isExpanded && hiddenCount > 0 && (
+                            <button
+                              type="button"
+                              data-testid={`calendar-show-less-${dayObj.dateStr}`}
+                              aria-expanded={true}
+                              aria-label={`Show less matters on ${dayObj.date.getDate()} ${monthName.split(' ')[0]}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDateStr(null);
+                              }}
+                              className="w-full flex items-center justify-center gap-1 px-1 py-0.5 min-h-[28px] text-[10px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-indigo-500 transition border border-dashed border-slate-200 mt-1"
+                            >
+                              <ChevronUp className="w-3 h-3 text-slate-500" />
+                              <span>{t('calendar.showLess')}</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

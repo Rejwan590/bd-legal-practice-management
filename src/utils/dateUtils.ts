@@ -24,6 +24,25 @@ export function getDhakaDateString(date: Date | string | number = new Date()): s
 /**
  * Checks whether two dates or ISO timestamps correspond to the same calendar day in Bangladesh.
  */
+
+/**
+ * Returns a 'YYYY-MM-DD' formatted calendar date string from a Date object's local year, month, and date.
+ * Prevents UTC timezone shift issues (such as local midnight rolling back to the previous day in UTC)
+ * when constructing calendar month grids or handling local midnight dates.
+ */
+export function formatLocalDateKey(date: Date | string | number = new Date()): string {
+  try {
+    const d = typeof date === 'object' && date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch {
+    return '';
+  }
+}
+
 export function isSameDhakaDay(
   date1: Date | string | number,
   date2: Date | string | number = new Date()

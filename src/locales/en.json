@@ -570,7 +570,8 @@
     "totalListedCount": "Total Listed: {{count}}",
     "noDocketMatters": "No chamber matters scheduled for this filter.",
     "noHearingsOnDate": "No court hearings listed on {{date}}. Select a date with scheduled hearings.",
-    "courtNotFixed": "Court not fixed"
+    "courtNotFixed": "Court not fixed",
+    "showLess": "Show less"
   },
   "reminders": {
     "title": "Automated Chamber Reminders",
