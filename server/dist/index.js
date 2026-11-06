@@ -1,4 +1,3 @@
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -77526,16 +77525,16 @@ async function runMigrations(databaseUrl) {
     await client.end();
   }
 }
-var __filename, __dirname, MIGRATIONS_FOLDER;
+var currentFile, currentDir, MIGRATIONS_FOLDER;
 var init_migrate = __esm({
   "src/db/migrate.ts"() {
     "use strict";
     init_esm();
     init_node_postgres();
     init_migrator2();
-    __filename = fileURLToPath(import.meta.url);
-    __dirname = path.dirname(__filename);
-    MIGRATIONS_FOLDER = path.resolve(__dirname, "../../drizzle");
+    currentFile = typeof import.meta !== "undefined" && import.meta?.url ? fileURLToPath(import.meta.url) : "";
+    currentDir = currentFile ? path.dirname(currentFile) : process.cwd();
+    MIGRATIONS_FOLDER = path.resolve(currentDir, "../../drizzle");
     if (process.argv[1] && (process.argv[1].endsWith("migrate.ts") || process.argv[1].endsWith("migrate.js"))) {
       runMigrations().then(() => {
         console.log("[Migrations] Migration command finished cleanly.");

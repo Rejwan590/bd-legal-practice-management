@@ -4,10 +4,10 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFile = typeof import.meta !== 'undefined' && import.meta?.url ? fileURLToPath(import.meta.url) : '';
+const currentDir = currentFile ? path.dirname(currentFile) : process.cwd();
 
-export const MIGRATIONS_FOLDER = path.resolve(__dirname, '../../drizzle');
+export const MIGRATIONS_FOLDER = path.resolve(currentDir, '../../drizzle');
 
 /**
  * Runs versioned Drizzle migrations against PostgreSQL using the official

@@ -4,6 +4,7 @@ dist/
 !server/dist/
 server/dist/*
 !server/dist/index.js
+!server/dist/index.cjs
 coverage/
 test-results/
 .liveui.json
