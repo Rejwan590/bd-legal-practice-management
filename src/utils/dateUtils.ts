@@ -145,3 +145,125 @@ export function isDhakaMidnight(date: Date | string | number): boolean {
 }
 
 
+
+/**
+ * Safely parses a 'YYYY-MM-DD' calendar date key into a local Date at midnight.
+ * Avoids any timezone shift or UTC rollback.
+ */
+export function parseLocalDateKey(dateStr: string): Date {
+  const parts = dateStr.split('-');
+  const y = parseInt(parts[0], 10) || 2026;
+  const m = (parseInt(parts[1], 10) || 1) - 1;
+  const d = parseInt(parts[2], 10) || 1;
+  return new Date(y, m, d);
+}
+
+/**
+ * Returns the 7 days of the calendar week (Sunday to Saturday) containing the given anchor date key.
+ */
+export function getWeekDaysForDate(dateStr: string): Array<{ date: Date; dateStr: string; dayIndex: number }> {
+  const anchor = parseLocalDateKey(dateStr);
+  const dayOfWeek = anchor.getDay(); // 0 = Sunday, 6 = Saturday
+  const sunDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - dayOfWeek);
+  const days: Array<{ date: Date; dateStr: string; dayIndex: number }> = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate() + i);
+    days.push({
+      date: d,
+      dateStr: formatLocalDateKey(d),
+      dayIndex: i,
+    });
+  }
+  return days;
+}
+
+/**
+ * Navigates an anchor date based on the active calendar view mode.
+ * - 'month' / 'agenda': moves by 1 month
+ * - 'week': moves by 7 days
+ * - 'day' / 'causelist': moves by 1 day
+ */
+export function navigateDate(
+  dateStr: string,
+  viewMode: 'month' | 'week' | 'day' | 'agenda' | 'causelist',
+  direction: 'prev' | 'next'
+): { newDateStr: string; newCurrentDate: Date } {
+  const anchor = parseLocalDateKey(dateStr);
+  const factor = direction === 'next' ? 1 : -1;
+
+  if (viewMode === 'month' || viewMode === 'agenda') {
+    const targetMonth = anchor.getMonth() + factor;
+    const targetDate = new Date(anchor.getFullYear(), targetMonth + 1, 0);
+    const maxDays = targetDate.getDate();
+    const clampedDay = Math.min(anchor.getDate(), maxDays);
+    const newDate = new Date(anchor.getFullYear(), targetMonth, clampedDay);
+    return {
+      newDateStr: formatLocalDateKey(newDate),
+      newCurrentDate: new Date(newDate.getFullYear(), newDate.getMonth(), 1),
+    };
+  }
+
+  if (viewMode === 'week') {
+    const newDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + factor * 7);
+    return {
+      newDateStr: formatLocalDateKey(newDate),
+      newCurrentDate: new Date(newDate.getFullYear(), newDate.getMonth(), 1),
+    };
+  }
+
+  // 'day' or 'causelist'
+  const newDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + factor);
+  return {
+    newDateStr: formatLocalDateKey(newDate),
+    newCurrentDate: new Date(newDate.getFullYear(), newDate.getMonth(), 1),
+  };
+}
+
+/**
+ * Formats the calendar header range label according to the active view mode.
+ * - Month / Agenda: "November 2026" / "নভেম্বর ২০২৬"
+ * - Week: "8 Nov – 14 Nov 2026" / "৮ নভে – ১৪ নভে ২০২৬" (or across months/years)
+ * - Day / Cause List: "Friday, 6 Nov 2026" / "শুক্রবার, ৬ নভে ২০২৬"
+ */
+export function getCalendarRangeLabel(
+  dateStr: string,
+  viewMode: 'month' | 'week' | 'day' | 'agenda' | 'causelist',
+  locale: 'en' | 'bn' = 'en'
+): string {
+  const anchor = parseLocalDateKey(dateStr);
+  const intlLocale = locale === 'bn' ? 'bn-BD' : 'en-GB';
+
+  if (viewMode === 'month' || viewMode === 'agenda') {
+    return anchor.toLocaleDateString(intlLocale, {
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
+  if (viewMode === 'week') {
+    const weekDays = getWeekDaysForDate(dateStr);
+    const start = weekDays[0].date;
+    const end = weekDays[6].date;
+    const startDay = start.toLocaleDateString(intlLocale, { day: 'numeric' });
+    const endDay = end.toLocaleDateString(intlLocale, { day: 'numeric' });
+    const startMonth = start.toLocaleDateString(intlLocale, { month: 'short' });
+    const endMonth = end.toLocaleDateString(intlLocale, { month: 'short' });
+    const startYear = start.toLocaleDateString(intlLocale, { year: 'numeric' });
+    const endYear = end.toLocaleDateString(intlLocale, { year: 'numeric' });
+
+    if (start.getFullYear() !== end.getFullYear()) {
+      return `${startDay} ${startMonth} ${startYear} – ${endDay} ${endMonth} ${endYear}`;
+    }
+    if (start.getMonth() !== end.getMonth()) {
+      return `${startDay} ${startMonth} – ${endDay} ${endMonth} ${endYear}`;
+    }
+    return `${startDay} ${startMonth} – ${endDay} ${endMonth} ${endYear}`;
+  }
+
+  // 'day' | 'causelist'
+  const weekday = anchor.toLocaleDateString(intlLocale, { weekday: 'long' });
+  const day = anchor.toLocaleDateString(intlLocale, { day: 'numeric' });
+  const month = anchor.toLocaleDateString(intlLocale, { month: 'short' });
+  const year = anchor.toLocaleDateString(intlLocale, { year: 'numeric' });
+  return `${weekday}, ${day} ${month} ${year}`;
+}

@@ -28,10 +28,20 @@ import {
   Edit2,
   ChevronDown,
   ChevronUp,
+  CalendarDays,
+  CalendarRange,
 } from 'lucide-react';
 import { DailyCauseListModal } from './DailyCauseListModal';
+import { CalendarWeekView } from './CalendarWeekView';
+import { CalendarDayView } from './CalendarDayView';
 import { getFixedForLabel } from '../../data/hearingFixedFor';
-import { getDhakaDateString, formatLocalDateKey } from '../../utils/dateUtils';
+import {
+  getDhakaDateString,
+  formatLocalDateKey,
+  parseLocalDateKey,
+  navigateDate,
+  getCalendarRangeLabel,
+} from '../../utils/dateUtils';
 
 export const CalendarScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -60,7 +70,7 @@ export const CalendarScreen: React.FC = () => {
     },
     [setSelectedCalendarDate]
   );
-  const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'causelist'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day' | 'agenda' | 'causelist'>('month');
   const [typeFilter, setTypeFilter] = useState<CalendarEventType | 'all'>('all');
 
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
@@ -155,14 +165,18 @@ export const CalendarScreen: React.FC = () => {
     }
   };
 
-  // Month navigation
-  const prevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  // Unified date navigation for all views
+  const handlePrevious = () => {
+    const { newDateStr, newCurrentDate } = navigateDate(selectedDateStr, viewMode, 'prev');
+    setSelectedDateStr(newDateStr);
+    setCurrentDate(newCurrentDate);
     setExpandedDateStr(null);
   };
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  const handleNext = () => {
+    const { newDateStr, newCurrentDate } = navigateDate(selectedDateStr, viewMode, 'next');
+    setSelectedDateStr(newDateStr);
+    setCurrentDate(newCurrentDate);
     setExpandedDateStr(null);
   };
 
@@ -200,6 +214,30 @@ export const CalendarScreen: React.FC = () => {
     });
     return map;
   }, [filteredEvents]);
+
+  // Agenda month scoping and sorting (date then type)
+  const agendaEvents = useMemo(() => {
+    const currentMonthKey = selectedDateStr.slice(0, 7);
+    return filteredEvents
+      .filter((ev) => ev.date.slice(0, 7) === currentMonthKey)
+      .sort((a, b) => {
+        const dateComp = a.date.localeCompare(b.date);
+        if (dateComp !== 0) return dateComp;
+        const typeOrder: Record<string, number> = { hearing: 1, task: 2, file_return: 3 };
+        return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+      });
+  }, [filteredEvents, selectedDateStr]);
+
+  const agendaGroupedByDate = useMemo(() => {
+    const map = new Map<string, CalendarEventRecord[]>();
+    agendaEvents.forEach((ev) => {
+      const dateKey = ev.date.slice(0, 10);
+      const list = map.get(dateKey) || [];
+      list.push(ev);
+      map.set(dateKey, list);
+    });
+    return Array.from(map.entries());
+  }, [agendaEvents]);
 
   // Days in calendar month grid
   const daysInMonthGrid = useMemo(() => {
@@ -453,14 +491,17 @@ export const CalendarScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Control Bar: View Switcher, Filter Pills, and Month Navigator */}
+      {/* Control Bar: View Switcher, Filter Pills, and Unified Date Navigator */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
         {/* Left: View Mode Toggle */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto gap-1">
           <button
             type="button"
-            onClick={() => setViewMode('month')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold transition ${
+            onClick={() => {
+              setViewMode('month');
+              setExpandedDateStr(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold whitespace-nowrap transition ${
               viewMode === 'month'
                 ? 'bg-white text-slate-900 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -471,8 +512,41 @@ export const CalendarScreen: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setViewMode('agenda')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold transition ${
+            onClick={() => {
+              setViewMode('week');
+              setExpandedDateStr(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              viewMode === 'week'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarRange className="w-3.5 h-3.5" />
+            <span>{t('calendar.viewWeek')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('day');
+              setExpandedDateStr(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              viewMode === 'day'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>{t('calendar.viewDay')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('agenda');
+              setExpandedDateStr(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold whitespace-nowrap transition ${
               viewMode === 'agenda'
                 ? 'bg-white text-slate-900 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -483,8 +557,11 @@ export const CalendarScreen: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setViewMode('causelist')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold transition ${
+            onClick={() => {
+              setViewMode('causelist');
+              setExpandedDateStr(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold whitespace-nowrap transition ${
               viewMode === 'causelist'
                 ? 'bg-white text-slate-900 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -495,24 +572,24 @@ export const CalendarScreen: React.FC = () => {
           </button>
         </div>
 
-        {/* Center: Month Navigator */}
+        {/* Center: Unified Date Navigator */}
         <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
           <button
             type="button"
-            onClick={prevMonth}
+            onClick={handlePrevious}
             className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
-            aria-label="Previous Month"
+            aria-label={viewMode === 'month' ? 'Previous Month' : viewMode === 'week' ? 'Previous Week' : viewMode === 'day' ? 'Previous Day' : 'Previous'}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="font-bold text-sm text-slate-900 min-w-36 text-center select-none">
-            {monthName}
+          <span className="font-bold text-sm text-slate-900 min-w-44 text-center select-none">
+            {getCalendarRangeLabel(selectedDateStr, viewMode, i18n.language === 'bn' ? 'bn' : 'en')}
           </span>
           <button
             type="button"
-            onClick={nextMonth}
+            onClick={handleNext}
             className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
-            aria-label="Next Month"
+            aria-label={viewMode === 'month' ? 'Next Month' : viewMode === 'week' ? 'Next Week' : viewMode === 'day' ? 'Next Day' : 'Next'}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -921,6 +998,35 @@ export const CalendarScreen: React.FC = () => {
         </div>
       )}
 
+      {/* Week View */}
+      {viewMode === 'week' && (
+        <CalendarWeekView
+          events={filteredEvents}
+          selectedDateStr={selectedDateStr}
+          onEventClick={handleEventClick}
+          onSelectDate={(dateStr) => {
+            setSelectedDateStr(dateStr);
+            setCurrentDate(parseLocalDateKey(dateStr));
+          }}
+        />
+      )}
+
+      {/* Day View */}
+      {viewMode === 'day' && (
+        <CalendarDayView
+          events={filteredEvents}
+          selectedDateStr={selectedDateStr}
+          onEventClick={handleEventClick}
+          openHearingForm={openHearingForm}
+          openTaskForm={openTaskForm}
+          onPrintCauseList={() => setCauseListModalOpen(true)}
+          canAddHearing={can('hearings.update')}
+          canAddTask={can('tasks.assign')}
+          isReadOnly={isReadOnly}
+          openEntityModalById={openEntityModalById}
+        />
+      )}
+
       {/* Agenda / Chronological Timeline View */}
       {viewMode === 'agenda' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
@@ -929,76 +1035,95 @@ export const CalendarScreen: React.FC = () => {
               {t('calendar.docketTitle')}
             </h3>
             <span className="text-xs text-slate-500 font-mono">
-              {t('calendar.totalListedCount', { count: filteredEvents.length })}
+              {t('calendar.totalListedCount', { count: agendaEvents.length })}
             </span>
           </div>
 
-          {filteredEvents.length === 0 ? (
+          {agendaEvents.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-10 text-center">
-              {t('calendar.noDocketMatters')}
+              {t('calendar.noEventsForMonth')}
             </p>
           ) : (
-            <div className="divide-y divide-slate-100 space-y-1">
-              {filteredEvents.map((ev) => (
-                <div
-                  key={ev.id}
-                  onClick={() => handleEventClick(ev)}
-                  className="py-3 px-2 hover:bg-slate-50/70 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs cursor-pointer"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                          ev.type === 'hearing'
-                            ? 'bg-indigo-100 text-indigo-900'
-                            : ev.type === 'task'
-                            ? 'bg-amber-100 text-amber-900'
-                            : 'bg-emerald-100 text-emerald-900'
-                        }`}
-                      >
-                        {ev.type === 'hearing'
-                          ? t('calendar.hearingBadge')
-                          : ev.type === 'task'
-                          ? t('calendar.taskDeadlineBadge')
-                          : t('calendar.fileReturnBadge')}
-                      </span>
-                      <EntityLink
-                        type={ev.type === 'file_return' ? 'file' : ev.type}
-                        id={ev.sourceId}
-                        caseId={ev.caseId}
-                        caseTab={ev.type === 'hearing' ? 'hearings' : 'overview'}
-                        mode={ev.type === 'hearing' && ev.caseId ? 'page' : 'modal'}
-                        label={ev.title}
-                        restricted={ev.restricted}
-                        className="font-bold text-slate-900"
-                      />
-                      {ev.type === 'hearing' && ev.fixedFor && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                          {getFixedForLabel(ev.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
-                          {ev.fixedForNote ? ` (${ev.fixedForNote})` : ''}
-                        </span>
-                      )}
-                      {ev.restricted && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                          {t('cases.restricted')}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-[11px] text-slate-500 flex items-center gap-3 flex-wrap">
-                      {ev.court && <span>{t('calendar.courtPrefix', { court: ev.court })}</span>}
-                      {ev.clientName && <span>{t('calendar.clientPrefix', { name: ev.clientName })}</span>}
-                      {ev.assigneeName && <span>{t('calendar.advocatePrefix', { name: ev.assigneeName })}</span>}
-                    </div>
+            <div className="space-y-6">
+              {agendaGroupedByDate.map(([dateKey, dayEvs]) => (
+                <div key={dateKey} className="space-y-2">
+                  <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
+                    <span className="font-bold text-xs text-slate-800">
+                      {parseLocalDateKey(dateKey).toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-GB', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      ({dayEvs.length})
+                    </span>
                   </div>
+                  <div className="divide-y divide-slate-100 space-y-1">
+                    {dayEvs.map((ev) => (
+                      <div
+                        key={ev.id}
+                        onClick={() => handleEventClick(ev)}
+                        className="py-3 px-2 hover:bg-slate-50/70 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs cursor-pointer"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                ev.type === 'hearing'
+                                  ? 'bg-indigo-100 text-indigo-900'
+                                  : ev.type === 'task'
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-emerald-100 text-emerald-900'
+                              }`}
+                            >
+                              {ev.type === 'hearing'
+                                ? t('calendar.hearingBadge')
+                                : ev.type === 'task'
+                                ? t('calendar.taskDeadlineBadge')
+                                : t('calendar.fileReturnBadge')}
+                            </span>
+                            <EntityLink
+                              type={ev.type === 'file_return' ? 'file' : ev.type}
+                              id={ev.sourceId}
+                              caseId={ev.caseId}
+                              caseTab={ev.type === 'hearing' ? 'hearings' : 'overview'}
+                              mode={ev.type === 'hearing' && ev.caseId ? 'page' : 'modal'}
+                              label={ev.title}
+                              restricted={ev.restricted}
+                              className="font-bold text-slate-900"
+                            />
+                            {ev.type === 'hearing' && ev.fixedFor && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {getFixedForLabel(ev.fixedFor, i18n.language === 'bn' ? 'bn' : 'en')}
+                                {ev.fixedForNote ? ` (${ev.fixedForNote})` : ''}
+                              </span>
+                            )}
+                            {ev.restricted && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                {t('cases.restricted')}
+                              </span>
+                            )}
+                          </div>
 
-                  <div className="shrink-0 text-right font-mono">
-                    <span className="font-semibold text-slate-800 block">
-                      {new Date(ev.date).toLocaleDateString()}
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      {new Date(ev.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-3 flex-wrap">
+                            {ev.court && <span>{t('calendar.courtPrefix', { court: ev.court })}</span>}
+                            {ev.clientName && <span>{t('calendar.clientPrefix', { name: ev.clientName })}</span>}
+                            {ev.assigneeName && <span>{t('calendar.advocatePrefix', { name: ev.assigneeName })}</span>}
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right font-mono">
+                          <span className="font-semibold text-slate-800 block">
+                            {new Date(ev.date).toLocaleDateString()}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(ev.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
