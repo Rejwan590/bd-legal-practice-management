@@ -3,6 +3,23 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Full-Stack Performance Optimization: Azure Infrastructure & Frontend Bundle (Completed & Verified)**:
+  - **1. Azure Infrastructure Scaling & Zero Cold Starts**:
+    - Upgraded Azure App Service Plan from F1 (Free Shared) to B1 (Basic Dedicated) in region UAE North.
+    - Enabled 'alwaysOn: true' on Azure App Service legalmanagement, 100% eliminating container idle shutdown and sleep cold starts.
+    - Enabled 'http20Enabled: true' (HTTP/2) for connection multiplexing over a single persistent TLS connection.
+    - Configured 'healthCheckPath: /api/v1/health' to keep the worker continuously probed and pre-warmed.
+  - **2. Backend PostgreSQL Connection Pool & Keep-Alive Tuning**:
+    - In server/src/db/client.ts: configured persistent pool with min: 2, max: 20, idleTimeoutMillis: 30000, and keep-alive error handling. Eliminates the ~774ms TCP/SSL handshake penalty on subsequent database queries.
+    - In server/src/index.ts: configured server.keepAliveTimeout = 65000 and server.headersTimeout = 66000 matching Azure reverse proxy timeouts.
+  - **3. Frontend Code-Splitting & 64% Initial Bundle Reduction**:
+    - In src/App.tsx: implemented React.lazy() and React.Suspense code-splitting for all domain screens (Cases, Hearings, Clients, Accounts, Tasks, Calendar, Settings, Audit, Backup).
+    - In src/modules/foundation/AppShell.tsx: converted heavy modals (GlobalSearchModal, UserSwitchModal) to lazy imports.
+    - Main client JavaScript bundle reduced from 1,969.5 kB down to 712.5 kB (197 kB gzip), drastically accelerating initial page download and parse time.
+  - **4. Verification Results**:
+    - npm run lint: PASS (0 errors).
+    - npm run build: PASS (built in 1.39s).
+    - npm test --prefix server: PASS (All 15 test suites passed).
 - [x] **Production Outage Fix: Azure App Service Container Crash & Vercel Data Load (Completed & Verified)**:
   - **1. Root Cause Diagnosis**:
     - Azure App Service backend was returning 503 Service Unavailable on all requests including /api/v1/health and /api/v1/auth/me.

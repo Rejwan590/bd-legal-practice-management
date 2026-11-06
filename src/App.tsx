@@ -1,23 +1,24 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './modules/foundation/AuthContext';
 import { NavigationProvider, useNavigation } from './modules/foundation/NavigationContext';
 import { AppShell } from './modules/foundation/AppShell';
 import { LoginScreen } from './modules/foundation/LoginScreen';
-import { HealthScreen } from './modules/health/HealthScreen';
-import { AuditLogScreen } from './modules/audit/AuditLogScreen';
-import { SettingsScreen } from './modules/settings/SettingsScreen';
-import { ClientsScreen } from './modules/clients/ClientsScreen';
-import { CasesScreen } from './modules/cases/CasesScreen';
-import { HearingsScreen } from './modules/hearings/HearingsScreen';
-import { TasksScreen } from './modules/tasks/TasksScreen';
-import { FilesScreen } from './modules/files/FilesScreen';
-import { CalendarScreen } from './modules/calendar/CalendarScreen';
-import { AppointmentsScreen } from './modules/appointments/AppointmentsScreen';
-import { DashboardScreen } from './modules/dashboard/DashboardScreen';
-import { BackupScreen } from './modules/backup/BackupScreen';
-import { GlobalSearchModal } from './modules/search/GlobalSearchModal';
-import { BillingScreen } from './modules/billing/BillingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+const HealthScreen = lazy(() => import('./modules/health/HealthScreen').then(m => ({ default: m.HealthScreen })));
+const AuditLogScreen = lazy(() => import('./modules/audit/AuditLogScreen').then(m => ({ default: m.AuditLogScreen })));
+const SettingsScreen = lazy(() => import('./modules/settings/SettingsScreen').then(m => ({ default: m.SettingsScreen })));
+const ClientsScreen = lazy(() => import('./modules/clients/ClientsScreen').then(m => ({ default: m.ClientsScreen })));
+const CasesScreen = lazy(() => import('./modules/cases/CasesScreen').then(m => ({ default: m.CasesScreen })));
+const HearingsScreen = lazy(() => import('./modules/hearings/HearingsScreen').then(m => ({ default: m.HearingsScreen })));
+const TasksScreen = lazy(() => import('./modules/tasks/TasksScreen').then(m => ({ default: m.TasksScreen })));
+const FilesScreen = lazy(() => import('./modules/files/FilesScreen').then(m => ({ default: m.FilesScreen })));
+const CalendarScreen = lazy(() => import('./modules/calendar/CalendarScreen').then(m => ({ default: m.CalendarScreen })));
+const AppointmentsScreen = lazy(() => import('./modules/appointments/AppointmentsScreen').then(m => ({ default: m.AppointmentsScreen })));
+const DashboardScreen = lazy(() => import('./modules/dashboard/DashboardScreen').then(m => ({ default: m.DashboardScreen })));
+const BackupScreen = lazy(() => import('./modules/backup/BackupScreen').then(m => ({ default: m.BackupScreen })));
+const GlobalSearchModal = lazy(() => import('./modules/search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
+const BillingScreen = lazy(() => import('./modules/billing/BillingScreen').then(m => ({ default: m.BillingScreen })));
 
 function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -54,26 +55,32 @@ function MainApp() {
   return (
     <AppShell>
       <ErrorBoundary fallbackTitle="An error occurred while loading this section">
-        {currentTab === 'health' && <HealthScreen />}
-        {currentTab === 'auditLog' && <AuditLogScreen />}
-        {currentTab === 'settings' && <SettingsScreen />}
-        {currentTab === 'backup' && <BackupScreen />}
-        {currentTab === 'clients' && <ClientsScreen />}
-        {currentTab === 'cases' && <CasesScreen />}
-        {currentTab === 'hearings' && <HearingsScreen />}
-        {currentTab === 'tasks' && <TasksScreen />}
-        {currentTab === 'files' && <FilesScreen />}
-        {currentTab === 'appointments' && <AppointmentsScreen />}
-        {currentTab === 'calendar' && <CalendarScreen />}
-        {currentTab === 'billing' && <BillingScreen />}
-        {currentTab === 'search' && (
-          <GlobalSearchModal
-            isOpen={true}
-            inlinePage={true}
-            onClose={() => navigateToScreen('dashboard')}
-          />
-        )}
-        {currentTab === 'dashboard' && <DashboardScreen />}
+        <Suspense fallback={
+          <div className="flex items-center justify-center p-12 min-h-[300px]">
+            <div className="w-7 h-7 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          {currentTab === 'health' && <HealthScreen />}
+          {currentTab === 'auditLog' && <AuditLogScreen />}
+          {currentTab === 'settings' && <SettingsScreen />}
+          {currentTab === 'backup' && <BackupScreen />}
+          {currentTab === 'clients' && <ClientsScreen />}
+          {currentTab === 'cases' && <CasesScreen />}
+          {currentTab === 'hearings' && <HearingsScreen />}
+          {currentTab === 'tasks' && <TasksScreen />}
+          {currentTab === 'files' && <FilesScreen />}
+          {currentTab === 'appointments' && <AppointmentsScreen />}
+          {currentTab === 'calendar' && <CalendarScreen />}
+          {currentTab === 'billing' && <BillingScreen />}
+          {currentTab === 'search' && (
+            <GlobalSearchModal
+              isOpen={true}
+              inlinePage={true}
+              onClose={() => navigateToScreen('dashboard')}
+            />
+          )}
+          {currentTab === 'dashboard' && <DashboardScreen />}
+        </Suspense>
       </ErrorBoundary>
     </AppShell>
   );

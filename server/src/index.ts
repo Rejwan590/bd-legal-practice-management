@@ -38,10 +38,12 @@ async function bootstrap() {
     }
 
     const serverApp = initServerApp();
-    serverApp.listen(PORT, () => {
+    const server = serverApp.listen(PORT, () => {
       console.log(`[BD Legal Server] Step 3.0 Foundation running on port ${PORT}`);
       console.log(`[BD Legal Server] Health check: http://localhost:${PORT}/api/v1/health`);
     });
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[BD Legal Server] Fatal startup error:', message);

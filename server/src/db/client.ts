@@ -3318,11 +3318,18 @@ class PostgresDatabase implements IDatabase {
         ? { rejectUnauthorized: false }
         : undefined;
 
+    const isTest = process.env.NODE_ENV === 'test';
     this.pool = new pg.Pool({
       connectionString,
       connectionTimeoutMillis: 5000,
-      allowExitOnIdle: true,
+      allowExitOnIdle: isTest,
+      min: isTest ? 0 : 2,
+      max: 20,
+      idleTimeoutMillis: 30000,
       ...(ssl ? { ssl } : {}),
+    });
+    this.pool.on('error', (err: Error) => {
+      console.error('[BD Legal PostgreSQL Pool Error]:', err.message);
     });
     this.db = drizzle(this.pool, { schema });
   }

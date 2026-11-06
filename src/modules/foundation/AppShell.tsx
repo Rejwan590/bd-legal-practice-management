@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
 import { useNavigation, ScreenId } from './NavigationContext';
-import { UserSwitchModal } from './UserSwitchModal';
-import { GlobalSearchModal } from '../search/GlobalSearchModal';
+const UserSwitchModal = React.lazy(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
+const GlobalSearchModal = React.lazy(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
 import {
   LayoutDashboard,
   Users,
@@ -903,14 +903,22 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       </nav>
 
       {/* Switch User Modal */}
-      <UserSwitchModal isOpen={userModalOpen} onClose={() => setUserModalOpen(false)} />
+      {userModalOpen && (
+        <React.Suspense fallback={null}>
+          <UserSwitchModal isOpen={userModalOpen} onClose={() => setUserModalOpen(false)} />
+        </React.Suspense>
+      )}
 
       {/* Global Search Modal */}
-      <GlobalSearchModal
-        isOpen={searchModalOpen}
-        onClose={() => setSearchModalOpen(false)}
-        onNavigate={(tab, id) => handleSelectNav(tab as ActiveTab, id)}
-      />
+      {searchModalOpen && (
+        <React.Suspense fallback={null}>
+          <GlobalSearchModal
+            isOpen={searchModalOpen}
+            onClose={() => setSearchModalOpen(false)}
+            onNavigate={(tab, id) => handleSelectNav(tab as ActiveTab, id)}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 };

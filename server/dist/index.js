@@ -43843,11 +43843,18 @@ var init_client = __esm({
       constructor(connectionString) {
         const isRemote = !connectionString.includes("localhost") && !connectionString.includes("127.0.0.1");
         const ssl = connectionString.includes("sslmode=") || isRemote ? { rejectUnauthorized: false } : void 0;
+        const isTest = process.env.NODE_ENV === "test";
         this.pool = new esm_default.Pool({
           connectionString,
           connectionTimeoutMillis: 5e3,
-          allowExitOnIdle: true,
+          allowExitOnIdle: isTest,
+          min: isTest ? 0 : 2,
+          max: 20,
+          idleTimeoutMillis: 3e4,
           ...ssl ? { ssl } : {}
+        });
+        this.pool.on("error", (err) => {
+          console.error("[BD Legal PostgreSQL Pool Error]:", err.message);
         });
         this.db = drizzle(this.pool, { schema: schema_exports });
       }
@@ -77578,10 +77585,12 @@ async function bootstrap() {
       await runMigrations2();
     }
     const serverApp = initServerApp();
-    serverApp.listen(PORT, () => {
+    const server = serverApp.listen(PORT, () => {
       console.log(`[BD Legal Server] Step 3.0 Foundation running on port ${PORT}`);
       console.log(`[BD Legal Server] Health check: http://localhost:${PORT}/api/v1/health`);
     });
+    server.keepAliveTimeout = 65e3;
+    server.headersTimeout = 66e3;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[BD Legal Server] Fatal startup error:", message);
