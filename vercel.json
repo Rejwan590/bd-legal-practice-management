@@ -55,7 +55,7 @@
     "server": {
       "root": "server",
       "framework": "express",
-      "entrypoint": "src/index.ts",
+      "entrypoint": "dist/index.js",
       "installCommand": "npm install",
       "buildCommand": "npm run build"
     }

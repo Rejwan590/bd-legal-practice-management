@@ -1,6 +1,9 @@
 node_modules/
 build/
 dist/
+!server/dist/
+server/dist/*
+!server/dist/index.js
 coverage/
 test-results/
 .liveui.json

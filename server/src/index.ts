@@ -1,31 +1,21 @@
 import express from 'express';
+import { createApp } from './app.js';
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 let initializedApp: express.Express | null = null;
 
-app.all('*', async (req, res, next) => {
+app.use((req, res, next) => {
   try {
     if (!initializedApp) {
-      const { createApp } = await import('./app.js');
       initializedApp = createApp();
     }
-    return (initializedApp as any)(req, res, next);
-  } catch (err: any) {
-    console.error('[BD Legal Server] Request crash:', err);
-    res.status(500).json({
-      error: 'CRASH_TRACE',
-      message: err?.message || String(err),
-      stack: err?.stack,
-      name: err?.name,
-      env: {
-        NODE_ENV: process.env.NODE_ENV,
-        VERCEL: process.env.VERCEL,
-        HAS_DB_URL: Boolean(process.env.DATABASE_URL),
-        HAS_JWT_SECRET: Boolean(process.env.JWT_SECRET),
-      },
-    });
+    return initializedApp!(req, res, next);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[BD Legal Server] Initialization error:', message);
+    res.status(500).json({ error: 'InitializationError', message });
   }
 });
 
