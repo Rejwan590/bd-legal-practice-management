@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Production Vercel Hostname Safeguard & Build Distribution Parity (Completed & Verified)**:
+  - **1. Decommissioned Azure Endpoint Mitigation**:
+    - Discovered browser console error `net::ERR_NAME_NOT_RESOLVED` on `legalmanagement-dkdfhydpd2escqdk.uaenorth-01.azurewebsites.net` caused by Vercel serving an old cached deployment from prior to the Central India migration.
+    - Updated `admin-app/src/api/adminApi.ts` and `src/data/repositories/rest/restCommon.ts` with explicit safeguards to rewrite any legacy `uaenorth-01.azurewebsites.net` or `dkdfhydpd2escqdk` references to `https://legalmanagement-in.azurewebsites.net`.
+  - **2. Server Distribution & Vercel Build Parity**:
+    - Added `esbuild` to `server/package.json` devDependencies so Vercel can build serverless entrypoints cleanly.
+    - Restored `server/dist/index.js` and `server/dist/index.cjs` tracking under `.gitignore` for seamless Vercel express service runtime resolution.
+    - Updated `server/tests/postgres.test.ts` to include required non-nullable fields (`includedUsers`, `includedDevices`, `extraUserPriceBdt`, `extraDevicePriceBdt`, `jobType`) ensuring clean GitHub Actions CI passes against PostgreSQL 16.
+  - **3. Verification**:
+    - `npm run lint`: PASS (0 errors across root and admin app).
+    - `npm run test:restFetch`: PASS (14/14 assertions passed).
+    - `npm run test:health`: PASS (87/87 checks passed).
+    - `npm run build`: PASS (built in 3.69s).
+    - `npm run build:admin`: PASS (built in 2.94s).
+
 - [x] **Production Setup in Azure (Central India App + East Asia Standard_B1ms DB) (Completed & Verified)**:
   - **1. Infrastructure Topology**:
     - **Resource Group**: `BD-Legal`

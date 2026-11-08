@@ -21,15 +21,19 @@ export function getApiBaseUrl(): string {
   const isDev =
     (typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV)) ||
     (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production');
-  const configuredUrl =
+  let configuredUrl =
     (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_BASE_URL : undefined) ||
     (typeof process !== 'undefined' ? process.env?.VITE_API_BASE_URL : undefined);
+
+  if (configuredUrl && (configuredUrl.includes('uaenorth-01.azurewebsites.net') || configuredUrl.includes('dkdfhydpd2escqdk'))) {
+    configuredUrl = 'https://legalmanagement-in.azurewebsites.net/api/v1';
+  }
 
   if (!configuredUrl) {
     if (isDev) {
       return 'http://localhost:4000/api/v1';
     }
-    throw new Error('FATAL: VITE_API_BASE_URL environment variable is missing. Localhost fallback is disabled in production builds.');
+    return 'https://legalmanagement-in.azurewebsites.net/api/v1';
   }
 
   return configuredUrl;

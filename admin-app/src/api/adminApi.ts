@@ -14,14 +14,18 @@ import {
 
 function getAdminApiBase(): string {
   if (typeof import.meta !== 'undefined') {
-    if (import.meta.env?.VITE_API_URL) {
-      return (import.meta.env.VITE_API_URL as string).replace(/\/+$/, '');
+    let url = (import.meta.env?.VITE_API_URL as string) || '';
+    if (!url && import.meta.env?.VITE_API_BASE_URL) {
+      url = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/api\/v1\/?$/, '');
     }
-    if (import.meta.env?.VITE_API_BASE_URL) {
-      return (import.meta.env.VITE_API_BASE_URL as string).replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+    if (url && (url.includes('uaenorth-01.azurewebsites.net') || url.includes('dkdfhydpd2escqdk'))) {
+      url = 'https://legalmanagement-in.azurewebsites.net';
+    }
+    if (url) {
+      return url.replace(/\/+$/, '');
     }
   }
-  return '';
+  return 'https://legalmanagement-in.azurewebsites.net';
 }
 
 const API_BASE = getAdminApiBase();
