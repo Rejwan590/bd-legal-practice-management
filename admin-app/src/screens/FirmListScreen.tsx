@@ -1,3 +1,4 @@
+import { formatLicenseDate, calculateDaysLeftDhaka } from '../utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { Firm, FirmStatus } from '../types/adminTypes';
 import { adminApi } from '../api/adminApi';
@@ -59,8 +60,7 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
   };
 
   const getDaysLeft = (expiryDate: string) => {
-    const ms = new Date(expiryDate).getTime() - Date.now();
-    const days = Math.ceil(ms / (1000 * 60 * 60 * 24));
+    const days = calculateDaysLeftDhaka(expiryDate);
     if (days < 0) return { text: `Expired (${Math.abs(days)}d ago)`, isExpired: true };
     if (days === 0) return { text: 'Expires today', isExpired: false, isUrgent: true };
     return { text: `${days} days left`, isExpired: false, isUrgent: days <= 14 };
@@ -194,7 +194,7 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-1.5 font-mono text-xs text-slate-200">
                             <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(firm.licenseExpiresAt).toLocaleDateString()}
+                            {formatLicenseDate(firm.licenseExpiresAt)}
                           </div>
                           <div
                             className={`text-[11px] font-medium ${
@@ -278,7 +278,7 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({ onSelectFirm }) 
                     <div>
                       <div className="text-slate-500 text-[11px]">Expiry</div>
                       <div className="text-slate-200 font-mono">
-                        {new Date(firm.licenseExpiresAt).toLocaleDateString()}
+                        {formatLicenseDate(firm.licenseExpiresAt)}
                       </div>
                       <div
                         className={`text-[11px] font-medium ${

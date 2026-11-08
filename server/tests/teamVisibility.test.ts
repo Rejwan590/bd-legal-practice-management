@@ -37,9 +37,11 @@ function extractToken(res: Response): string {
 }
 
 async function runTests() {
+  let origFirmTeam: any = null;
   console.log('--- STARTING BACKEND TEAM HIERARCHY & VISIBILITY TEST SUITE ---');
   const { baseUrl, server } = await startTestServer();
   const db = getDatabase();
+  origFirmTeam = await db.getFirm('firm-bd-001');
 
   let passed = 0;
   let failed = 0;
@@ -619,6 +621,9 @@ async function runTests() {
     // Restore Firm A defaults
     await db.updateFirm('firm-bd-001', { seatLimit: 15, visibilityMode: 'open' } as any);
   } finally {
+    if (origFirmTeam) {
+      await db.updateFirm('firm-bd-001', origFirmTeam);
+    }
     server.close();
   }
 

@@ -1,3 +1,4 @@
+import { formatLicenseDate, calculateDaysLeftDhaka } from './utils/dateUtils';
 /**
  * Central Permission Definition & Authorization Engine
  * Follows ARCHITECTURE.md specifications
@@ -140,7 +141,7 @@ export function evaluateSubscription(
 ): SubscriptionEvaluation {
   const expiryDate = new Date(licenseExpiresAt);
   const now = new Date();
-  const formattedExpiry = expiryDate.toLocaleDateString();
+  const formattedExpiry = formatLicenseDate(expiryDate);
 
   if (status === 'suspended') {
     return {

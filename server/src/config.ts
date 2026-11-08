@@ -12,10 +12,7 @@ export const FORBIDDEN_DB_URLS = [
   'postgres://bd_legal_user:bd_legal_secret_password@localhost:5432/bd_legal_db',
 ];
 
-export const DEFAULT_PRODUCTION_ORIGINS = [
-  'https://bd-legal-practice-management.vercel.app',
-  'https://bd-legal-practice-management-legal-2b9b.vercel.app',
-];
+export const DEFAULT_PRODUCTION_ORIGINS: string[] = [];
 
 export const DEFAULT_DEVELOPMENT_ORIGINS = [
   'http://localhost:3000',

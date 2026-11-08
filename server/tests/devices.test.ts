@@ -37,12 +37,14 @@ function extractCookieValue(res: Response, cookieName: string): string {
 }
 
 async function runDeviceTests() {
+  let origFirmDevices: any = null;
   console.log('\n========================================');
   console.log('STARTING STEP D: DEVICE AUTHORIZATION TEST SUITE');
   console.log('========================================\n');
 
   const { baseUrl, server } = await startTestServer();
   const db = getDatabase();
+  origFirmDevices = await db.getFirm('firm-bd-001');
 
   let passed = 0;
   let failed = 0;

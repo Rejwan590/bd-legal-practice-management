@@ -53,6 +53,25 @@ export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
     staffCtx,
   };
 
+  const isRestMode =
+    typeof import.meta !== 'undefined' &&
+    import.meta.env?.VITE_DATA_SOURCE === 'rest';
+
+  if (isRestMode) {
+    // In REST mode, execute read-only foundation/i18n tests and skip mutating write tests
+    const foundationResults = await runFoundationTests(ctx);
+    suite.push(...foundationResults);
+    suite.push({
+      id: 'health-rest-write-protection',
+      name: 'REST Mode Database Protection Guard',
+      category: 'Data Layer',
+      passed: true,
+      message: 'Write-tests are safely skipped in REST mode to protect the live database from mutation.',
+      details: 'Mutating test suites (Clients, Cases, Hearings, Tasks, Files, Backup, Subscription) skipped.',
+    });
+    return suite;
+  }
+
   try {
     // 1. Foundation & Permissions & Data Layer & i18n
     const foundationResults = await runFoundationTests(ctx);

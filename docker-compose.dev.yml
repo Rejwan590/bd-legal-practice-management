@@ -5,6 +5,24 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
 
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: bd_legal_postgres_test
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bd_legal_test
+      POSTGRES_USER: bd_legal_user
+      POSTGRES_PASSWORD: bd_legal_secret_password
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bd_legal_user -d bd_legal_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal_net
+
   api:
     ports:
       - "127.0.0.1:4000:4000"

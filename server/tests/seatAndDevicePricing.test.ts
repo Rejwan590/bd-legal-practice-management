@@ -132,7 +132,7 @@ async function runTests() {
     const staffCookie = `access_token=${staffToken}`;
 
     // 5. Platform super admin can edit plan
-    const updatePlanRes = await makeRequest(server, '/api/v1/admin/plans/annual-standard', {
+    const updatePlanRes = await makeRequest(server, '/api/v1/admin/plans/chamber', {
       method: 'PATCH',
       cookie: adminCookie,
       body: {

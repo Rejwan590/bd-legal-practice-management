@@ -81,5 +81,6 @@ jobs:
       - name: Run Full Server Test Suite against Live PostgreSQL 16
         env:
           CI: "true"
+          NODE_ENV: "test"
         run: |
           npm test --prefix server

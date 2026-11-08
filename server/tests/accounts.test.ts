@@ -32,6 +32,7 @@ function extractToken(res: Response): string {
 }
 
 async function runTests() {
+  let origFirm: any = null;
   console.log('--- STARTING BACKEND ACCOUNTS MODULE (PHASE 1) TEST SUITE ---');
   const { baseUrl, server } = await startTestServer();
   const db = getDatabase();
@@ -537,7 +538,7 @@ async function runTests() {
 
     console.log('\n--- 12. Read-Only Subscription Gate (R-08) ---');
     // Set Firm A license to expired in past (beyond 5 days grace period)
-    const origFirm = await db.getFirm('firm-bd-001');
+    origFirm = await db.getFirm('firm-bd-001');
     await db.updateFirm('firm-bd-001', {
       licenseExpiresAt: new Date(Date.now() - 30 * 86400000),
     });

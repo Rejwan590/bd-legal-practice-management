@@ -21,7 +21,13 @@ export async function runMigrations(databaseUrl?: string): Promise<void> {
     return;
   }
 
-  const client = new pg.Client({ connectionString: url });
+  const isRemote = !url.includes('localhost') && !url.includes('127.0.0.1');
+  const allowInsecureTls =
+    process.env.ALLOW_INSECURE_TLS === 'true' ||
+    process.env.PG_REJECT_UNAUTHORIZED === 'false' ||
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0';
+  const ssl = url.includes('sslmode=') || isRemote ? { rejectUnauthorized: !allowInsecureTls } : undefined;
+  const client = new pg.Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
   try {
     await client.connect();
     console.log('[Migrations] Running Drizzle versioned migrations on PostgreSQL...');

@@ -180,7 +180,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
               </span>
               <span className="text-base font-bold text-indigo-400 font-mono">
                 BDT {pricing.monthlyPriceBdt.toLocaleString()}
-                <span className="text-xs font-normal text-slate-400"> / mo</span>
+                <span className="text-xs font-normal text-slate-400"> {(effectivePlan as any).durationMonths === 12 ? '/ yr' : '/ mo'}</span>
               </span>
             </div>
 

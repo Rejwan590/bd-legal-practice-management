@@ -1,10 +1,7 @@
 node_modules/
 build/
 dist/
-!server/dist/
-server/dist/*
-!server/dist/index.js
-!server/dist/index.cjs
+server/dist/
 coverage/
 test-results/
 .liveui.json
@@ -13,3 +10,4 @@ live-ui-editor.babel-plugin.js
 *.log
 .env*
 !.env.example
+!.env.production

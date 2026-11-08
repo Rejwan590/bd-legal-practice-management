@@ -1,3 +1,4 @@
+import { formatLicenseDate } from '../utils/dateUtils';
 import React, { useState } from 'react';
 import { ResponsiveModal } from '../components/ResponsiveModal';
 import { adminApi } from '../api/adminApi';
@@ -61,10 +62,10 @@ export const RenewModal: React.FC<RenewModalProps> = ({
             Current status: <span className={`font-semibold ${isCurrentlyExpired ? 'text-rose-400' : 'text-emerald-400'}`}>{firm.status}</span>
           </div>
           <div className="text-slate-300">
-            Current expiry: <span className="font-mono text-slate-100">{currentExpiry.toLocaleDateString()}</span>
+            Current expiry: <span className="font-mono text-slate-100">{formatLicenseDate(currentExpiry)}</span>
           </div>
           <div className="text-slate-300">
-            Projected new expiry: <span className="font-mono text-emerald-400 font-bold">{projectedExpiry.toLocaleDateString()}</span>
+            Projected new expiry: <span className="font-mono text-emerald-400 font-bold">{formatLicenseDate(projectedExpiry)}</span>
           </div>
           <p className="text-slate-400 text-[11px] pt-1">
             Renewal strictly extends from the later of the current server clock or the existing expiry date. All existing firm cases, clients, and files are permanently preserved.

@@ -3,6 +3,28 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Production Setup in Azure (Central India App + East Asia Standard_B1ms DB) (Completed & Verified)**:
+  - **1. Infrastructure Topology**:
+    - **Resource Group**: `BD-Legal`
+    - **Web App**: `legalmanagement-in` on `ASP-BDLegal-India` (Linux, F1 Free tier, $0.00/mo) in `Central India`.
+    - **Database**: `bdlegal-test-ea` on `Standard_B1ms` (PostgreSQL 16, 1 vCore, 2 GiB RAM, 32 GiB storage) in `East Asia`.
+    - Eligible for Azure for Students Free Tier (promotion active until July 30, 2027; spending limit ON).
+  - **2. Clean Migrations & Security**:
+    - Applied Drizzle migrations `0000` through `0011` cleanly — all 32 tenant tables initialized with **0 rows** (pure production baseline, no seed, no synthetic fixtures).
+    - Random 32-byte cryptographic hex secrets generated in memory for `JWT_SECRET` and `ADMIN_JWT_SECRET`, stored exclusively in Azure App Settings (never logged or checked in).
+    - Configured `DATABASE_URL` pointing to `bdlegal-test-ea`, `NODE_ENV=production`, `COOKIE_SAMESITE=none`, `TRUST_PROXY_HOPS=1`, and `CORS_ORIGIN=https://bd-legal-practice-management.vercel.app,https://bd-legal-practice-management-legal-2b9b.vercel.app`.
+    - HTTP/2 enabled (`http20Enabled: true`).
+    - Basic publishing credentials policy enabled for SCM.
+  - **3. CI/CD & Managed Identity**:
+    - Created User-Assigned Managed Identity `oidc-msi-deploy` in `BD-Legal`.
+    - Assigned `Website Contributor` role on `legalmanagement-in`.
+    - Attached GitHub Actions federated credentials for repository `Rejwan590/bd-legal-practice-management` (both environment `production` and branch `refs/heads/master`).
+  - **4. Verification**:
+    - `https://legalmanagement-in.azurewebsites.net/api/v1/health` returns `200 OK`: `{"status":"ok","database":"connected","version":"1.0.0"}`.
+    - CORS preflight and 401 unauthorized test verified with correct headers and credentials.
+
+
+
 - [x] **Full-Stack Performance Optimization: Azure Infrastructure & Frontend Bundle (Completed & Verified)**:
   - **1. Azure Infrastructure Scaling & Zero Cold Starts**:
     - Upgraded Azure App Service Plan from F1 (Free Shared) to B1 (Basic Dedicated) in region UAE North.

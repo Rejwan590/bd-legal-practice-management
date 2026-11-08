@@ -1,3 +1,4 @@
+import { formatLicenseDate } from '../utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { FirmDetailResponse, LicenseEvent, Payment, Device } from '../types/adminTypes';
 import { adminApi } from '../api/adminApi';
@@ -274,7 +275,7 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
             <Calendar className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-sm sm:text-base font-bold text-white font-mono">
-            {new Date(firm.licenseExpiresAt).toLocaleDateString()}
+            {formatLicenseDate(firm.licenseExpiresAt)}
           </div>
           <div className="text-[11px] text-slate-400">
             {license.isExpired ? (
@@ -311,7 +312,7 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
             <Clock className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-sm sm:text-base font-bold text-white font-mono">
-            {lastActivity ? new Date(lastActivity).toLocaleDateString() : 'Never'}
+            {lastActivity ? formatLicenseDate(lastActivity) : 'Never'}
           </div>
           <div className="text-[11px] text-slate-400">Chamber session log</div>
         </div>
@@ -628,7 +629,7 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
                       {pmt.note && <div className="text-xs text-slate-300 italic pt-0.5">{pmt.note}</div>}
                     </div>
                     <div className="text-xs text-slate-500 sm:text-right">
-                      <div>{new Date(pmt.paidAt).toLocaleDateString()}</div>
+                      <div>{formatLicenseDate(pmt.paidAt)}</div>
                       <div>Verified by: {pmt.verifiedBy || 'Admin'}</div>
                     </div>
                   </div>

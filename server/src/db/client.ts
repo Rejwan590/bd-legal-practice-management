@@ -595,7 +595,7 @@ class MemoryDatabase implements IDatabase {
 
   public async getPlan(id: string): Promise<schema.Plan | null> {
     await this.init();
-    const plan = this.plans.find((p) => p.id === id && !p.deletedAt);
+    const plan = this.plans.find((p) => p.id === id);
     return plan ? { ...plan } : null;
   }
 
@@ -3313,17 +3313,34 @@ class PostgresDatabase implements IDatabase {
     const isRemote =
       !connectionString.includes('localhost') &&
       !connectionString.includes('127.0.0.1');
+
+    // Test isolation guard: refuse to run tests unless database is in-memory or local AND db name contains "test"
+    if (process.env.NODE_ENV === 'test' || process.env.CI === 'true') {
+      const isLocal = !isRemote;
+      const parsedPath = connectionString.split('/').pop()?.split('?')[0]?.toLowerCase() || '';
+      const isTestDb = parsedPath.includes('test');
+      if (!isLocal || !isTestDb) {
+        throw new Error(
+          `[TEST ISOLATION GUARD] Server tests are strictly forbidden from connecting to non-test or remote database! Target DB: ${parsedPath}, Remote: ${isRemote}`
+        );
+      }
+    }
+
+    const allowInsecureTls =
+      process.env.ALLOW_INSECURE_TLS === 'true' ||
+      process.env.PG_REJECT_UNAUTHORIZED === 'false' ||
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0';
     const ssl =
       connectionString.includes('sslmode=') || isRemote
-        ? { rejectUnauthorized: false }
+        ? { rejectUnauthorized: !allowInsecureTls }
         : undefined;
 
-    const isTest = process.env.NODE_ENV === 'test';
+    const isProd = process.env.NODE_ENV === 'production';
     this.pool = new pg.Pool({
       connectionString,
       connectionTimeoutMillis: 5000,
-      allowExitOnIdle: isTest,
-      min: isTest ? 0 : 2,
+      allowExitOnIdle: !isProd,
+      min: isProd ? 2 : 0,
       max: 20,
       idleTimeoutMillis: 30000,
       ...(ssl ? { ssl } : {}),
@@ -3466,7 +3483,7 @@ class PostgresDatabase implements IDatabase {
     const rows = await this.db
       .select()
       .from(schema.plans)
-      .where(and(eq(schema.plans.id, id), isNull(schema.plans.deletedAt)))
+      .where(eq(schema.plans.id, id))
       .limit(1);
     return rows[0] || null;
   }

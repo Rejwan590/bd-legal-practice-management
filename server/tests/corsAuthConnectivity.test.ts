@@ -23,12 +23,12 @@ async function runTests() {
   const prevDbUrl = process.env.DATABASE_URL;
   const prevVercel = process.env.VERCEL;
 
+  const prodOrigin = 'https://bd-legal-practice-management.vercel.app';
   process.env.NODE_ENV = 'production';
   process.env.COOKIE_SAMESITE = 'none';
   process.env.VERCEL = '1';
   delete process.env.DATABASE_URL;
-  // CORS_ORIGIN is not explicitly passed, testing that default production origin is preserved
-  delete process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = prodOrigin;
 
   const app = createApp();
   const server = http.createServer(app);
@@ -36,7 +36,6 @@ async function runTests() {
   const addr = server.address() as any;
   const baseUrl = `http://127.0.0.1:${addr.port}`;
 
-  const prodOrigin = 'https://bd-legal-practice-management.vercel.app';
   const evilOrigin = 'https://evil.vercel.app';
 
   try {

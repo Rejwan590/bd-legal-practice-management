@@ -44,9 +44,12 @@ function extractCookie(res: Response): string {
 }
 
 async function runTests() {
+  let origFirmFound: any = null;
+  let testVictimUserId: string | null = null;
   console.log('--- STARTING BACKEND STEP 3.0 FOUNDATION TEST SUITE ---');
   const { baseUrl, server } = await startTestServer();
   const db = getDatabase();
+  origFirmFound = await db.getFirm('firm-bd-001');
 
   let passed = 0;
   let failed = 0;
@@ -933,6 +936,7 @@ async function runTests() {
       const testEmail = `reset-victim-${Date.now()}@firm.bd`;
       const testInitialPassword = 'OriginalPassword123!';
       const victimUser = await db.insertUser({
+        id: `victim-staff-${Date.now()}`,
         id: `user-victim-${Date.now()}`,
         firmId: 'firm-bd-001',
         name: 'Victim Lawyer',

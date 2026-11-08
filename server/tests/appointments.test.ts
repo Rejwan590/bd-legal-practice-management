@@ -36,6 +36,7 @@ function extractCookie(res: Response): string {
 }
 
 async function runTests() {
+  let origFirmAppt: any = null;
   console.log('--- STARTING BACKEND APPOINTMENTS TEST SUITE ---');
   const { baseUrl, server } = await startTestServer();
   const db = getDatabase();
@@ -208,6 +209,7 @@ async function runTests() {
     assert(resGetDeleted.status === 404, 'Soft deleted appointment returns 404 Not Found');
 
     // 10. Read-only subscription blocks mutation
+    origFirmAppt = await db.getFirm('firm-bd-001');
     const pastDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     await db.updateFirm('firm-bd-001', { licenseExpiresAt: pastDate, status: 'expired' });
 

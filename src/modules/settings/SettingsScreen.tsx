@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigation } from '../foundation/NavigationContext';
+import { formatLicenseDate } from '../../utils/dateUtils';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
 import { ALL_PERMISSIONS, PermissionKey } from '../../permissions';
@@ -39,6 +41,9 @@ import {
 } from 'lucide-react';
 
 export const SettingsScreen: React.FC = () => {
+  const { navigate } = useNavigation();
+  const supportEmail = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_SUPPORT_EMAIL as string | undefined) : undefined;
+  const supportWhatsApp = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_SUPPORT_WHATSAPP as string | undefined) : undefined;
   const { t, i18n } = useTranslation();
   const { currentUser, can, refreshState, subscription, isReadOnly } = useAuth();
   const repos = getRepositories();
@@ -702,7 +707,7 @@ export const SettingsScreen: React.FC = () => {
                 <div>
                   <span className="text-xs text-slate-500 block">{t('settings.validUntil')}</span>
                   <span className="font-mono font-medium text-slate-800">
-                    {firm?.licenseExpiresAt ? new Date(firm.licenseExpiresAt).toLocaleDateString() : 'N/A'}
+                    {formatLicenseDate(firm?.licenseExpiresAt, i18n.language === 'bn' ? 'bn' : 'en')}
                   </span>
                 </div>
                 <div className="text-right">
