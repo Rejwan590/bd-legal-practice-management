@@ -33,6 +33,7 @@
     "admin:license": "tsx src/scripts/adminLicense.ts",
     "admin:create": "tsx src/scripts/createPlatformAdmin.ts",
     "admin:create:prod": "node dist/scripts/createPlatformAdmin.js",
+    "admin:reset": "tsx src/scripts/resetPlatformAdminPassword.ts",
     "test:appointments": "tsx tests/appointments.test.ts",
     "test:pricing": "tsx tests/seatAndDevicePricing.test.ts"
   },
