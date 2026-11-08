@@ -72,7 +72,7 @@ async function runPostgresTests() {
 
     // --- 2. Postgres Adapter Resiliency ---
     console.log('\n--- 2. Postgres Adapter Resiliency ---');
-    const dummyPgDb = createPostgresDatabase('postgres://invalid_user:invalid_pass@127.0.0.1:9999/invalid_db');
+    const dummyPgDb = createPostgresDatabase('postgres://invalid_user:invalid_pass@127.0.0.1:9999/invalid_test_db');
     const healthy = await dummyPgDb.isHealthy();
     assert(healthy === false, 'PostgresDatabase.isHealthy returns false safely on unreachable host without crashing');
 
