@@ -28,6 +28,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 
 interface FirmDetailScreenProps {
@@ -233,6 +234,11 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{firm.name}</h1>
               {statusBadge(firm.status)}
+              {firm.isTrial && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                  TRIAL ({firm.trialDays || 0}d granted)
+                </span>
+              )}
             </div>
             <div className="text-xs text-slate-400 font-mono">ID: {firm.firmId}</div>
             <div className="text-xs text-slate-300">
@@ -243,12 +249,21 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
 
           {/* Quick Actions Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setIsRenewOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold rounded-xl min-h-[44px] transition-colors shadow-lg shadow-indigo-600/20"
-            >
-              <RefreshCw className="w-4 h-4" /> Renew License
-            </button>
+            {firm.isTrial ? (
+              <button
+                onClick={() => setIsLicenseOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-semibold rounded-xl min-h-[44px] transition-colors shadow-lg shadow-purple-600/20"
+              >
+                <Sparkles className="w-4 h-4" /> Manage Trial / Convert
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsRenewOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold rounded-xl min-h-[44px] transition-colors shadow-lg shadow-indigo-600/20"
+              >
+                <RefreshCw className="w-4 h-4" /> Renew License
+              </button>
+            )}
 
             <button
               onClick={() => setIsLicenseOpen(true)}

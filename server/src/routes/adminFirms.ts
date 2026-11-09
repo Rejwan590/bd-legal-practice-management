@@ -21,9 +21,19 @@ adminFirmsRouter.use(adminAuthMiddleware);
 
 // --- Validation Schemas ---
 
+// Helper to calculate end of day in Asia/Dhaka (+06:00)
+export function addDaysDhakaEndOfDay(date: Date, days: number): Date {
+  const dStr = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+  const [y, m, d] = dStr.split('-').map(Number);
+  // Asia/Dhaka end of day 23:59:59.999 is 17:59:59.999 UTC
+  return new Date(Date.UTC(y, m - 1, d + days, 17, 59, 59, 999));
+}
+
 const createFirmSchema = z.object({
   name: z.string().trim().min(2, 'Firm name must be at least 2 characters').max(255),
-  planId: z.string().optional().default('annual-standard'),
+  licenseType: z.enum(['trial', 'paid']).default('paid'),
+  trialDays: z.number().int({ message: 'trialDays must be an integer' }).min(1, 'trialDays must be between 1 and 365').max(365, 'trialDays must be between 1 and 365').optional(),
+  planId: z.string().optional(),
   months: z.number().int().min(1).max(120).optional().default(12),
   maxUsers: z.number().int().min(1).max(100).optional().default(10),
   maxDevices: z.number().int().min(1).max(100).optional().default(5),
@@ -33,6 +43,26 @@ const createFirmSchema = z.object({
   officeAddress: z.string().trim().optional(),
   barCouncilReg: z.string().trim().optional(),
   courtAffiliations: z.string().trim().optional(),
+}).superRefine((val, ctx) => {
+  if (val.licenseType === 'trial') {
+    if (val.trialDays === undefined || val.trialDays === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['trialDays'],
+        message: 'trialDays is required for trial licenses and must be an integer between 1 and 365',
+      });
+    }
+  }
+});
+
+const extendTrialSchema = z.object({
+  days: z.number().int({ message: 'days must be an integer' }).min(1, 'days must be between 1 and 365').max(365, 'days cannot exceed 365'),
+});
+
+const convertToPaidSchema = z.object({
+  planId: z.string().min(1, 'planId is required'),
+  billingCycle: z.enum(['monthly', 'annual']).default('monthly'),
+  expiryDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
 });
 
 const listFirmsQuerySchema = z.object({
@@ -56,14 +86,22 @@ const softDeleteFirmSchema = z.object({
 
 const updateLicenseSchema = z.object({
   planId: z.string().optional(),
-  maxUsers: z.number().int().min(1).max(100).optional(),
-  maxDevices: z.number().int().min(1).max(100).optional(),
+  maxUsers: z.number().int().min(1).max(500).optional(),
+  maxDevices: z.number().int().min(1).max(500).optional(),
+  billingCycle: z.enum(['monthly', 'annual']).optional(),
+  customBasePriceBdt: z.number().int().min(0).nullable().optional(),
+  customAnnualPriceBdt: z.number().int().min(0).nullable().optional(),
+  customExtraUserPriceBdt: z.number().int().min(0).nullable().optional(),
+  customExtraDevicePriceBdt: z.number().int().min(0).nullable().optional(),
+  priceLockedUntil: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).nullable().optional(),
+  pricingNote: z.string().max(500).nullable().optional(),
   startDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   expiryDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
 });
 
 const renewFirmSchema = z.object({
   months: z.number().int().min(1).max(120).optional().default(12),
+  planId: z.string().optional(),
 });
 
 const recordPaymentSchema = z.object({
@@ -103,6 +141,19 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
   const data = parseResult.data;
   const db = getDatabase();
 
+  const isTrial = data.licenseType === 'trial';
+  const assignedPlanId = data.planId || 'chamber';
+
+  if (assignedPlanId) {
+    const selectedPlan = await db.getPlan(assignedPlanId);
+    if (!selectedPlan) {
+      return res.status(404).json({ error: 'NotFound', message: `Plan ${assignedPlanId} not found` });
+    }
+    if (selectedPlan.status === 'archived') {
+      return res.status(400).json({ error: 'BadRequest', message: `Cannot assign archived plan: ${selectedPlan.name}` });
+    }
+  }
+
   // Check if owner email is already taken
   const existingUser = await db.getUserByEmail(data.ownerEmail);
   if (existingUser) {
@@ -115,7 +166,9 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
   // Server clock only
   const now = new Date();
   const startsAt = now;
-  const expiresAt = new Date(now.getTime() + data.months * 30 * 24 * 60 * 60 * 1000);
+  const expiresAt = isTrial
+    ? addDaysDhakaEndOfDay(now, data.trialDays!)
+    : new Date(now.getTime() + data.months * 30 * 24 * 60 * 60 * 1000);
 
   const firmId = `firm-${crypto.randomUUID()}`;
   const tempPassword = generateTemporaryPassword();
@@ -132,9 +185,12 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
       officeAddress: data.officeAddress ?? null,
       barCouncilReg: data.barCouncilReg ?? null,
       courtAffiliations: data.courtAffiliations ?? null,
-      planId: data.planId,
+      planId: assignedPlanId || null,
       maxUsers: data.maxUsers,
       maxDevices: data.maxDevices,
+      isTrial,
+      trialStartedAt: isTrial ? now : null,
+      trialDays: isTrial ? data.trialDays! : null,
       licenseStartsAt: startsAt,
       licenseExpiresAt: expiresAt,
       status: 'active',
@@ -239,7 +295,13 @@ adminFirmsRouter.get('/', async (req: AuthenticatedAdminRequest, res: Response) 
       let pricingBreakdown: any = undefined;
       if (plan) {
         pricingBreakdown = calculateMonthlyPriceBdt(plan, f);
-        monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+        if (f.isTrial) {
+          pricingBreakdown.isTrial = true;
+          pricingBreakdown.note = 'after trial';
+          monthlyPriceBdt = 0;
+        } else {
+          monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+        }
       }
       return {
         ...f,
@@ -279,6 +341,16 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
     planId: firm.planId,
     maxUsers: firm.maxUsers,
     maxDevices: firm.maxDevices,
+    isTrial: firm.isTrial,
+    trialStartedAt: firm.trialStartedAt,
+    trialDays: firm.trialDays,
+    billingCycle: firm.billingCycle,
+    customBasePriceBdt: firm.customBasePriceBdt,
+    customAnnualPriceBdt: firm.customAnnualPriceBdt,
+    customExtraUserPriceBdt: firm.customExtraUserPriceBdt,
+    customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
+    priceLockedUntil: firm.priceLockedUntil,
+    pricingNote: firm.pricingNote,
     licenseStartsAt: firm.licenseStartsAt,
     licenseExpiresAt: firm.licenseExpiresAt,
     status: firm.status,
@@ -289,7 +361,13 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
   let pricingBreakdown: any = undefined;
   if (plan) {
     pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
-    monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+    if (firm.isTrial) {
+      pricingBreakdown.isTrial = true;
+      pricingBreakdown.note = 'after trial';
+      monthlyPriceBdt = 0;
+    } else {
+      monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+    }
   }
 
   return res.status(200).json({
@@ -553,15 +631,40 @@ adminFirmsRouter.put('/:id/license', async (req: AuthenticatedAdminRequest, res:
     return res.status(404).json({ error: 'Firm not found' });
   }
 
+  if (data.planId) {
+    const selectedPlan = await db.getPlan(data.planId);
+    if (!selectedPlan) {
+      return res.status(404).json({ error: 'NotFound', message: `Plan ${data.planId} not found` });
+    }
+    if (selectedPlan.status === 'archived') {
+      return res.status(400).json({ error: 'BadRequest', message: `Cannot assign archived plan: ${selectedPlan.name}` });
+    }
+  }
+
   const oldLicense = {
+    maxUsers: firm.maxUsers,
     planId: firm.planId,
     maxDevices: firm.maxDevices,
+    billingCycle: firm.billingCycle,
+    customBasePriceBdt: firm.customBasePriceBdt,
+    customAnnualPriceBdt: firm.customAnnualPriceBdt,
+    customExtraUserPriceBdt: firm.customExtraUserPriceBdt,
+    customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
+    priceLockedUntil: firm.priceLockedUntil,
+    pricingNote: firm.pricingNote,
     licenseStartsAt: firm.licenseStartsAt,
     licenseExpiresAt: firm.licenseExpiresAt,
   };
 
   const updates: any = {};
   if (data.planId) updates.planId = data.planId;
+  if (data.billingCycle !== undefined) updates.billingCycle = data.billingCycle;
+  if (data.customBasePriceBdt !== undefined) updates.customBasePriceBdt = data.customBasePriceBdt;
+  if (data.customAnnualPriceBdt !== undefined) updates.customAnnualPriceBdt = data.customAnnualPriceBdt;
+  if (data.customExtraUserPriceBdt !== undefined) updates.customExtraUserPriceBdt = data.customExtraUserPriceBdt;
+  if (data.customExtraDevicePriceBdt !== undefined) updates.customExtraDevicePriceBdt = data.customExtraDevicePriceBdt;
+  if (data.priceLockedUntil !== undefined) updates.priceLockedUntil = data.priceLockedUntil ? new Date(data.priceLockedUntil) : null;
+  if (data.pricingNote !== undefined) updates.pricingNote = data.pricingNote;
   if (data.maxUsers) updates.maxUsers = data.maxUsers;
   if (data.maxDevices) updates.maxDevices = data.maxDevices;
   if (data.startDate) updates.licenseStartsAt = new Date(data.startDate);
@@ -629,6 +732,7 @@ adminFirmsRouter.post('/:id/renew', async (req: AuthenticatedAdminRequest, res: 
   const currentExpiry = new Date(firm.licenseExpiresAt).getTime();
   const baseTime = Math.max(now, currentExpiry);
   const newExpiry = new Date(baseTime + months * 30 * 24 * 60 * 60 * 1000);
+
 
   const oldLicense = {
     licenseExpiresAt: firm.licenseExpiresAt,
@@ -867,3 +971,188 @@ adminFirmsRouter.post(
     });
   }
 );
+
+// POST /firms/:id/extend-trial - Extend active or expired trial
+adminFirmsRouter.post('/:id/extend-trial', async (req: AuthenticatedAdminRequest, res: Response) => {
+  const parseResult = extendTrialSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Validation failed',
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { days } = parseResult.data;
+  const db = getDatabase();
+  const firm = await db.getFirm(req.params.id, true);
+  if (!firm || firm.deletedAt) {
+    return res.status(404).json({ error: 'NotFound', message: 'Firm not found' });
+  }
+
+  if (!firm.isTrial) {
+    return res.status(400).json({
+      error: 'BadRequest',
+      message: 'Firm is not currently on a trial license',
+    });
+  }
+
+  const now = new Date();
+  const currentExpiry = new Date(firm.licenseExpiresAt);
+  // If already expired, extend from today; otherwise extend from current expiry
+  const baseDate = currentExpiry <= now ? now : currentExpiry;
+  const newExpiresAt = addDaysDhakaEndOfDay(baseDate, days);
+  const newTrialDays = (firm.trialDays || 0) + days;
+
+  const oldValues = {
+    licenseExpiresAt: firm.licenseExpiresAt,
+    trialDays: firm.trialDays,
+    status: firm.status,
+  };
+
+  const newValues = {
+    licenseExpiresAt: newExpiresAt,
+    trialDays: newTrialDays,
+    status: 'active' as const,
+    extendedDays: days,
+  };
+
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, {
+      licenseExpiresAt: newExpiresAt,
+      trialDays: newTrialDays,
+      status: 'active',
+    });
+
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_EXTEND_TRIAL',
+      targetFirmId: firm.id,
+      old: oldValues,
+      new: newValues,
+      ip: req.ip,
+      at: now,
+    });
+
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'EXTEND_TRIAL',
+      old: {
+        licenseExpiresAt: firm.licenseExpiresAt,
+        status: firm.status,
+      },
+      new: {
+        licenseExpiresAt: newExpiresAt,
+        status: 'active',
+        daysGranted: days,
+      },
+      byAdmin: req.admin!.id,
+      at: now,
+    });
+
+    return updated;
+  });
+
+  return res.status(200).json({
+    message: 'Trial successfully extended',
+    firm: updatedFirm,
+  });
+});
+
+// POST /firms/:id/convert-to-paid - Convert trial firm to paid plan
+adminFirmsRouter.post('/:id/convert-to-paid', async (req: AuthenticatedAdminRequest, res: Response) => {
+  const parseResult = convertToPaidSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Validation failed',
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { planId, billingCycle, expiryDate } = parseResult.data;
+  const db = getDatabase();
+  const firm = await db.getFirm(req.params.id, true);
+  if (!firm || firm.deletedAt) {
+    return res.status(404).json({ error: 'NotFound', message: 'Firm not found' });
+  }
+
+  const selectedPlan = await db.getPlan(planId);
+  if (!selectedPlan) {
+    return res.status(404).json({ error: 'NotFound', message: `Plan ${planId} not found` });
+  }
+  if (selectedPlan.status === 'archived') {
+    return res.status(400).json({ error: 'BadRequest', message: `Cannot assign archived plan: ${selectedPlan.name}` });
+  }
+
+  const now = new Date();
+  let newExpiresAt: Date;
+  if (expiryDate) {
+    newExpiresAt = new Date(expiryDate);
+  } else {
+    const months = billingCycle === 'annual' ? (selectedPlan.durationMonths || 12) : 1;
+    newExpiresAt = new Date(now.getTime() + months * 30 * 24 * 60 * 60 * 1000);
+  }
+
+  const oldValues = {
+    isTrial: firm.isTrial,
+    planId: firm.planId,
+    billingCycle: firm.billingCycle,
+    licenseExpiresAt: firm.licenseExpiresAt,
+    status: firm.status,
+  };
+
+  const newValues = {
+    isTrial: false,
+    planId,
+    billingCycle,
+    licenseExpiresAt: newExpiresAt,
+    status: 'active' as const,
+  };
+
+  const updatedFirm = await db.transaction(async (txDb) => {
+    const updated = await txDb.updateFirm(firm.id, {
+      isTrial: false,
+      planId,
+      billingCycle,
+      licenseStartsAt: now,
+      licenseExpiresAt: newExpiresAt,
+      status: 'active',
+    });
+
+    await txDb.insertAdminAudit({
+      adminId: req.admin!.id,
+      action: 'FIRM_CONVERT_TO_PAID',
+      targetFirmId: firm.id,
+      old: oldValues,
+      new: newValues,
+      ip: req.ip,
+      at: now,
+    });
+
+    await txDb.insertLicenseEvent({
+      firmId: firm.id,
+      type: 'CONVERT_TO_PAID',
+      old: {
+        planId: firm.planId,
+        licenseExpiresAt: firm.licenseExpiresAt,
+        status: firm.status,
+      },
+      new: {
+        planId,
+        billingCycle,
+        licenseExpiresAt: newExpiresAt,
+        status: 'active',
+      },
+      byAdmin: req.admin!.id,
+      at: now,
+    });
+
+    return updated;
+  });
+
+  return res.status(200).json({
+    message: 'Firm successfully converted to paid license',
+    firm: updatedFirm,
+  });
+});

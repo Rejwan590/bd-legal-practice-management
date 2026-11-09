@@ -85,6 +85,20 @@
       "when": 1793700000000,
       "tag": "0011_seat_and_device_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793800000000,
+      "tag": "0012_plans_and_custom_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793900000000,
+      "tag": "0013_custom_trial_period",
+      "breakpoints": true
     }
   ]
 }

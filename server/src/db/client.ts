@@ -539,6 +539,16 @@ class MemoryDatabase implements IDatabase {
       contact: firm.contact ?? null,
       maxUsers: firm.maxUsers ?? 10,
       maxDevices: firm.maxDevices ?? 5,
+      billingCycle: firm.billingCycle ?? 'monthly',
+      customBasePriceBdt: firm.customBasePriceBdt ?? null,
+      customAnnualPriceBdt: firm.customAnnualPriceBdt ?? null,
+      customExtraUserPriceBdt: firm.customExtraUserPriceBdt ?? null,
+      customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt ?? null,
+      priceLockedUntil: firm.priceLockedUntil ? new Date(firm.priceLockedUntil) : null,
+      pricingNote: firm.pricingNote ?? null,
+      isTrial: firm.isTrial ?? false,
+      trialStartedAt: firm.trialStartedAt ? new Date(firm.trialStartedAt) : null,
+      trialDays: firm.trialDays ?? null,
       devicePolicy: firm.devicePolicy ?? 'auto-approve',
       allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
       visibilityMode: firm.visibilityMode ?? 'team',
@@ -608,9 +618,9 @@ class MemoryDatabase implements IDatabase {
     await this.init();
     const idx = this.plans.findIndex((p) => p.id === plan.id);
     if (idx !== -1) {
-      this.plans[idx] = { ...plan };
+      this.plans[idx] = { ...plan, status: plan.status ?? 'active' };
     } else {
-      this.plans.push({ ...plan });
+      this.plans.push({ ...plan, status: plan.status ?? 'active' });
     }
     return { ...plan };
   }
@@ -3407,6 +3417,7 @@ class PostgresDatabase implements IDatabase {
           includedDevices: 5,
           extraUserPriceBdt: 100,
           extraDevicePriceBdt: 100,
+          status: 'active' as const,
           features: ['cases', 'clients', 'hearings', 'tasks'],
           createdAt: new Date(),
           updatedAt: new Date(),

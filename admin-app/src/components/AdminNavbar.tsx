@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { PlatformAdmin } from '../types/adminTypes';
-import { Shield, Building2, History, LogOut, Menu, X } from 'lucide-react';
+import { Shield, Building2, Layers, History, LogOut, Menu, X } from 'lucide-react';
 
 interface AdminNavbarProps {
-  currentTab: 'firms' | 'audit';
-  onSelectTab: (tab: 'firms' | 'audit') => void;
+  currentTab: 'firms' | 'plans' | 'audit';
+  onSelectTab: (tab: 'firms' | 'plans' | 'audit') => void;
   admin: PlatformAdmin | null;
   onLogout: () => void;
 }
@@ -17,7 +17,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleNav = (tab: 'firms' | 'audit') => {
+  const handleNav = (tab: 'firms' | 'plans' | 'audit') => {
     onSelectTab(tab);
     setMobileMenuOpen(false);
   };
@@ -49,6 +49,17 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
             >
               <Building2 className="w-4 h-4" />
               Chamber Firms
+            </button>
+            <button
+              onClick={() => handleNav('plans')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
+                currentTab === 'plans'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              Plans & Pricing
             </button>
             <button
               onClick={() => handleNav('audit')}
@@ -102,6 +113,15 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
             >
               <Building2 className="w-5 h-5" />
               Chamber Firms
+            </button>
+            <button
+              onClick={() => handleNav('plans')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
+                currentTab === 'plans' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-5 h-5" />
+              Plans & Pricing
             </button>
             <button
               onClick={() => handleNav('audit')}

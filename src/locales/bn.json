@@ -792,9 +792,10 @@
     "areaAppointments": "অ্যাপয়েন্টমেন্ট ও বৈঠক",
     "areaAccounts": "হিসাব ও বিলিং",
     "areaAdmin": "প্রশাসন ও নিরাপত্তা",
-    "usageSummaryOwner": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices, renewal BDT {{renewalBdt}}",
+    "usageSummaryOwner": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices, renewal BDT {{renewalBdt}} {{unit}}",
     "usageSummaryStaff": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices",
-    "contactSupportToAddMore": "আরও যোগ করতে সাপোর্টে যোগাযোগ করুন।"
+    "contactSupportToAddMore": "আরও যোগ করতে সাপোর্টে যোগাযোগ করুন।",
+    "usageSummaryTrial": "{{usersCount}} / {{maxUsers}} জন ব্যবহারকারী, {{devicesCount}} / {{maxDevices}} টি ডিভাইস (ফ্রি ট্রায়াল)"
   },
   "health": {
     "title": "সিস্টেম ডায়াগনস্টিক ও স্বাস্থ্য পরীক্ষা",
@@ -980,7 +981,11 @@
     "simulateExpired": "মেয়াদোত্তীর্ণ (রিড-অনলি)",
     "simulateSuspended": "স্থগিত স্টেট",
     "simulationUpdated": "চেম্বার সাবস্ক্রিপশন স্টেট পরিবর্তিত হয়েছে: {{status}}",
-    "readOnlyMessage": "চেম্বারের সাবস্ক্রিপশন নিষ্ক্রিয় বা মেয়াদোত্তীর্ণ। ডেটা পরিবর্তন সীমাবদ্ধ করা হয়েছে।"
+    "readOnlyMessage": "চেম্বারের সাবস্ক্রিপশন নিষ্ক্রিয় বা মেয়াদোত্তীর্ণ। ডেটা পরিবর্তন সীমাবদ্ধ করা হয়েছে।",
+    "statusTrial": "ফ্রি ট্রায়াল",
+    "trialBanner": "ফ্রি ট্রায়াল: {{days}} দিন বাকি",
+    "trialEndedTitle": "ফ্রি ট্রায়ালের মেয়াদ শেষ হয়েছে",
+    "trialEndedDesc": "আপনার ফ্রি ট্রায়ালের মেয়াদ শেষ হয়েছে। চেম্বারটি এখন কেবল পড়ার মোডে রয়েছে।"
   },
   "permissions": {
     "cases_view": "মামলা দেখুন",

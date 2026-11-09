@@ -205,6 +205,23 @@ export const adminApi = {
     return adminFetch<{ plans: Plan[] }>('/api/admin/plans');
   },
 
+  async createPlan(payload: {
+    id?: string;
+    name: string;
+    priceBdt: number;
+    includedUsers: number;
+    includedDevices: number;
+    extraUserPriceBdt: number;
+    extraDevicePriceBdt: number;
+    durationMonths?: number;
+    features?: string[];
+  }): Promise<{ message: string; plan: Plan }> {
+    return adminFetch<{ message: string; plan: Plan }>('/api/admin/plans', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async updatePlan(
     id: string,
     payload: {
@@ -212,6 +229,11 @@ export const adminApi = {
       includedDevices?: number;
       extraUserPriceBdt?: number;
       extraDevicePriceBdt?: number;
+      name?: string;
+      priceBdt?: number;
+      durationMonths?: number;
+      status?: 'active' | 'archived';
+      features?: string[];
     }
   ): Promise<{ message: string; plan: Plan }> {
     return adminFetch<{ message: string; plan: Plan }>(`/api/admin/plans/${id}`, {
@@ -223,7 +245,20 @@ export const adminApi = {
   // License & Payments
   async updateLicense(
     id: string,
-    payload: { planId?: string; maxUsers?: number; maxDevices?: number; startDate?: string; expiryDate?: string }
+    payload: {
+      planId?: string;
+      billingCycle?: 'monthly' | 'annual';
+      customBasePriceBdt?: number | null;
+      customAnnualPriceBdt?: number | null;
+      customExtraUserPriceBdt?: number | null;
+      customExtraDevicePriceBdt?: number | null;
+      priceLockedUntil?: string | null;
+      pricingNote?: string | null;
+      maxUsers?: number;
+      maxDevices?: number;
+      startDate?: string;
+      expiryDate?: string;
+    }
   ): Promise<{ message: string; firm: Firm }> {
     return adminFetch<{ message: string; firm: Firm }>(`/api/admin/firms/${id}/license`, {
       method: 'PUT',
@@ -235,6 +270,23 @@ export const adminApi = {
     return adminFetch<{ message: string; firm: Firm; licenseExpiresAt: string }>(`/api/admin/firms/${id}/renew`, {
       method: 'POST',
       body: JSON.stringify({ months }),
+    });
+  },
+
+  async extendTrial(id: string, days: number): Promise<{ message: string; firm: Firm }> {
+    return adminFetch<{ message: string; firm: Firm }>(`/api/admin/firms/${id}/extend-trial`, {
+      method: 'POST',
+      body: JSON.stringify({ days }),
+    });
+  },
+
+  async convertToPaid(
+    id: string,
+    payload: { planId: string; billingCycle: 'monthly' | 'annual'; expiryDate?: string }
+  ): Promise<{ message: string; firm: Firm }> {
+    return adminFetch<{ message: string; firm: Firm }>(`/api/admin/firms/${id}/convert-to-paid`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 

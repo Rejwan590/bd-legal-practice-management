@@ -4,7 +4,7 @@ import { requireOwner } from '../middleware/permission.js';
 import { enforceFirmIsolation } from '../middleware/firmIsolation.js';
 import { enforceSubscriptionReadOnly, evaluateServerSubscription } from '../middleware/subscription.js';
 import { getDatabase } from '../db/client.js';
-import { calculateMonthlyPriceBdt } from '../utils/pricing.js';
+import { calculatePricing, calculateMonthlyPriceBdt } from '../utils/pricing.js';
 import * as schema from '../db/schema.js';
 import { recordAudit } from '../services/auditService.js';
 
@@ -28,6 +28,8 @@ firmsRouter.get('/current', async (req: AuthenticatedRequest, res: Response) => 
 
   const responseData: any = {
     ...firm,
+    maxUsers: firm.maxUsers,
+    maxDevices: firm.maxDevices,
     subscription,
     userCount: activeUsersCount,
     deviceCount: approvedDeviceCount,
@@ -37,12 +39,32 @@ firmsRouter.get('/current', async (req: AuthenticatedRequest, res: Response) => 
   if (req.user?.role === 'Owner') {
     const plan = firm.planId ? await db.getPlan(firm.planId) : null;
     if (plan) {
-      const pricing = calculateMonthlyPriceBdt(plan, firm);
       responseData.plan = plan;
-      responseData.monthlyPriceBdt = pricing.monthlyPriceBdt;
-      responseData.renewalPriceBdt = pricing.monthlyPriceBdt;
-      responseData.pricingBreakdown = pricing;
+      if (!firm.isTrial) {
+        const pricing = calculateMonthlyPriceBdt(plan, firm);
+        responseData.monthlyPriceBdt = pricing.monthlyTotal;
+        responseData.renewalPriceBdt = pricing.termTotal;
+        responseData.termTotal = pricing.termTotal;
+        responseData.unit = pricing.unit;
+        responseData.billingCycle = pricing.billingCycle;
+        responseData.pricingBreakdown = pricing;
+      }
     }
+  }
+
+  // Chamber settings privacy guard: Never show pricingNote or internal custom fields
+  delete responseData.pricingNote;
+  delete responseData.customBasePriceBdt;
+  delete responseData.customAnnualPriceBdt;
+  delete responseData.customExtraUserPriceBdt;
+  delete responseData.customExtraDevicePriceBdt;
+
+  if (firm.isTrial) {
+    delete responseData.renewalPriceBdt;
+    delete responseData.monthlyPriceBdt;
+    delete responseData.termTotal;
+    delete responseData.unit;
+    delete responseData.pricingBreakdown;
   }
 
   res.json(responseData);

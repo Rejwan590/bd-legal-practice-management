@@ -4,13 +4,14 @@ import { adminApi } from './api/adminApi';
 import { LoginScreen } from './screens/LoginScreen';
 import { FirmListScreen } from './screens/FirmListScreen';
 import { FirmDetailScreen } from './screens/FirmDetailScreen';
+import { PlansScreen } from './screens/PlansScreen';
 import { AuditScreen } from './screens/AuditScreen';
 import { AdminNavbar } from './components/AdminNavbar';
 
 export const App: React.FC = () => {
   const [admin, setAdmin] = useState<PlatformAdmin | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentTab, setCurrentTab] = useState<'firms' | 'audit'>('firms');
+  const [currentTab, setCurrentTab] = useState<'firms' | 'plans' | 'audit'>('firms');
   const [selectedFirmId, setSelectedFirmId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +94,8 @@ export const App: React.FC = () => {
           ) : (
             <FirmListScreen onSelectFirm={(id) => setSelectedFirmId(id)} />
           )
+        ) : currentTab === 'plans' ? (
+          <PlansScreen />
         ) : (
           <AuditScreen />
         )}

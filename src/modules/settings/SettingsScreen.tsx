@@ -689,7 +689,9 @@ export const SettingsScreen: React.FC = () => {
                         : 'bg-emerald-100 text-emerald-800'
                     }`}
                   >
-                    {subscription.isReadOnly
+                    {firm?.isTrial
+                      ? t('subscription.statusTrial', { defaultValue: 'Free Trial' })
+                      : subscription.isReadOnly
                       ? t('subscription.statusExpired')
                       : subscription.inGracePeriod
                       ? t('subscription.statusGrace', {
@@ -735,19 +737,27 @@ export const SettingsScreen: React.FC = () => {
               {/* Usage & Seat/Device Pricing Summary */}
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1">
                 <div className="text-xs font-medium text-slate-800">
-                  {currentUser.role === 'Owner'
+                  {firm?.isTrial
+                    ? t('settings.usageSummaryTrial', {
+                        usersCount: firm?.userCount ?? (users.length > 0 ? users.filter((u) => u.active).length : 1),
+                        maxUsers: firm?.maxUsers ?? firm?.seatLimit,
+                        devicesCount: firm?.deviceCount ?? 1,
+                        maxDevices: firm?.maxDevices,
+                      })
+                    : currentUser.role === 'Owner'
                     ? t('settings.usageSummaryOwner', {
                         usersCount: firm?.userCount ?? (users.length > 0 ? users.filter((u) => u.active).length : 1),
-                        maxUsers: firm?.maxUsers ?? firm?.seatLimit ?? 10,
+                        maxUsers: firm?.maxUsers ?? firm?.seatLimit,
                         devicesCount: firm?.deviceCount ?? 1,
-                        maxDevices: firm?.maxDevices ?? 5,
-                        renewalBdt: (firm?.renewalPriceBdt ?? firm?.monthlyPriceBdt ?? 50000).toLocaleString(),
+                        maxDevices: firm?.maxDevices,
+                        renewalBdt: (firm?.termTotal ?? firm?.renewalPriceBdt ?? firm?.monthlyPriceBdt ?? 0).toLocaleString(),
+                        unit: firm?.unit ?? (firm?.billingCycle === 'annual' ? '/ year' : '/ month'),
                       })
                     : t('settings.usageSummaryStaff', {
                         usersCount: firm?.userCount ?? (users.length > 0 ? users.filter((u) => u.active).length : 1),
-                        maxUsers: firm?.maxUsers ?? firm?.seatLimit ?? 10,
+                        maxUsers: firm?.maxUsers ?? firm?.seatLimit,
                         devicesCount: firm?.deviceCount ?? 1,
-                        maxDevices: firm?.maxDevices ?? 5,
+                        maxDevices: firm?.maxDevices,
                       })}
                 </div>
                 <p className="text-[11px] text-slate-500">

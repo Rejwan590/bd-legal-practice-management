@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
+import { calculateDaysLeftDhaka, toBnDigits } from '../../utils/dateUtils';
 import { useNavigation, ScreenId } from './NavigationContext';
 const UserSwitchModal = React.lazy(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
 const GlobalSearchModal = React.lazy(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
@@ -28,6 +29,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Mail,
+  MessageSquare,
   Plus,
   MoreHorizontal,
   CreditCard,
@@ -50,6 +52,9 @@ export const getContentWrapperClass = (): string => {
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { t, i18n } = useTranslation();
   const { currentUser, currentFirm, subscription, can, isReadOnly } = useAuth();
+  const supportEmail = (import.meta.env.VITE_SUPPORT_EMAIL as string) || '';
+  const supportWhatsapp = (import.meta.env.VITE_SUPPORT_WHATSAPP as string) || '';
+  const trialDaysLeft = currentFirm?.licenseExpiresAt ? Math.max(0, calculateDaysLeftDhaka(currentFirm.licenseExpiresAt)) : 0;
   const {
     route,
     navigateToScreen,
@@ -609,7 +614,26 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Read-Only Mode Banner (Past Grace Period) */}
+      {/* Free Trial Active Banner (hidden for paid chambers) */}
+      {currentFirm?.isTrial && !subscription.isReadOnly && (
+        <div className="bg-indigo-600 border-b border-indigo-700 text-white py-1.5 shadow-xs">
+          <div className={`${SHELL_CONTAINER_CLASS} flex items-center justify-between text-xs font-medium`}>
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded bg-indigo-700/80 text-indigo-100 shrink-0">
+                <Clock className="w-3.5 h-3.5" />
+              </span>
+              <span>
+                {t('subscription.trialBanner', {
+                  defaultValue: `Free trial: ${trialDaysLeft} days left`,
+                  days: i18n.language === 'bn' ? toBnDigits(trialDaysLeft) : trialDaysLeft,
+                })}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Read-Only Mode Banner (Past Grace Period / Trial Ended) */}
       {subscription.isReadOnly && (
         <div className="bg-rose-900 border-b border-rose-950 text-white py-2.5 shadow-sm">
           <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5`}>
@@ -619,28 +643,45 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               </span>
               <div className="leading-snug">
                 <span className="text-xs sm:text-sm font-bold tracking-tight block sm:inline mr-2 text-white">
-                  {t('subscription.readOnlyBannerTitle')}
+                  {currentFirm?.isTrial
+                    ? t('subscription.trialEndedTitle')
+                    : t('subscription.readOnlyBannerTitle')}
                 </span>
                 <span className="text-xs text-rose-200">
-                  {t('subscription.readOnlyBannerDesc')} ({t('subscription.validUntil', { date: subscription.formattedExpiry })})
+                  {currentFirm?.isTrial
+                    ? t('subscription.trialEndedDesc')
+                    : `${t('subscription.readOnlyBannerDesc')} (${t('subscription.validUntil', { date: subscription.formattedExpiry })})`}
                 </span>
               </div>
             </div>
-            {can('settings.manage') && (
-              <a
-                href="mailto:support@firm.bd?subject=License%20Renewal%20Request"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-rose-900 rounded-xl text-xs font-bold shrink-0 transition shadow-2xs cursor-pointer min-h-[44px]"
-              >
-                <Mail className="w-4 h-4" />
-                <span>Contact support to renew &rarr;</span>
-              </a>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {Boolean(supportEmail) && (
+                <a
+                  href={`mailto:${supportEmail}?subject=Chamber%20License%20Renewal`}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-rose-900 rounded-xl text-xs font-bold shrink-0 transition shadow-2xs cursor-pointer min-h-[44px]"
+                >
+                  <Mail className="w-4 h-4" />
+                  <span>{supportEmail}</span>
+                </a>
+              )}
+              {Boolean(supportWhatsapp) && (
+                <a
+                  href={`https://wa.me/${supportWhatsapp.replace(/[^0-9]/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-2xs cursor-pointer min-h-[44px]"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>WhatsApp ({supportWhatsapp})</span>
+                </a>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* Grace Period Banner */}
-      {subscription.inGracePeriod && (
+      {subscription.inGracePeriod && !currentFirm?.isTrial && (
         <div className="bg-rose-600 border-b border-rose-700 text-white py-2.5 shadow-sm">
           <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5`}>
             <div className="flex items-center gap-2.5">
@@ -677,7 +718,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       )}
 
       {/* Expiring Soon Banner */}
-      {subscription.isExpiringSoon && !subscription.isReadOnly && (
+      {subscription.isExpiringSoon && !subscription.isReadOnly && !currentFirm?.isTrial && (
         <div className="bg-amber-600 border-b border-amber-700 text-white py-2 shadow-xs">
           <div className={`${SHELL_CONTAINER_CLASS} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2`}>
             <div className="flex items-center gap-2">

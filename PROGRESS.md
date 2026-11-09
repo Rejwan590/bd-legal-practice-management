@@ -3,6 +3,39 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Plans, Custom Pricing & Custom Trial Periods with Full Admin Control (Completed & Verified)**:
+  - **1. Stage 1: Plans and Pricing Model**:
+    - Drizzle Migration `0012_plans_and_custom_pricing.sql` added `status` to `plans`, and `billing_cycle`, `custom_base_price_bdt`, `custom_annual_price_bdt`, `custom_extra_user_price_bdt`, `custom_extra_device_price_bdt`, `price_locked_until`, `pricing_note` to `firms`.
+    - Pricing calculation engine in `server/src/utils/pricing.ts`, `src/utils/pricing.ts`, and `admin-app/src/utils/pricing.ts`: integer taka only, 0 allowed for free/comped, negatives rejected, custom values override plan defaults, annualTotal computed as `customAnnualPriceBdt` or `monthlyTotal * 10`.
+    - Admin API: `POST /api/admin/plans`, soft-archive via `PATCH /api/admin/plans/:id`, updated `updateLicenseSchema` with custom pricing overrides, audit logging with `old` and `new` diffs.
+    - Chamber privacy guard in `server/src/routes/firms.ts`: strips internal fields (`pricingNote`, custom prices) and never returns pricing during trial.
+    - Admin UI: Plans screen, global plan defaults editor, live breakdown with dynamic cycle unit, price-lock warning.
+    - SQL snippet `scripts/plans_setup.sql` documenting production plan creation without seeding.
+  - **2. Stage 2: Custom Trial Period**:
+    - Drizzle Migration `0013_custom_trial_period.sql` added `is_trial` (boolean default false), `trial_started_at` (timestamp nullable), and `trial_days` (integer nullable, 1..365) to `firms`.
+    - Admin API in `server/src/routes/adminFirms.ts`:
+      - `POST /api/admin/firms`: accepts `licenseType: 'trial' | 'paid'`. When trial, `trialDays` (1..365) is strictly required with clear validation on missing/0/negative/decimal/366. Sets `licenseExpiresAt` = start + trialDays at 23:59:59.999 Asia/Dhaka (+06:00 BST).
+      - `POST /api/admin/firms/:id/extend-trial`: extends active or expired trial by N days, extends from today if expired and reactivates firm (`status: 'active'`), audits via `insertAdminAudit` and `license_events`.
+      - `POST /api/admin/firms/:id/convert-to-paid`: sets `is_trial = false`, assigns plan and billing cycle, reactivates firm if expired, audits via `insertAdminAudit` and `license_events`.
+      - Zero price charged during active trial, breakdown marked `after trial`.
+    - Admin App:
+      - `CreateFirmModal`: Trial vs Paid choice. Trial days starts empty (placeholder `"Enter number of days"`), Save stays disabled until valid integer 1..365 entered, remembers last value in `localStorage` with try/catch fallback (no hardcoded default).
+      - `LicenseModal`: "Extend trial" and "Convert to paid" tabs with confirmation summaries showing new expiry and price in `"08 Dec 2026"` format via `formatLicenseDate`.
+      - `FirmListScreen`: Trial badge with Dhaka calendar days left, monthly price marked `BDT 0 (Trial)`.
+    - Chamber App:
+      - Small banner `"Free trial: N days left"` in `AppShell` (strictly hidden for paid chambers).
+      - When trial ends, read-only banner with support contacts from `VITE_SUPPORT_EMAIL` and `VITE_SUPPORT_WHATSAPP` (hidden if not configured).
+      - Chamber settings (`SettingsScreen.tsx`): usage summary displays `(Free Trial)` and never shows price during trial.
+      - 100% i18n parity across 1,278 keys in `en.json` and `bn.json`.
+  - **3. Verification Results**:
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npm run build`: PASS (built in 2.15s).
+    - `npm run build:admin`: PASS (built in 1.02s).
+    - `npm run build --prefix server`: PASS (built dist/index.cjs and dist/index.js).
+    - `npm run test:plans-pricing --prefix server`: PASS (76/76 assertions passed).
+    - `npm run test:custom-trial --prefix server`: PASS (63/63 assertions passed).
+    - `npm test --prefix server`: PASS (All 18 server test suites passed, 830+ tests, 0 failed).
+
 - [x] **Production Vercel Hostname Safeguard & Build Distribution Parity (Completed & Verified)**:
   - **1. Decommissioned Azure Endpoint Mitigation**:
     - Discovered browser console error `net::ERR_NAME_NOT_RESOLVED` on `legalmanagement-dkdfhydpd2escqdk.uaenorth-01.azurewebsites.net` caused by Vercel serving an old cached deployment from prior to the Central India migration.

@@ -20092,14 +20092,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto20 = __require("crypto");
+    var crypto21 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto20.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto21.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -23008,11 +23008,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto20 = __require("crypto");
+    var crypto21 = __require("crypto");
     exports.sign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if ("string" != typeof secret) throw new TypeError("Secret string must be provided.");
-      return val + "." + crypto20.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto21.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -23021,7 +23021,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto20.createHash("sha1").update(str).digest("hex");
+      return crypto21.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -26264,7 +26264,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto20 = require_utils4();
+    var crypto21 = require_utils4();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -26282,7 +26282,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto20.randomBytes(18).toString("base64");
+      const clientNonce = crypto21.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -26324,20 +26324,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto20.hashByName(hashName, peerCert);
+        const certHash = await crypto21.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto20.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto20.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto20.sha256(clientKey);
-      const clientSignature = await crypto20.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto21.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto21.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto21.sha256(clientKey);
+      const clientSignature = await crypto21.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto20.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto20.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto21.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto21.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -28576,7 +28576,7 @@ var require_client = __commonJS({
     var Query2 = require_query2();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto20 = require_utils4();
+    var crypto21 = require_utils4();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -28831,7 +28831,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto20.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto21.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -40447,6 +40447,7 @@ var init_schema2 = __esm({
       includedDevices: integer("included_devices").default(5).notNull(),
       extraUserPriceBdt: integer("extra_user_price_bdt").default(100).notNull(),
       extraDevicePriceBdt: integer("extra_device_price_bdt").default(100).notNull(),
+      status: text("status").$type().default("active").notNull(),
       features: jsonb("features").$type().default([]),
       createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
       updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -40464,6 +40465,16 @@ var init_schema2 = __esm({
       contact: text("contact"),
       maxUsers: integer("max_users").default(10).notNull(),
       maxDevices: integer("max_devices").default(5).notNull(),
+      billingCycle: text("billing_cycle").$type().default("monthly").notNull(),
+      customBasePriceBdt: integer("custom_base_price_bdt"),
+      customAnnualPriceBdt: integer("custom_annual_price_bdt"),
+      customExtraUserPriceBdt: integer("custom_extra_user_price_bdt"),
+      customExtraDevicePriceBdt: integer("custom_extra_device_price_bdt"),
+      priceLockedUntil: timestamp("price_locked_until", { withTimezone: true }),
+      pricingNote: text("pricing_note"),
+      isTrial: boolean("is_trial").default(false).notNull(),
+      trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
+      trialDays: integer("trial_days"),
       devicePolicy: text("device_policy").$type().default("auto-approve").notNull(),
       allowOwnerDeviceRemoval: boolean("allow_owner_device_removal").default(false).notNull(),
       visibilityMode: text("visibility_mode").$type().default("team").notNull(),
@@ -41211,6 +41222,7 @@ var init_seed = __esm({
         includedDevices: 2,
         extraUserPriceBdt: 100,
         extraDevicePriceBdt: 100,
+        status: "active",
         features: ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
         createdAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
@@ -41228,6 +41240,7 @@ var init_seed = __esm({
         includedDevices: 5,
         extraUserPriceBdt: 100,
         extraDevicePriceBdt: 100,
+        status: "active",
         features: ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
         createdAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
@@ -41245,6 +41258,7 @@ var init_seed = __esm({
         includedDevices: 10,
         extraUserPriceBdt: 100,
         extraDevicePriceBdt: 100,
+        status: "active",
         features: ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
         createdAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
@@ -41262,6 +41276,7 @@ var init_seed = __esm({
         includedDevices: 5,
         extraUserPriceBdt: 100,
         extraDevicePriceBdt: 100,
+        status: "archived",
         features: ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
         createdAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
@@ -41282,6 +41297,16 @@ var init_seed = __esm({
         contact: "+880 1711-000000",
         maxUsers: 10,
         maxDevices: 100,
+        billingCycle: "monthly",
+        customBasePriceBdt: null,
+        customAnnualPriceBdt: null,
+        customExtraUserPriceBdt: null,
+        customExtraDevicePriceBdt: null,
+        priceLockedUntil: null,
+        pricingNote: null,
+        isTrial: false,
+        trialStartedAt: null,
+        trialDays: null,
         devicePolicy: "auto-approve",
         allowOwnerDeviceRemoval: false,
         visibilityMode: "open",
@@ -41808,6 +41833,16 @@ var init_client = __esm({
           contact: firm.contact ?? null,
           maxUsers: firm.maxUsers ?? 10,
           maxDevices: firm.maxDevices ?? 5,
+          billingCycle: firm.billingCycle ?? "monthly",
+          customBasePriceBdt: firm.customBasePriceBdt ?? null,
+          customAnnualPriceBdt: firm.customAnnualPriceBdt ?? null,
+          customExtraUserPriceBdt: firm.customExtraUserPriceBdt ?? null,
+          customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt ?? null,
+          priceLockedUntil: firm.priceLockedUntil ? new Date(firm.priceLockedUntil) : null,
+          pricingNote: firm.pricingNote ?? null,
+          isTrial: firm.isTrial ?? false,
+          trialStartedAt: firm.trialStartedAt ? new Date(firm.trialStartedAt) : null,
+          trialDays: firm.trialDays ?? null,
           devicePolicy: firm.devicePolicy ?? "auto-approve",
           allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
           visibilityMode: firm.visibilityMode ?? "team",
@@ -41856,9 +41891,9 @@ var init_client = __esm({
         await this.init();
         const idx = this.plans.findIndex((p) => p.id === plan.id);
         if (idx !== -1) {
-          this.plans[idx] = { ...plan };
+          this.plans[idx] = { ...plan, status: plan.status ?? "active" };
         } else {
-          this.plans.push({ ...plan });
+          this.plans.push({ ...plan, status: plan.status ?? "active" });
         }
         return { ...plan };
       }
@@ -43963,6 +43998,7 @@ var init_client = __esm({
               includedDevices: 5,
               extraUserPriceBdt: 100,
               extraDevicePriceBdt: 100,
+              status: "active",
               features: ["cases", "clients", "hearings", "tasks"],
               createdAt: /* @__PURE__ */ new Date(),
               updatedAt: /* @__PURE__ */ new Date(),
@@ -46045,14 +46081,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports, module) {
     var Buffer2 = require_safe_buffer().Buffer;
-    var crypto20 = __require("crypto");
+    var crypto21 = __require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util = __require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto20.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto21.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -46142,17 +46178,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto20.createHmac("sha" + bits, secret);
+        var hmac = crypto21.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual = "timingSafeEqual" in crypto20 ? function timingSafeEqual2(a, b) {
+    var timingSafeEqual = "timingSafeEqual" in crypto21 ? function timingSafeEqual2(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto20.timingSafeEqual(a, b);
+      return crypto21.timingSafeEqual(a, b);
     } : function timingSafeEqual2(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -46169,7 +46205,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto20.createSign("RSA-SHA" + bits);
+        var signer = crypto21.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -46179,7 +46215,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto20.createVerify("RSA-SHA" + bits);
+        var verifier = crypto21.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -46188,11 +46224,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto20.createSign("RSA-SHA" + bits);
+        var signer = crypto21.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto20.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto20.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto21.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto21.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -46202,12 +46238,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto20.createVerify("RSA-SHA" + bits);
+        var verifier = crypto21.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto20.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto20.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto21.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto21.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -71853,33 +71889,79 @@ var init_users = __esm({
 });
 
 // src/utils/pricing.ts
-function calculateMonthlyPriceBdt(plan, firm) {
-  const basePriceBdt = Math.round(plan.priceBdt || 0);
+function validateIntegerPrice(val, name) {
+  if (val === null || val === void 0) return;
+  if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  if (val < 0) {
+    throw new Error(`${name} cannot be negative`);
+  }
+}
+function calculatePricing(plan, firm) {
+  validateIntegerPrice(plan.priceBdt, "Plan base price");
+  validateIntegerPrice(plan.extraUserPriceBdt, "Plan extra user price");
+  validateIntegerPrice(plan.extraDevicePriceBdt, "Plan extra device price");
+  const customBase = firm?.customBasePriceBdt;
+  const customAnnual = firm?.customAnnualPriceBdt;
+  const customExtraUser = firm?.customExtraUserPriceBdt;
+  const customExtraDevice = firm?.customExtraDevicePriceBdt;
+  validateIntegerPrice(customBase, "Custom base price");
+  validateIntegerPrice(customAnnual, "Custom annual price");
+  validateIntegerPrice(customExtraUser, "Custom extra user price");
+  validateIntegerPrice(customExtraDevice, "Custom extra device price");
+  const planBasePriceBdt = Math.round(plan.priceBdt || 0);
+  const planExtraUserPriceBdt = plan.extraUserPriceBdt ?? 100;
+  const planExtraDevicePriceBdt = plan.extraDevicePriceBdt ?? 100;
   const includedUsers = plan.includedUsers ?? plan.seats ?? 0;
   const includedDevices = plan.includedDevices ?? 0;
-  const extraUserPriceBdt = plan.extraUserPriceBdt ?? 100;
-  const extraDevicePriceBdt = plan.extraDevicePriceBdt ?? 100;
-  const firmMaxUsers = firm.maxUsers ?? includedUsers;
-  const firmMaxDevices = firm.maxDevices ?? includedDevices;
+  const effectiveBasePriceBdt = customBase !== null && customBase !== void 0 ? customBase : planBasePriceBdt;
+  const effectiveExtraUserPriceBdt = customExtraUser !== null && customExtraUser !== void 0 ? customExtraUser : planExtraUserPriceBdt;
+  const effectiveExtraDevicePriceBdt = customExtraDevice !== null && customExtraDevice !== void 0 ? customExtraDevice : planExtraDevicePriceBdt;
+  const firmMaxUsers = firm?.maxUsers ?? includedUsers;
+  const firmMaxDevices = firm?.maxDevices ?? includedDevices;
   const extraUsersCount = Math.max(0, firmMaxUsers - includedUsers);
   const extraDevicesCount = Math.max(0, firmMaxDevices - includedDevices);
-  const extraUsersCostBdt = Math.round(extraUsersCount * extraUserPriceBdt);
-  const extraDevicesCostBdt = Math.round(extraDevicesCount * extraDevicePriceBdt);
-  const monthlyPriceBdt = basePriceBdt + extraUsersCostBdt + extraDevicesCostBdt;
+  const extraUsersCostBdt = extraUsersCount * effectiveExtraUserPriceBdt;
+  const extraDevicesCostBdt = extraDevicesCount * effectiveExtraDevicePriceBdt;
+  const monthlyTotal = effectiveBasePriceBdt + extraUsersCostBdt + extraDevicesCostBdt;
+  const annualTotal = customAnnual !== null && customAnnual !== void 0 ? customAnnual : monthlyTotal * 10;
+  const billingCycle = firm?.billingCycle === "annual" ? "annual" : "monthly";
+  const termTotal = billingCycle === "annual" ? annualTotal : monthlyTotal;
+  const unit = billingCycle === "annual" ? "/ year" : "/ month";
   return {
-    basePriceBdt,
+    planBasePriceBdt,
+    planExtraUserPriceBdt,
+    planExtraDevicePriceBdt,
     includedUsers,
-    maxUsers: firmMaxUsers,
-    extraUsersCount,
-    extraUserPriceBdt,
-    extraUsersCostBdt,
     includedDevices,
+    customBasePriceBdt: customBase !== null && customBase !== void 0 ? customBase : null,
+    customAnnualPriceBdt: customAnnual !== null && customAnnual !== void 0 ? customAnnual : null,
+    customExtraUserPriceBdt: customExtraUser !== null && customExtraUser !== void 0 ? customExtraUser : null,
+    customExtraDevicePriceBdt: customExtraDevice !== null && customExtraDevice !== void 0 ? customExtraDevice : null,
+    effectiveBasePriceBdt,
+    effectiveExtraUserPriceBdt,
+    effectiveExtraDevicePriceBdt,
+    maxUsers: firmMaxUsers,
     maxDevices: firmMaxDevices,
+    extraUsersCount,
     extraDevicesCount,
-    extraDevicePriceBdt,
+    extraUsersCostBdt,
     extraDevicesCostBdt,
-    monthlyPriceBdt
+    monthlyTotal,
+    annualTotal,
+    termTotal,
+    billingCycle,
+    unit,
+    // Backward compatibility
+    basePriceBdt: effectiveBasePriceBdt,
+    extraUserPriceBdt: effectiveExtraUserPriceBdt,
+    extraDevicePriceBdt: effectiveExtraDevicePriceBdt,
+    monthlyPriceBdt: monthlyTotal
   };
+}
+function calculateMonthlyPriceBdt(plan, firm) {
+  return calculatePricing(plan, firm);
 }
 var init_pricing = __esm({
   "src/utils/pricing.ts"() {
@@ -71915,6 +71997,8 @@ var init_firms = __esm({
       const activeUsersCount = users2.filter((u) => !u.deletedAt && !u.deactivatedAt).length;
       const responseData = {
         ...firm,
+        maxUsers: firm.maxUsers,
+        maxDevices: firm.maxDevices,
         subscription,
         userCount: activeUsersCount,
         deviceCount: approvedDeviceCount
@@ -71922,12 +72006,29 @@ var init_firms = __esm({
       if (req.user?.role === "Owner") {
         const plan = firm.planId ? await db.getPlan(firm.planId) : null;
         if (plan) {
-          const pricing = calculateMonthlyPriceBdt(plan, firm);
           responseData.plan = plan;
-          responseData.monthlyPriceBdt = pricing.monthlyPriceBdt;
-          responseData.renewalPriceBdt = pricing.monthlyPriceBdt;
-          responseData.pricingBreakdown = pricing;
+          if (!firm.isTrial) {
+            const pricing = calculateMonthlyPriceBdt(plan, firm);
+            responseData.monthlyPriceBdt = pricing.monthlyTotal;
+            responseData.renewalPriceBdt = pricing.termTotal;
+            responseData.termTotal = pricing.termTotal;
+            responseData.unit = pricing.unit;
+            responseData.billingCycle = pricing.billingCycle;
+            responseData.pricingBreakdown = pricing;
+          }
         }
+      }
+      delete responseData.pricingNote;
+      delete responseData.customBasePriceBdt;
+      delete responseData.customAnnualPriceBdt;
+      delete responseData.customExtraUserPriceBdt;
+      delete responseData.customExtraDevicePriceBdt;
+      if (firm.isTrial) {
+        delete responseData.renewalPriceBdt;
+        delete responseData.monthlyPriceBdt;
+        delete responseData.termTotal;
+        delete responseData.unit;
+        delete responseData.pricingBreakdown;
       }
       res.json(responseData);
     });
@@ -75904,6 +76005,11 @@ var init_adminAuth2 = __esm({
 
 // src/routes/adminFirms.ts
 import crypto18 from "node:crypto";
+function addDaysDhakaEndOfDay(date6, days) {
+  const dStr = date6.toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+  const [y, m, d] = dStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days, 17, 59, 59, 999));
+}
 function generateTemporaryPassword() {
   const lettersUpper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const lettersLower = "abcdefghijkmnopqrstuvwxyz";
@@ -75916,7 +76022,7 @@ function generateTemporaryPassword() {
   const sym = symbols[crypto18.randomInt(symbols.length)];
   return `BdTemp${upper}${lower}${digit}${sym}${randomPart}`;
 }
-var import_express17, adminFirmsRouter, createFirmSchema, listFirmsQuerySchema, updateFirmSchema, softDeleteFirmSchema, updateLicenseSchema, renewFirmSchema, recordPaymentSchema2;
+var import_express17, adminFirmsRouter, createFirmSchema, extendTrialSchema, convertToPaidSchema, listFirmsQuerySchema, updateFirmSchema, softDeleteFirmSchema, updateLicenseSchema, renewFirmSchema, recordPaymentSchema2;
 var init_adminFirms = __esm({
   "src/routes/adminFirms.ts"() {
     "use strict";
@@ -75935,7 +76041,9 @@ var init_adminFirms = __esm({
     adminFirmsRouter.use(adminAuthMiddleware);
     createFirmSchema = external_exports.object({
       name: external_exports.string().trim().min(2, "Firm name must be at least 2 characters").max(255),
-      planId: external_exports.string().optional().default("annual-standard"),
+      licenseType: external_exports.enum(["trial", "paid"]).default("paid"),
+      trialDays: external_exports.number().int({ message: "trialDays must be an integer" }).min(1, "trialDays must be between 1 and 365").max(365, "trialDays must be between 1 and 365").optional(),
+      planId: external_exports.string().optional(),
       months: external_exports.number().int().min(1).max(120).optional().default(12),
       maxUsers: external_exports.number().int().min(1).max(100).optional().default(10),
       maxDevices: external_exports.number().int().min(1).max(100).optional().default(5),
@@ -75945,6 +76053,24 @@ var init_adminFirms = __esm({
       officeAddress: external_exports.string().trim().optional(),
       barCouncilReg: external_exports.string().trim().optional(),
       courtAffiliations: external_exports.string().trim().optional()
+    }).superRefine((val, ctx) => {
+      if (val.licenseType === "trial") {
+        if (val.trialDays === void 0 || val.trialDays === null) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["trialDays"],
+            message: "trialDays is required for trial licenses and must be an integer between 1 and 365"
+          });
+        }
+      }
+    });
+    extendTrialSchema = external_exports.object({
+      days: external_exports.number().int({ message: "days must be an integer" }).min(1, "days must be between 1 and 365").max(365, "days cannot exceed 365")
+    });
+    convertToPaidSchema = external_exports.object({
+      planId: external_exports.string().min(1, "planId is required"),
+      billingCycle: external_exports.enum(["monthly", "annual"]).default("monthly"),
+      expiryDate: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional()
     });
     listFirmsQuerySchema = external_exports.object({
       page: external_exports.coerce.number().int().min(1).default(1),
@@ -75964,13 +76090,21 @@ var init_adminFirms = __esm({
     });
     updateLicenseSchema = external_exports.object({
       planId: external_exports.string().optional(),
-      maxUsers: external_exports.number().int().min(1).max(100).optional(),
-      maxDevices: external_exports.number().int().min(1).max(100).optional(),
+      maxUsers: external_exports.number().int().min(1).max(500).optional(),
+      maxDevices: external_exports.number().int().min(1).max(500).optional(),
+      billingCycle: external_exports.enum(["monthly", "annual"]).optional(),
+      customBasePriceBdt: external_exports.number().int().min(0).nullable().optional(),
+      customAnnualPriceBdt: external_exports.number().int().min(0).nullable().optional(),
+      customExtraUserPriceBdt: external_exports.number().int().min(0).nullable().optional(),
+      customExtraDevicePriceBdt: external_exports.number().int().min(0).nullable().optional(),
+      priceLockedUntil: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).nullable().optional(),
+      pricingNote: external_exports.string().max(500).nullable().optional(),
       startDate: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
       expiryDate: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional()
     });
     renewFirmSchema = external_exports.object({
-      months: external_exports.number().int().min(1).max(120).optional().default(12)
+      months: external_exports.number().int().min(1).max(120).optional().default(12),
+      planId: external_exports.string().optional()
     });
     recordPaymentSchema2 = external_exports.object({
       amount: external_exports.number().int().positive("Payment amount must be a positive integer"),
@@ -75989,6 +76123,17 @@ var init_adminFirms = __esm({
       }
       const data = parseResult.data;
       const db = getDatabase();
+      const isTrial = data.licenseType === "trial";
+      const assignedPlanId = data.planId || "chamber";
+      if (assignedPlanId) {
+        const selectedPlan = await db.getPlan(assignedPlanId);
+        if (!selectedPlan) {
+          return res.status(404).json({ error: "NotFound", message: `Plan ${assignedPlanId} not found` });
+        }
+        if (selectedPlan.status === "archived") {
+          return res.status(400).json({ error: "BadRequest", message: `Cannot assign archived plan: ${selectedPlan.name}` });
+        }
+      }
       const existingUser = await db.getUserByEmail(data.ownerEmail);
       if (existingUser) {
         return res.status(409).json({
@@ -75998,7 +76143,7 @@ var init_adminFirms = __esm({
       }
       const now = /* @__PURE__ */ new Date();
       const startsAt = now;
-      const expiresAt = new Date(now.getTime() + data.months * 30 * 24 * 60 * 60 * 1e3);
+      const expiresAt = isTrial ? addDaysDhakaEndOfDay(now, data.trialDays) : new Date(now.getTime() + data.months * 30 * 24 * 60 * 60 * 1e3);
       const firmId = `firm-${crypto18.randomUUID()}`;
       const tempPassword = generateTemporaryPassword();
       const salt = await bcryptjs_default.genSalt(10);
@@ -76012,9 +76157,12 @@ var init_adminFirms = __esm({
           officeAddress: data.officeAddress ?? null,
           barCouncilReg: data.barCouncilReg ?? null,
           courtAffiliations: data.courtAffiliations ?? null,
-          planId: data.planId,
+          planId: assignedPlanId || null,
           maxUsers: data.maxUsers,
           maxDevices: data.maxDevices,
+          isTrial,
+          trialStartedAt: isTrial ? now : null,
+          trialDays: isTrial ? data.trialDays : null,
           licenseStartsAt: startsAt,
           licenseExpiresAt: expiresAt,
           status: "active",
@@ -76106,7 +76254,13 @@ var init_adminFirms = __esm({
           let pricingBreakdown = void 0;
           if (plan) {
             pricingBreakdown = calculateMonthlyPriceBdt(plan, f);
-            monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+            if (f.isTrial) {
+              pricingBreakdown.isTrial = true;
+              pricingBreakdown.note = "after trial";
+              monthlyPriceBdt = 0;
+            } else {
+              monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+            }
           }
           return {
             ...f,
@@ -76139,6 +76293,16 @@ var init_adminFirms = __esm({
         planId: firm.planId,
         maxUsers: firm.maxUsers,
         maxDevices: firm.maxDevices,
+        isTrial: firm.isTrial,
+        trialStartedAt: firm.trialStartedAt,
+        trialDays: firm.trialDays,
+        billingCycle: firm.billingCycle,
+        customBasePriceBdt: firm.customBasePriceBdt,
+        customAnnualPriceBdt: firm.customAnnualPriceBdt,
+        customExtraUserPriceBdt: firm.customExtraUserPriceBdt,
+        customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
+        priceLockedUntil: firm.priceLockedUntil,
+        pricingNote: firm.pricingNote,
         licenseStartsAt: firm.licenseStartsAt,
         licenseExpiresAt: firm.licenseExpiresAt,
         status: firm.status,
@@ -76148,7 +76312,13 @@ var init_adminFirms = __esm({
       let pricingBreakdown = void 0;
       if (plan) {
         pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
-        monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+        if (firm.isTrial) {
+          pricingBreakdown.isTrial = true;
+          pricingBreakdown.note = "after trial";
+          monthlyPriceBdt = 0;
+        } else {
+          monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
+        }
       }
       return res.status(200).json({
         firm: {
@@ -76364,14 +76534,38 @@ var init_adminFirms = __esm({
       if (!firm) {
         return res.status(404).json({ error: "Firm not found" });
       }
+      if (data.planId) {
+        const selectedPlan = await db.getPlan(data.planId);
+        if (!selectedPlan) {
+          return res.status(404).json({ error: "NotFound", message: `Plan ${data.planId} not found` });
+        }
+        if (selectedPlan.status === "archived") {
+          return res.status(400).json({ error: "BadRequest", message: `Cannot assign archived plan: ${selectedPlan.name}` });
+        }
+      }
       const oldLicense = {
+        maxUsers: firm.maxUsers,
         planId: firm.planId,
         maxDevices: firm.maxDevices,
+        billingCycle: firm.billingCycle,
+        customBasePriceBdt: firm.customBasePriceBdt,
+        customAnnualPriceBdt: firm.customAnnualPriceBdt,
+        customExtraUserPriceBdt: firm.customExtraUserPriceBdt,
+        customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
+        priceLockedUntil: firm.priceLockedUntil,
+        pricingNote: firm.pricingNote,
         licenseStartsAt: firm.licenseStartsAt,
         licenseExpiresAt: firm.licenseExpiresAt
       };
       const updates = {};
       if (data.planId) updates.planId = data.planId;
+      if (data.billingCycle !== void 0) updates.billingCycle = data.billingCycle;
+      if (data.customBasePriceBdt !== void 0) updates.customBasePriceBdt = data.customBasePriceBdt;
+      if (data.customAnnualPriceBdt !== void 0) updates.customAnnualPriceBdt = data.customAnnualPriceBdt;
+      if (data.customExtraUserPriceBdt !== void 0) updates.customExtraUserPriceBdt = data.customExtraUserPriceBdt;
+      if (data.customExtraDevicePriceBdt !== void 0) updates.customExtraDevicePriceBdt = data.customExtraDevicePriceBdt;
+      if (data.priceLockedUntil !== void 0) updates.priceLockedUntil = data.priceLockedUntil ? new Date(data.priceLockedUntil) : null;
+      if (data.pricingNote !== void 0) updates.pricingNote = data.pricingNote;
       if (data.maxUsers) updates.maxUsers = data.maxUsers;
       if (data.maxDevices) updates.maxDevices = data.maxDevices;
       if (data.startDate) updates.licenseStartsAt = new Date(data.startDate);
@@ -76621,11 +76815,172 @@ var init_adminFirms = __esm({
         });
       }
     );
+    adminFirmsRouter.post("/:id/extend-trial", async (req, res) => {
+      const parseResult = extendTrialSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "Validation failed",
+          issues: parseResult.error.issues
+        });
+      }
+      const { days } = parseResult.data;
+      const db = getDatabase();
+      const firm = await db.getFirm(req.params.id, true);
+      if (!firm || firm.deletedAt) {
+        return res.status(404).json({ error: "NotFound", message: "Firm not found" });
+      }
+      if (!firm.isTrial) {
+        return res.status(400).json({
+          error: "BadRequest",
+          message: "Firm is not currently on a trial license"
+        });
+      }
+      const now = /* @__PURE__ */ new Date();
+      const currentExpiry = new Date(firm.licenseExpiresAt);
+      const baseDate = currentExpiry <= now ? now : currentExpiry;
+      const newExpiresAt = addDaysDhakaEndOfDay(baseDate, days);
+      const newTrialDays = (firm.trialDays || 0) + days;
+      const oldValues = {
+        licenseExpiresAt: firm.licenseExpiresAt,
+        trialDays: firm.trialDays,
+        status: firm.status
+      };
+      const newValues = {
+        licenseExpiresAt: newExpiresAt,
+        trialDays: newTrialDays,
+        status: "active",
+        extendedDays: days
+      };
+      const updatedFirm = await db.transaction(async (txDb) => {
+        const updated = await txDb.updateFirm(firm.id, {
+          licenseExpiresAt: newExpiresAt,
+          trialDays: newTrialDays,
+          status: "active"
+        });
+        await txDb.insertAdminAudit({
+          adminId: req.admin.id,
+          action: "FIRM_EXTEND_TRIAL",
+          targetFirmId: firm.id,
+          old: oldValues,
+          new: newValues,
+          ip: req.ip,
+          at: now
+        });
+        await txDb.insertLicenseEvent({
+          firmId: firm.id,
+          type: "EXTEND_TRIAL",
+          old: {
+            licenseExpiresAt: firm.licenseExpiresAt,
+            status: firm.status
+          },
+          new: {
+            licenseExpiresAt: newExpiresAt,
+            status: "active",
+            daysGranted: days
+          },
+          byAdmin: req.admin.id,
+          at: now
+        });
+        return updated;
+      });
+      return res.status(200).json({
+        message: "Trial successfully extended",
+        firm: updatedFirm
+      });
+    });
+    adminFirmsRouter.post("/:id/convert-to-paid", async (req, res) => {
+      const parseResult = convertToPaidSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "Validation failed",
+          issues: parseResult.error.issues
+        });
+      }
+      const { planId, billingCycle, expiryDate } = parseResult.data;
+      const db = getDatabase();
+      const firm = await db.getFirm(req.params.id, true);
+      if (!firm || firm.deletedAt) {
+        return res.status(404).json({ error: "NotFound", message: "Firm not found" });
+      }
+      const selectedPlan = await db.getPlan(planId);
+      if (!selectedPlan) {
+        return res.status(404).json({ error: "NotFound", message: `Plan ${planId} not found` });
+      }
+      if (selectedPlan.status === "archived") {
+        return res.status(400).json({ error: "BadRequest", message: `Cannot assign archived plan: ${selectedPlan.name}` });
+      }
+      const now = /* @__PURE__ */ new Date();
+      let newExpiresAt;
+      if (expiryDate) {
+        newExpiresAt = new Date(expiryDate);
+      } else {
+        const months = billingCycle === "annual" ? selectedPlan.durationMonths || 12 : 1;
+        newExpiresAt = new Date(now.getTime() + months * 30 * 24 * 60 * 60 * 1e3);
+      }
+      const oldValues = {
+        isTrial: firm.isTrial,
+        planId: firm.planId,
+        billingCycle: firm.billingCycle,
+        licenseExpiresAt: firm.licenseExpiresAt,
+        status: firm.status
+      };
+      const newValues = {
+        isTrial: false,
+        planId,
+        billingCycle,
+        licenseExpiresAt: newExpiresAt,
+        status: "active"
+      };
+      const updatedFirm = await db.transaction(async (txDb) => {
+        const updated = await txDb.updateFirm(firm.id, {
+          isTrial: false,
+          planId,
+          billingCycle,
+          licenseStartsAt: now,
+          licenseExpiresAt: newExpiresAt,
+          status: "active"
+        });
+        await txDb.insertAdminAudit({
+          adminId: req.admin.id,
+          action: "FIRM_CONVERT_TO_PAID",
+          targetFirmId: firm.id,
+          old: oldValues,
+          new: newValues,
+          ip: req.ip,
+          at: now
+        });
+        await txDb.insertLicenseEvent({
+          firmId: firm.id,
+          type: "CONVERT_TO_PAID",
+          old: {
+            planId: firm.planId,
+            licenseExpiresAt: firm.licenseExpiresAt,
+            status: firm.status
+          },
+          new: {
+            planId,
+            billingCycle,
+            licenseExpiresAt: newExpiresAt,
+            status: "active"
+          },
+          byAdmin: req.admin.id,
+          at: now
+        });
+        return updated;
+      });
+      return res.status(200).json({
+        message: "Firm successfully converted to paid license",
+        firm: updatedFirm
+      });
+    });
   }
 });
 
 // src/routes/adminPlans.ts
-var import_express18, adminPlansRouter, updatePlanSchema;
+import crypto19 from "node:crypto";
+var import_express18, adminPlansRouter, createPlanSchema, updatePlanSchema;
 var init_adminPlans = __esm({
   "src/routes/adminPlans.ts"() {
     "use strict";
@@ -76636,11 +76991,27 @@ var init_adminPlans = __esm({
     init_adminAuditService();
     adminPlansRouter = (0, import_express18.Router)();
     adminPlansRouter.use(adminAuthMiddleware);
+    createPlanSchema = external_exports.object({
+      id: external_exports.string().trim().min(1).max(64).regex(/^[a-z0-9_-]+$/i, "Plan ID must be alphanumeric with hyphens or underscores").optional(),
+      name: external_exports.string().trim().min(1).max(100),
+      priceBdt: external_exports.number().int().min(0),
+      includedUsers: external_exports.number().int().min(1).max(500),
+      includedDevices: external_exports.number().int().min(1).max(500),
+      extraUserPriceBdt: external_exports.number().int().min(0).max(1e5),
+      extraDevicePriceBdt: external_exports.number().int().min(0).max(1e5),
+      durationMonths: external_exports.number().int().min(1).max(36).default(12),
+      features: external_exports.array(external_exports.string()).optional()
+    }).strict();
     updatePlanSchema = external_exports.object({
+      name: external_exports.string().trim().min(1).max(100).optional(),
+      priceBdt: external_exports.number().int().min(0).optional(),
       includedUsers: external_exports.number().int().min(1).max(500).optional(),
       includedDevices: external_exports.number().int().min(1).max(500).optional(),
       extraUserPriceBdt: external_exports.number().int().min(0).max(1e5).optional(),
-      extraDevicePriceBdt: external_exports.number().int().min(0).max(1e5).optional()
+      extraDevicePriceBdt: external_exports.number().int().min(0).max(1e5).optional(),
+      durationMonths: external_exports.number().int().min(1).max(36).optional(),
+      status: external_exports.enum(["active", "archived"]).optional(),
+      features: external_exports.array(external_exports.string()).optional()
     }).strict();
     adminPlansRouter.get("/", async (req, res) => {
       const db = getDatabase();
@@ -76654,6 +77025,55 @@ var init_adminPlans = __esm({
         return res.status(404).json({ error: "NotFound", message: `Plan ${req.params.id} not found` });
       }
       return res.status(200).json({ plan });
+    });
+    adminPlansRouter.post("/", async (req, res) => {
+      const parseResult = createPlanSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "BadRequest",
+          message: "Invalid plan creation payload",
+          issues: parseResult.error.issues
+        });
+      }
+      const data = parseResult.data;
+      const db = getDatabase();
+      const generatedSlug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const planId = data.id || (generatedSlug ? generatedSlug : `plan-${crypto19.randomUUID()}`);
+      const existing = await db.getPlan(planId);
+      if (existing) {
+        return res.status(409).json({ error: "Conflict", message: `Plan with ID ${planId} already exists` });
+      }
+      const now = /* @__PURE__ */ new Date();
+      const newPlan = await db.insertPlan({
+        id: planId,
+        name: data.name,
+        priceBdt: data.priceBdt,
+        durationMonths: data.durationMonths,
+        seats: data.includedUsers,
+        includedUsers: data.includedUsers,
+        includedDevices: data.includedDevices,
+        extraUserPriceBdt: data.extraUserPriceBdt,
+        extraDevicePriceBdt: data.extraDevicePriceBdt,
+        status: "active",
+        features: data.features ?? ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdBy: req.admin.id,
+        updatedBy: req.admin.id
+      });
+      await recordAdminAudit({
+        adminId: req.admin.id,
+        action: "PLAN_CREATE",
+        targetFirmId: null,
+        old: null,
+        new: newPlan,
+        ip: req.ip
+      });
+      return res.status(201).json({
+        message: "Plan created successfully",
+        plan: newPlan
+      });
     });
     adminPlansRouter.patch("/:id", async (req, res) => {
       const parseResult = updatePlanSchema.safeParse(req.body);
@@ -76670,12 +77090,20 @@ var init_adminPlans = __esm({
         return res.status(404).json({ error: "NotFound", message: `Plan ${req.params.id} not found` });
       }
       const oldValues = {
+        name: plan.name,
+        priceBdt: plan.priceBdt,
+        durationMonths: plan.durationMonths,
+        status: plan.status,
         includedUsers: plan.includedUsers,
         includedDevices: plan.includedDevices,
         extraUserPriceBdt: plan.extraUserPriceBdt,
-        extraDevicePriceBdt: plan.extraDevicePriceBdt
+        extraDevicePriceBdt: plan.extraDevicePriceBdt,
+        features: plan.features
       };
-      const updates = parseResult.data;
+      const updates = { ...parseResult.data };
+      if (updates.includedUsers !== void 0) {
+        updates.seats = updates.includedUsers;
+      }
       const updatedPlan = await db.updatePlan(plan.id, updates);
       await recordAdminAudit({
         adminId: req.admin.id,
@@ -77172,7 +77600,7 @@ var require_main = __commonJS({
     var fs2 = __require("fs");
     var path2 = __require("path");
     var os = __require("os");
-    var crypto20 = __require("crypto");
+    var crypto21 = __require("crypto");
     var packageJson = require_package();
     var version3 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -77391,7 +77819,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto20.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto21.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error62) {
@@ -77518,7 +77946,7 @@ var require_config = __commonJS({
 });
 
 // node_modules/drizzle-orm/migrator.js
-import crypto19 from "node:crypto";
+import crypto20 from "node:crypto";
 import fs from "node:fs";
 function readMigrationFiles(config2) {
   const migrationFolderTo = config2.migrationsFolder;
@@ -77540,7 +77968,7 @@ function readMigrationFiles(config2) {
         sql: result,
         bps: journalEntry.breakpoints,
         folderMillis: journalEntry.when,
-        hash: crypto19.createHash("sha256").update(query).digest("hex")
+        hash: crypto20.createHash("sha256").update(query).digest("hex")
       });
     } catch {
       throw new Error(`No file ${migrationPath} found in ${migrationFolderTo} folder`);

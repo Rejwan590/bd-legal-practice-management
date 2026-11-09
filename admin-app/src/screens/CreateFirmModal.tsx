@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResponsiveModal } from '../components/ResponsiveModal';
 import { adminApi } from '../api/adminApi';
-import { CreateFirmPayload } from '../types/adminTypes';
+import { CreateFirmPayload, Plan } from '../types/adminTypes';
 import { Copy, Check, AlertCircle, KeyRound } from 'lucide-react';
 
 interface CreateFirmModalProps {
@@ -26,21 +26,75 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
     months: 12,
     maxUsers: 10,
     maxDevices: 5,
+    planId: 'chamber',
   });
 
+  const [licenseType, setLicenseType] = useState<'trial' | 'paid'>('trial');
+  const [trialDaysInput, setTrialDaysInput] = useState<string>(() => {
+    try {
+      return localStorage.getItem('bd_admin_last_trial_days') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [createdOwnerEmail, setCreatedOwnerEmail] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    adminApi
+      .listPlans()
+      .then((res) => {
+        const active = res.plans.filter((p) => p.status !== 'archived');
+        setAvailablePlans(active);
+        if (active.length > 0 && !formData.planId) {
+          setFormData((prev) => ({ ...prev, planId: active[0].id }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const parsedTrialDays = parseInt(trialDaysInput.trim(), 10);
+  const isValidTrialDays =
+    trialDaysInput.trim() !== '' &&
+    !isNaN(parsedTrialDays) &&
+    parsedTrialDays >= 1 &&
+    parsedTrialDays <= 365 &&
+    String(parsedTrialDays) === trialDaysInput.trim();
+
+  const isFormValid =
+    formData.name.trim() !== '' &&
+    formData.ownerName.trim() !== '' &&
+    formData.ownerEmail.trim() !== '' &&
+    (licenseType === 'paid' || isValidTrialDays);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFormValid) return;
+
     setError(null);
     setLoading(true);
 
+    if (licenseType === 'trial') {
+      try {
+        localStorage.setItem('bd_admin_last_trial_days', String(parsedTrialDays));
+      } catch {
+        // Safe fallback if storage fails
+      }
+    }
+
     try {
-      const res = await adminApi.createFirm(formData);
+      const payload: CreateFirmPayload = {
+        ...formData,
+        licenseType,
+        trialDays: licenseType === 'trial' ? parsedTrialDays : undefined,
+      };
+
+      const res = await adminApi.createFirm(payload);
       setTempPassword(res.temporaryPassword);
       setCreatedOwnerEmail(res.ownerUser.email);
       onSuccess();
@@ -72,7 +126,14 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
       months: 12,
       maxUsers: 10,
       maxDevices: 5,
+      planId: availablePlans.length > 0 ? availablePlans[0].id : 'chamber',
     });
+    // Re-read last saved trial days from storage
+    try {
+      setTrialDaysInput(localStorage.getItem('bd_admin_last_trial_days') || '');
+    } catch {
+      setTrialDaysInput('');
+    }
     onClose();
   };
 
@@ -122,6 +183,35 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
             </div>
           )}
 
+          {/* License Type Toggle */}
+          <div className="p-3 bg-slate-800/60 border border-slate-700/80 rounded-xl space-y-2">
+            <label className="text-xs font-semibold text-slate-300 block">License Model</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setLicenseType('trial')}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold min-h-[44px] border transition-all ${
+                  licenseType === 'trial'
+                    ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20'
+                    : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                }`}
+              >
+                Free Trial
+              </button>
+              <button
+                type="button"
+                onClick={() => setLicenseType('paid')}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold min-h-[44px] border transition-all ${
+                  licenseType === 'paid'
+                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
+                    : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                }`}
+              >
+                Paid Subscription
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-slate-300">Chamber Firm Name *</label>
@@ -139,7 +229,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
               <label className="text-xs font-medium text-slate-300">Contact Number</label>
               <input
                 type="text"
-                value={formData.contact}
+                value={formData.contact || ''}
                 onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
                 placeholder="e.g. +880 1711-000000"
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 min-h-[44px]"
@@ -173,23 +263,62 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-300">License Duration (Months)</label>
-              <select
-                value={formData.months}
-                onChange={(e) => setFormData({ ...formData, months: parseInt(e.target.value) || 12 })}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 min-h-[44px]"
-              >
-                <option value={1}>1 Month (Trial)</option>
-                <option value={3}>3 Months</option>
-                <option value={6}>6 Months</option>
-                <option value={12}>12 Months (1 Year)</option>
-                <option value={24}>24 Months (2 Years)</option>
-                <option value={36}>36 Months (3 Years)</option>
-              </select>
+          {/* Conditional Trial vs Paid fields */}
+          {licenseType === 'trial' ? (
+            <div className="p-3.5 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-2">
+              <label className="text-xs font-semibold text-purple-200 block">
+                Trial Days * (1–365)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                required
+                value={trialDaysInput}
+                onChange={(e) => setTrialDaysInput(e.target.value)}
+                placeholder="Enter number of days"
+                className="w-full px-3 py-2 bg-slate-900 border border-purple-700/60 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-400 min-h-[44px]"
+              />
+              <p className="text-[11px] text-purple-300">
+                Trial end timestamp will be set to end of day in Asia/Dhaka. No charges apply during trial.
+              </p>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-300">Plan</label>
+                <select
+                  value={formData.planId}
+                  onChange={(e) => setFormData({ ...formData, planId: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 min-h-[44px]"
+                >
+                  {availablePlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (BDT {p.priceBdt}/mo)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-300">Duration (Months)</label>
+                <select
+                  value={formData.months}
+                  onChange={(e) => setFormData({ ...formData, months: parseInt(e.target.value) || 12 })}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 min-h-[44px]"
+                >
+                  <option value={1}>1 Month</option>
+                  <option value={3}>3 Months</option>
+                  <option value={6}>6 Months</option>
+                  <option value={12}>12 Months (1 Year)</option>
+                  <option value={24}>24 Months (2 Years)</option>
+                  <option value={36}>36 Months (3 Years)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-slate-300">Allowed Users (Seats)</label>
               <input
@@ -219,7 +348,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
             <label className="text-xs font-medium text-slate-300">Office Address</label>
             <input
               type="text"
-              value={formData.officeAddress}
+              value={formData.officeAddress || ''}
               onChange={(e) => setFormData({ ...formData, officeAddress: e.target.value })}
               placeholder="e.g. Supreme Court Bar Association Building, Ramna, Dhaka"
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 min-h-[44px]"
@@ -236,8 +365,8 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium min-h-[44px] transition-colors disabled:opacity-50"
+              disabled={loading || !isFormValid}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium min-h-[44px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Firm'}
             </button>

@@ -67,6 +67,17 @@ export interface FirmRecord extends BaseRecord {
   deviceCount?: number;
   renewalPriceBdt?: number;
   monthlyPriceBdt?: number;
+  termTotal?: number;
+  unit?: string;
+  billingCycle?: 'monthly' | 'annual';
+  customBasePriceBdt?: number | null;
+  customAnnualPriceBdt?: number | null;
+  customExtraUserPriceBdt?: number | null;
+  customExtraDevicePriceBdt?: number | null;
+  priceLockedUntil?: string | null;
+  isTrial?: boolean;
+  trialStartedAt?: string | null;
+  trialDays?: number | null;
   pricingBreakdown?: any;
   plan?: any;
 }

@@ -7,6 +7,8 @@ export interface PlatformAdmin {
 }
 
 export type FirmStatus = 'active' | 'expired' | 'suspended' | 'disabled';
+export type BillingCycle = 'monthly' | 'annual';
+export type PlanStatus = 'active' | 'archived';
 
 export interface Firm {
   id: string;
@@ -19,6 +21,16 @@ export interface Firm {
   planId: string | null;
   maxUsers?: number;
   maxDevices: number;
+  billingCycle?: BillingCycle;
+  customBasePriceBdt?: number | null;
+  customAnnualPriceBdt?: number | null;
+  customExtraUserPriceBdt?: number | null;
+  customExtraDevicePriceBdt?: number | null;
+  priceLockedUntil?: string | null;
+  isTrial?: boolean;
+  trialStartedAt?: string | null;
+  trialDays?: number | null;
+  pricingNote?: string | null;
   monthlyPriceBdt?: number;
   pricingBreakdown?: any;
   plan?: Plan | null;
@@ -44,6 +56,7 @@ export interface Plan {
   includedDevices?: number;
   extraUserPriceBdt?: number;
   extraDevicePriceBdt?: number;
+  status?: PlanStatus;
   features: string[];
 }
 
@@ -51,6 +64,13 @@ export interface LicenseInfo {
   planId: string | null;
   maxUsers?: number;
   maxDevices: number;
+  billingCycle?: BillingCycle;
+  customBasePriceBdt?: number | null;
+  customAnnualPriceBdt?: number | null;
+  customExtraUserPriceBdt?: number | null;
+  customExtraDevicePriceBdt?: number | null;
+  priceLockedUntil?: string | null;
+  pricingNote?: string | null;
   licenseStartsAt: string | null;
   licenseExpiresAt: string;
   status: FirmStatus;
@@ -133,6 +153,8 @@ export interface CreateFirmPayload {
   months?: number;
   maxUsers?: number;
   maxDevices?: number;
+  licenseType?: 'trial' | 'paid';
+  trialDays?: number;
 }
 
 export interface CreateFirmResponse {
