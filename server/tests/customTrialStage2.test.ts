@@ -425,6 +425,11 @@ async function runTests() {
     check(convertedFirm.status === 'active', 'Converted firm status is active');
 
     // Verify archived plan cannot be used for conversion
+    // Ensure annual-standard is archived in DB
+    const annualPlan = await db.getPlan('annual-standard');
+    if (annualPlan && annualPlan.status !== 'archived') {
+      await db.updatePlan('annual-standard', { status: 'archived' });
+    }
     const convertArchivedRes = await makeRequest(server, `/api/admin/firms/${trialFirm.id}/convert-to-paid`, {
       method: 'POST',
       cookie: adminCookie,

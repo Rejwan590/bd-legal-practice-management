@@ -99,7 +99,7 @@ export const SEED_PLANS = [
     features: ['cases', 'hearings', 'tasks', 'files', 'calendar', 'backup', 'audit'],
     createdAt: new Date('2024-01-01T00:00:00.000Z'),
     updatedAt: new Date('2024-01-01T00:00:00.000Z'),
-    deletedAt: new Date('2024-01-01T00:00:00.000Z'),
+    deletedAt: null,
     createdBy: 'system',
     updatedBy: 'system',
   },
@@ -351,10 +351,19 @@ export async function seedDatabase(databaseUrl?: string): Promise<void> {
 
     for (const plan of SEED_PLANS) {
       await client.query(
-        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, included_users, included_devices, extra_user_price_bdt, extra_device_price_bdt, features, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (id) DO NOTHING`,
-        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, (plan as any).includedUsers ?? plan.seats, (plan as any).includedDevices ?? 5, (plan as any).extraUserPriceBdt ?? 100, (plan as any).extraDevicePriceBdt ?? 100, JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
+        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, included_users, included_devices, extra_user_price_bdt, extra_device_price_bdt, status, features, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           price_bdt = EXCLUDED.price_bdt,
+           included_users = EXCLUDED.included_users,
+           included_devices = EXCLUDED.included_devices,
+           extra_user_price_bdt = EXCLUDED.extra_user_price_bdt,
+           extra_device_price_bdt = EXCLUDED.extra_device_price_bdt,
+           status = EXCLUDED.status,
+           features = EXCLUDED.features,
+           updated_at = EXCLUDED.updated_at`,
+        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, (plan as any).includedUsers ?? plan.seats, (plan as any).includedDevices ?? 5, (plan as any).extraUserPriceBdt ?? 100, (plan as any).extraDevicePriceBdt ?? 100, (plan as any).status ?? 'active', JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
       );
     }
 

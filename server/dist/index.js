@@ -41130,10 +41130,19 @@ async function seedDatabase(databaseUrl) {
     console.log("[Seed] Seeding PostgreSQL database...");
     for (const plan of SEED_PLANS) {
       await client.query(
-        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, included_users, included_devices, extra_user_price_bdt, extra_device_price_bdt, features, created_at, updated_at, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (id) DO NOTHING`,
-        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, plan.includedUsers ?? plan.seats, plan.includedDevices ?? 5, plan.extraUserPriceBdt ?? 100, plan.extraDevicePriceBdt ?? 100, JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
+        `INSERT INTO plans (id, name, duration_months, price_bdt, seats, included_users, included_devices, extra_user_price_bdt, extra_device_price_bdt, status, features, created_at, updated_at, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           price_bdt = EXCLUDED.price_bdt,
+           included_users = EXCLUDED.included_users,
+           included_devices = EXCLUDED.included_devices,
+           extra_user_price_bdt = EXCLUDED.extra_user_price_bdt,
+           extra_device_price_bdt = EXCLUDED.extra_device_price_bdt,
+           status = EXCLUDED.status,
+           features = EXCLUDED.features,
+           updated_at = EXCLUDED.updated_at`,
+        [plan.id, plan.name, plan.durationMonths, plan.priceBdt, plan.seats, plan.includedUsers ?? plan.seats, plan.includedDevices ?? 5, plan.extraUserPriceBdt ?? 100, plan.extraDevicePriceBdt ?? 100, plan.status ?? "active", JSON.stringify(plan.features), plan.createdAt, plan.updatedAt, plan.createdBy, plan.updatedBy]
       );
     }
     for (const firm of SEED_FIRMS) {
@@ -41280,7 +41289,7 @@ var init_seed = __esm({
         features: ["cases", "hearings", "tasks", "files", "calendar", "backup", "audit"],
         createdAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
-        deletedAt: /* @__PURE__ */ new Date("2024-01-01T00:00:00.000Z"),
+        deletedAt: null,
         createdBy: "system",
         updatedBy: "system"
       }
