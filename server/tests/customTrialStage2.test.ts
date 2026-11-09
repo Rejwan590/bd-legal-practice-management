@@ -91,8 +91,14 @@ async function runTests() {
   await new Promise<void>((resolve) => server.listen(0, resolve));
 
   try {
-    const admins = await db.listPlatformAdmins();
-    const admin = admins[0] || { id: 'admin-platform-001', email: 'admin@platform.bd' };
+    let admin = (await db.listPlatformAdmins())[0];
+    if (!admin) {
+      admin = await db.insertPlatformAdmin({
+        email: 'stage2admin@platform.bd',
+        passwordHash: 'dummy_hash',
+        active: true,
+      });
+    }
     const adminToken = generateAdminAccessToken(admin);
     const adminCookie = `admin_access_token=${adminToken}`;
 

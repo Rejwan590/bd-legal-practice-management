@@ -227,13 +227,20 @@ async function runTests() {
   console.log('\n--- Suite 2: API & Database Tests ---');
   await resetDatabaseInstance();
   const db = getDatabase();
-  await (db as any).init();
 
   const app = createApp();
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 
-  const adminToken = generateAdminAccessToken({ id: 'admin-platform-001', email: 'admin@platform.bd' });
+  let admin = (await db.listPlatformAdmins())[0];
+  if (!admin) {
+    admin = await db.insertPlatformAdmin({
+      email: 'stage1-admin@platform.bd',
+      passwordHash: 'dummy_hash',
+      active: true,
+    });
+  }
+  const adminToken = generateAdminAccessToken(admin);
   const adminCookie = `admin_access_token=${adminToken}`;
 
   const ownerUser = await db.getUserById('user-owner-001');
@@ -356,9 +363,11 @@ async function runTests() {
     check(getStaffFirmRes.body.maxDevices === 10, '17. Staff receives firm maxDevices (10)');
 
     // 18. Firm isolation: tenant cannot access or see another firm's data
+    const testIsoFirmId = 'firm-bd-iso-plans-01';
+    const testIsoUserId = 'user-owner-iso-plans-01';
     const firm2 = await db.insertFirm({
-      id: 'firm-bd-002',
-      firmId: 'firm-bd-002',
+      id: testIsoFirmId,
+      firmId: testIsoFirmId,
       name: 'Second Firm Chambers',
       maxUsers: 5,
       maxDevices: 3,
@@ -370,10 +379,10 @@ async function runTests() {
       updatedAt: new Date(),
     });
     const user2 = await db.insertUser({
-      id: 'user-owner-002',
-      firmId: firm2.id,
+      id: testIsoUserId,
+      firmId: testIsoFirmId,
       name: 'Owner 2',
-      email: 'owner2@firm2.bd',
+      email: 'owner2-iso-plans@firm2.bd',
       passwordHash: 'hash',
       role: 'Owner',
       permissions: ['settings.view', 'settings.manage'],
@@ -390,7 +399,7 @@ async function runTests() {
       cookie: firm2Cookie,
     });
     check(firm2Res.status === 200, '18. Firm 2 Owner can fetch own firm info');
-    check(firm2Res.body.id === 'firm-bd-002', '18. Firm isolation: Firm 2 sees only its own firm ID');
+    check(firm2Res.body.id === testIsoFirmId, '18. Firm isolation: Firm 2 sees only its own firm ID');
     check(firm2Res.body.name === 'Second Firm Chambers', '18. Firm isolation: Firm 2 sees only its own firm name');
     check(firm2Res.body.maxUsers === 5, '18. Firm isolation: Firm 2 sees its own maxUsers limit (5, not Firm 1 15)');
 
