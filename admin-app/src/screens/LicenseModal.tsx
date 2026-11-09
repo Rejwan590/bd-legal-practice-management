@@ -712,10 +712,25 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                    License Expiry Date
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                      License Expiry Date
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const months = billingCycle === 'annual' ? (activePlan.durationMonths || 12) : 1;
+                        const d = new Date();
+                        d.setMonth(d.getMonth() + months);
+                        setExpiryDate(d.toISOString().split('T')[0]);
+                      }}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-normal"
+                      title="Set to today + plan duration"
+                    >
+                      Reset to +{billingCycle === 'annual' ? (activePlan.durationMonths || 12) : 1} mo
+                    </button>
+                  </div>
                   <input
                     type="date"
                     value={expiryDate}
