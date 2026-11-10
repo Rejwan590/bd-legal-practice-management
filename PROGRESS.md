@@ -3,6 +3,26 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Migration Phase 1: Architecture and Conversion Specification (Completed & Documented)**:
+  - **1. Phase 1A Empirical Verification**:
+    - Verified all 9 bcrypt call sites across 6 files (authService.ts, adminAuthService.ts, auth.ts, adminFirms.ts, users.ts, and admin scripts).
+    - Verified all 21 db.transaction() callbacks across business routes (adminDevices.ts, adminFirms.ts, feeAgreements.ts, feePayments.ts, hearings.ts).
+    - Verified all 31 tables in schema.ts, 268 text, 100 timestamp, 19 integer, 11 boolean, 7 uuid, 8 jsonb columns.
+    - Verified photo storage model (client_photos.bytes: text up to 300KB) and designed R2 bucket integration.
+    - Benchmarked CPU time: Pure JS bcryptjs requires 230-260ms; Web Crypto PBKDF2-HMAC-SHA-512 (100,000 iterations) requires ~11ms. Confirmed Cloudflare Workers Free (10ms limit) will fail on login; Workers Paid ($5/mo, 30s CPU limit) is mandatory for production.
+  - **2. Deliverables Created in docs/cloudflare-migration/**:
+    - PHASE_1_ARCHITECTURE.md: Executive summary, comparison of Architecture A (D1 + R2), B (Durable Objects), and C (Hybrid), with formal recommendation of Architecture A.
+    - DATABASE_CONVERSION_MATRIX.md: Complete conversion inventory for 31 tables, type mappings, integer paisa guarantees, foreign key enforcement, JSONB handling, and 60 SQL template syntax translations.
+    - TRANSACTION_CONVERSION_MATRIX.md: Mapping of all 21 transactions to D1 atomic batching (db.batch), detailing 8 mandatory business scenarios.
+    - AUTHENTICATION_MIGRATION.md: PBKDF2-HMAC-SHA-512 specification, versioned MCF format, timing attack mitigations, lockout policy, and Workers Paid verdict.
+    - RUNTIME_COMPATIBILITY.md: Express to Hono migration mapping, security headers, CORS, cookies, R2 photo streaming, and env injection.
+    - TEST_AND_ACCEPTANCE_PLAN.md: Vitest with @cloudflare/vitest-pool-workers, mapping of 18 test suites, concurrency stress tests (C1-C4), and acceptance checklist.
+    - COST_AND_OPERATIONS.md: Cost modeling (Azure ~$65/mo vs Render ~$26/mo vs Cloudflare ~$5/mo), D1 row scan optimizations, compound indexing, Time Travel PITR, and automated R2 backups.
+    - MIGRATION_RISK_REGISTER.md: Risk inventory (R1-R8), mitigations, 15-minute rollback protocol, and PostgreSQL exit strategy.
+  - **3. Verification Results**:
+    - npm run lint: PASS (0 errors across root and admin-app).
+    - npm test --prefix server: PASS (All 18 server test suites passed, 830+ tests, 0 failed).
+    - npm run build: PASS (built in 3.71s).
 - [x] **Plans, Custom Pricing & Custom Trial Periods with Full Admin Control (Completed & Verified)**:
   - **1. Stage 1: Plans and Pricing Model**:
     - Drizzle Migration `0012_plans_and_custom_pricing.sql` added `status` to `plans`, and `billing_cycle`, `custom_base_price_bdt`, `custom_annual_price_bdt`, `custom_extra_user_price_bdt`, `custom_extra_device_price_bdt`, `price_locked_until`, `pricing_note` to `firms`.
