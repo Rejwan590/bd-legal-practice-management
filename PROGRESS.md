@@ -3,6 +3,26 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Workers Backend Implementation (Completed on isolated 'cloudflare' branch)**:
+  - **1. Architecture & Core Implementation (server-cloudflare/)**:
+    - Built edge-native backend using Hono 4.x and Drizzle ORM for Cloudflare D1 (SQLite) and Cloudflare R2 (Object Storage).
+    - Converted all 31 tables to SQLite schema in server-cloudflare/src/db/schema.ts with strict BDT integer paisa guarantees, ISO-8601 UTC timestamp format, and foreign key cascades.
+    - Generated D1 migration 0000_complete_magneto.sql containing all 31 tables, 29 foreign keys, and 56 indexes.
+    - Implemented Web Crypto PBKDF2-HMAC-SHA-512 (100,000 iterations) with constant-time byte verification and dummy hash protection against user enumeration in src/utils/crypto.ts.
+    - Implemented Hono JWT authentication, HttpOnly cookies, and strict CORS handling in src/middleware/auth.ts and src/index.ts.
+    - Converted all multi-table business transactions to atomic D1 batching (db.batch) across Chamber lifecycle, Hearing scheduling/adjournments, Case date synchronization, and Sequential receipt numbering.
+    - Enforced hard invariant: Subscription read-only mode (SUBSCRIPTION_READ_ONLY) when firm license is expired (blocks mutating writes, allows reads and chamber backups).
+    - Enforced central visibility rule (canUserSeeCase) and strict multi-tenant firm_id isolation across all endpoints.
+  - **2. Automated Test Verification**:
+    - Created local in-memory D1 test simulation using native Node.js 24 SQLite engine (node:sqlite) in tests/d1Mock.ts.
+    - Executed 11 end-to-end integration test scenarios in tests/cloudflareBackend.test.ts covering Health, Super-Admin Auth, Firm Provisioning, Owner Login, Client Creation, Case Visibility, Hearing Scheduling, Adjournment History, Receipt Numbering, Firm Isolation, and Read-Only enforcement.
+    - All 11 tests passed with 100% success rate (670ms duration).
+  - **3. Safety & Master Parity**:
+    - Root branch master remains strictly untouched.
+    - All work isolated to cloudflare branch.
+    - npm run lint: PASS (0 errors across root, admin-app, and server-cloudflare).
+    - npm run build --prefix server-cloudflare: PASS (tsc --noEmit with 0 errors).
+    - npm run build: PASS (Client Vite build succeeded in 2.88s).
 - [x] **Cloudflare Migration Phase 1: Architecture and Conversion Specification (Completed & Documented)**:
   - **1. Phase 1A Empirical Verification**:
     - Verified all 9 bcrypt call sites across 6 files (authService.ts, adminAuthService.ts, auth.ts, adminFirms.ts, users.ts, and admin scripts).

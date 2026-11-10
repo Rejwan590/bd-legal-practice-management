@@ -1,0 +1,22 @@
+name = "bdlegal-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+CORS_ORIGIN = "https://bd-legal-practice-management.vercel.app"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bdlegal-d1-prod"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PHOTOS_BUCKET"
+bucket_name = "bdlegal-photos"
+
+[[r2_buckets]]
+binding = "BACKUPS_BUCKET"
+bucket_name = "bdlegal-backups"
