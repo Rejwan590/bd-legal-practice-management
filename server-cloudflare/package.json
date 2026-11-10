@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "setup": "node scripts/setupCloudflare.mjs",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
