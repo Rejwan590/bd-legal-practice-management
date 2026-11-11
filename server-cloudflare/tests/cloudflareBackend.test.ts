@@ -1104,4 +1104,27 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     expect(adminAuditRes.status).toBe(200);
     expect(((await adminAuditRes.json()) as any).logs.length).toBeGreaterThanOrEqual(5);
   });
+
+  it('19. CORS allows Cloudflare Pages origin and preview subdomains while rejecting untrusted Pages origins', async () => {
+    const prodRes = await app.request(
+      '/api/v1/health',
+      { method: 'OPTIONS', headers: { Origin: 'https://bdlegal-app.pages.dev' } },
+      env
+    );
+    expect(prodRes.headers.get('access-control-allow-origin')).toBe('https://bdlegal-app.pages.dev');
+
+    const previewRes = await app.request(
+      '/api/v1/health',
+      { method: 'OPTIONS', headers: { Origin: 'https://abc123.bdlegal-app.pages.dev' } },
+      env
+    );
+    expect(previewRes.headers.get('access-control-allow-origin')).toBe('https://abc123.bdlegal-app.pages.dev');
+
+    const evilRes = await app.request(
+      '/api/v1/health',
+      { method: 'OPTIONS', headers: { Origin: 'https://evil.pages.dev' } },
+      env
+    );
+    expect(evilRes.headers.get('access-control-allow-origin')).toBeNull();
+  });
 });

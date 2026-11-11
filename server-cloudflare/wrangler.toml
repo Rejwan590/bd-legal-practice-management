@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-CORS_ORIGIN = "https://bd-legal-practice-management.vercel.app"
+CORS_ORIGIN = "https://bdlegal-app.pages.dev,https://bd-legal-practice-management.vercel.app"
 SUPABASE_URL = "https://rmuontqsoxwnzevtnvkc.supabase.co"
 SUPABASE_PHOTOS_BUCKET = "bdlegal-photos"
 SUPABASE_BACKUPS_BUCKET = "bdlegal-backups"

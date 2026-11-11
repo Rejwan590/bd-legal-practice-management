@@ -48,12 +48,18 @@ app.use('*', async (c, next) => {
       const allowedOrigins = [
         ...envOrigins,
         'https://bd-legal-practice-management.vercel.app',
+        'https://bdlegal-app.pages.dev',
         'http://localhost:3000',
         'http://localhost:3001',
         'http://localhost:5173',
         'http://localhost:5174',
       ];
-      return allowedOrigins.includes(origin) ? origin : null;
+      if (allowedOrigins.includes(origin)) return origin;
+      // Allow Cloudflare Pages preview subdomains only for this Pages project.
+      if (/^https:\/\/[a-z0-9-]+\.bdlegal-app\.pages\.dev$/.test(origin)) {
+        return origin;
+      }
+      return null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
