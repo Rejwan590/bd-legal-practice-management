@@ -9,6 +9,7 @@ import {
   CaseRecord,
   ClientRecord,
   HearingRecord,
+  PhysicalFileRecord,
   SecurityContext,
   TaskRecord,
 } from '../../types';
@@ -107,9 +108,9 @@ export class RestCalendarRepository implements ICalendarRepository {
     }
 
     // 3. Physical File Returns
-    if (!range?.type || range.type === 'all' || range.type === 'file_return') {
-      const store = localStore.getData();
-      const files = (store.physicalFiles || []).filter(
+    if ((!range?.type || range.type === 'all' || range.type === 'file_return') && can('files.view', currentUser)) {
+      const rawFiles = await restFetch<PhysicalFileRecord[]>('/physical-files').catch(() => []);
+      const files = rawFiles.filter(
         (f) =>
           f.firmId === firmId &&
           (f.status === 'checked_out' || f.status === 'in_court') &&

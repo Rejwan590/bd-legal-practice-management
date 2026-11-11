@@ -3,6 +3,16 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Phase 8 — Physical File Tracking & Custody Backend (`master` branch)**:
+  - **PostgreSQL + Express (`/server`)**:
+    - Added `physicalFiles` (`physical_files`) and `fileMovements` (`file_movements`) tables to `server/src/db/schema.ts` and migration `server/drizzle/0014_physical_files.sql` (+ journal entry in `server/drizzle/meta/_journal.json`).
+    - Implemented all physical file & movement methods across both `MemoryDatabase` and `PostgresDatabase` in `server/src/db/client.ts`, populated real `files[]` in `getClientLinkedOverview` and `filesCount` in `getCaseLinkedCounts`, and wired rollback snapshots in `MemoryDatabase.transaction`.
+    - Built `server/src/routes/physicalFiles.ts` mounted at `/api/v1/physical-files` (`GET /`, `GET /next-serial`, `GET /by-serial/:serial`, `GET /by-case/:caseId`, `GET /:id`, `GET /:id/movements`, `POST /`, `PATCH /:id`, `POST /:id/check-out`, `POST /:id/check-in`, `POST /:id/dispatch-court`, `DELETE /:id`) with Zod validation, sequential `F-000101` firm-scoped serial generation, `files.view` / `files.manage` RBAC, `canUserSeeCase` / `restricted.view` enforcement, `enforceSubscriptionReadOnly`, atomic transactions, soft delete, and `audit_log` tracking.
+  - **Frontend REST Parity (`/src`)**:
+    - Created `RestPhysicalFileRepository` (`src/data/repositories/rest/restPhysicalFile.ts`), wired it in `src/data/repositories/index.ts` under `isRestMode`, and updated `restDashboard.ts`, `restCalendar.ts`, and `restSearch.ts` to query `/physical-files` via REST.
+  - **Tests**:
+    - Added `server/tests/physicalFiles.test.ts` (43 assertions) + `"test:physical-files"` in `server/package.json`.
+
 - [x] **Stale Chunk Load Recovery & Vercel Asset Rewrite Fix (`master` branch)**:
   - **Root Cause**: After deploying a new build to Vercel (`58f19e0`), open browser tabs holding the previous entry bundle (`index-CskPJUZC.js`) requested old hashed lazy chunks (e.g., `/assets/AppointmentsScreen-Dksje8El.js`). Because `vercel.json` rewrote `/(.*)` to `/index.html` without excluding `/assets/*`, Vercel returned HTTP `200 text/html` for missing `.js` chunk URLs (causing strict MIME type rejection + `TypeError: Failed to fetch dynamically imported module`). Clicking **Try Again** in `ErrorBoundary` re-attempted the same stale import URL in memory instead of reloading `index.html`.
   - **Fixes Applied**:

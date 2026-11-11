@@ -1,11 +1,11 @@
 import { can } from '../../../permissions';
 import { ISearchRepository } from '../../interfaces';
-import { localStore } from '../../mockStore';
 import {
   AppointmentRecord,
   CaseRecord,
   ClientRecord,
   HearingRecord,
+  PhysicalFileRecord,
   SearchResultEntity,
   SearchResultItem,
   SecurityContext,
@@ -159,10 +159,12 @@ export class RestSearchRepository implements ISearchRepository {
       }
     }
 
-    // Physical Files search (from store)
-    if (!filter?.entity || filter.entity === 'all' || filter.entity === 'file') {
-      const store = localStore.getData();
-      const files = (store.physicalFiles || []).filter(
+    // Physical Files search
+    if ((!filter?.entity || filter.entity === 'all' || filter.entity === 'file') && can('files.view', currentUser)) {
+      const rawFiles = await restFetch<PhysicalFileRecord[]>(
+        `/physical-files?search=${encodeURIComponent(q)}`
+      ).catch(() => []);
+      const files = rawFiles.filter(
         (f) => f.firmId === firmId && f.deletedAt === null
       );
       for (const f of files) {

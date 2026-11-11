@@ -42,6 +42,7 @@ import {
   RestAppointmentRepository,
   RestHearingRepository,
   RestTaskRepository,
+  RestPhysicalFileRepository,
   RestAccountsRepository,
   RestChamberExpenseRepository,
   RestDashboardRepository,
@@ -78,6 +79,7 @@ export {
   RestAppointmentRepository,
   RestHearingRepository,
   RestTaskRepository,
+  RestPhysicalFileRepository,
   RestAccountsRepository,
   RestChamberExpenseRepository,
   RestDashboardRepository,
@@ -141,7 +143,9 @@ const hearingRepo: IHearingRepository = isRestMode
 const taskRepo: ITaskRepository = isRestMode
   ? new RestTaskRepository()
   : new MockTaskRepository(mockAuditLogRepo, reminderRepo);
-const physicalFileRepo = new MockPhysicalFileRepository(auditLogRepo, reminderRepo);
+const physicalFileRepo: IPhysicalFileRepository = isRestMode
+  ? new RestPhysicalFileRepository()
+  : new MockPhysicalFileRepository(auditLogRepo, reminderRepo);
 const calendarRepo: ICalendarRepository = isRestMode
   ? new RestCalendarRepository()
   : new MockCalendarRepository();
