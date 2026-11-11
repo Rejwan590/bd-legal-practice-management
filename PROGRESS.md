@@ -3,6 +3,18 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Phase 8 — Physical File Tracking & Custody Backend (`master` & `cloudflare`)**:
+  - **PostgreSQL + Express (`/server`)**:
+    - Added `physicalFiles` (`physical_files`) and `fileMovements` (`file_movements`) tables to `server/src/db/schema.ts` and migration `server/drizzle/0015_physical_files.sql` (+ journal entry in `server/drizzle/meta/_journal.json`).
+    - Implemented all physical file & movement methods across both `MemoryDatabase` and `PostgresDatabase` in `server/src/db/client.ts`, populated real `files[]` in `getClientLinkedOverview` and `filesCount` in `getCaseLinkedCounts`, and wired rollback snapshots in `MemoryDatabase.transaction`.
+    - Built `server/src/routes/physicalFiles.ts` mounted at `/api/v1/physical-files` (`GET /`, `GET /next-serial`, `GET /by-serial/:serial`, `GET /by-case/:caseId`, `GET /:id`, `GET /:id/movements`, `POST /`, `PATCH /:id`, `POST /:id/check-out`, `POST /:id/check-in`, `POST /:id/dispatch-court`, `DELETE /:id`) with Zod validation, sequential `F-000101` firm-scoped serial generation, `files.view` / `files.manage` RBAC, `canUserSeeCase` / `restricted.view` enforcement, `enforceSubscriptionReadOnly`, atomic transactions, soft delete, and `audit_log` tracking.
+  - **Cloudflare Workers + D1 (`/server-cloudflare`)**:
+    - Added SQLite `physical_files` & `file_movements` schema (`server-cloudflare/src/db/schema.ts`), D1 migration `server-cloudflare/migrations/0003_physical_files.sql`, and `server-cloudflare/src/routes/physicalFiles.ts` mounted in `server-cloudflare/src/index.ts`, plus live `files` & `filesCount` in `clients.ts` and `cases.ts`.
+  - **Frontend REST Parity (`/src`)**:
+    - Created `RestPhysicalFileRepository` (`src/data/repositories/rest/restPhysicalFile.ts`), wired it in `src/data/repositories/index.ts` under `isRestMode`, and updated `restDashboard.ts`, `restCalendar.ts`, and `restSearch.ts` to query `/physical-files` via REST.
+  - **Tests**:
+    - Added `server/tests/physicalFiles.test.ts` (43 assertions) + `"test:physical-files"` in `server/package.json` and Test 22 in `server-cloudflare/tests/cloudflareBackend.test.ts`.
+
 - [x] **Upgrade Wrangler to v4 (`4.160.1`) in `server-cloudflare` (`cloudflare` branch)**:
   - **Root Cause**: Upgrading `wrangler` from `^3.114.0` to `wrangler@4` (`4.160.1`) initially failed with `ERESOLVE` because `wrangler@4.160.1` expects `peerOptional @cloudflare/workers-types@^5.20261110.1` and `@cloudflare/vitest-pool-workers@0.7.8` pinned `wrangler@3.114.1`.
   - **Fixes Applied**:

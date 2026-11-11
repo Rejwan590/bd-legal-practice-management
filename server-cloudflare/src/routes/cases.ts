@@ -364,10 +364,11 @@ casesRouter.get('/:id/counts', requirePermission('cases.view'), async (c) => {
     return c.json({ error: 'Not found', message: 'Case not found' }, 404);
   }
 
-  const [hearingsRows, tasksRows, notesRows, agreementsRows, paymentsRows] = await Promise.all([
+  const [hearingsRows, tasksRows, notesRows, filesRows, agreementsRows, paymentsRows] = await Promise.all([
     db.select({ id: schema.hearings.id }).from(schema.hearings).where(and(eq(schema.hearings.firmId, firm.id), eq(schema.hearings.caseId, id), isNull(schema.hearings.deletedAt))),
     db.select({ status: schema.tasks.status }).from(schema.tasks).where(and(eq(schema.tasks.firmId, firm.id), eq(schema.tasks.caseId, id), isNull(schema.tasks.deletedAt))),
     db.select({ id: schema.caseNotes.id }).from(schema.caseNotes).where(and(eq(schema.caseNotes.firmId, firm.id), eq(schema.caseNotes.caseId, id), isNull(schema.caseNotes.deletedAt))),
+    db.select({ id: schema.physicalFiles.id }).from(schema.physicalFiles).where(and(eq(schema.physicalFiles.firmId, firm.id), eq(schema.physicalFiles.caseId, id), isNull(schema.physicalFiles.deletedAt))),
     db.select({ id: schema.feeAgreements.id }).from(schema.feeAgreements).where(and(eq(schema.feeAgreements.firmId, firm.id), eq(schema.feeAgreements.caseId, id), isNull(schema.feeAgreements.deletedAt))),
     db.select({ id: schema.feePayments.id }).from(schema.feePayments).where(and(eq(schema.feePayments.firmId, firm.id), eq(schema.feePayments.caseId, id), isNull(schema.feePayments.deletedAt))),
   ]);
@@ -377,7 +378,7 @@ casesRouter.get('/:id/counts', requirePermission('cases.view'), async (c) => {
     tasksCount: tasksRows.length,
     activeTasksCount: tasksRows.filter((t) => t.status !== 'completed' && t.status !== 'cancelled').length,
     notesCount: notesRows.length,
-    filesCount: 0,
+    filesCount: filesRows.length,
     agreementsCount: agreementsRows.length,
     paymentsCount: paymentsRows.length,
   });

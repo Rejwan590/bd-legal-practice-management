@@ -9,6 +9,7 @@ import {
   DashboardMetrics,
   DashboardUrgentItems,
   HearingRecord,
+  PhysicalFileRecord,
   SecurityContext,
   TaskRecord,
 } from '../../types';
@@ -47,12 +48,15 @@ export class RestDashboardRepository implements IDashboardRepository {
     const nowMs = now.getTime();
     const todayDhaka = getDhakaDateString(now);
 
-    const [cases, clients, hearings, allTasks, appointments] = await Promise.all([
+    const [cases, clients, hearings, allTasks, appointments, rawFiles] = await Promise.all([
       restFetch<CaseRecord[]>('/cases').catch(() => []),
       restFetch<ClientRecord[]>('/clients').catch(() => []),
       restFetch<HearingRecord[]>('/hearings').catch(() => []),
       this.fetchAllTasks(firmId),
       this.fetchAllAppointments(firmId),
+      can('files.view', currentUser)
+        ? restFetch<PhysicalFileRecord[]>('/physical-files').catch(() => [])
+        : Promise.resolve([] as PhysicalFileRecord[]),
     ]);
 
     // 1. Cases: active court cases
@@ -83,9 +87,9 @@ export class RestDashboardRepository implements IDashboardRepository {
       (t) => new Date(t.dueAt).getTime() < nowMs
     ).length;
 
-    // 5. Files: checked out & overdue (from physical custody store)
+    // 5. Files: checked out & overdue
     const store = localStore.getData();
-    const files = (store.physicalFiles || []).filter((f) => {
+    const files = rawFiles.filter((f) => {
       if (f.firmId !== firmId || f.deletedAt !== null) return false;
       if (f.caseId && !allowedCaseIds.has(f.caseId)) return false;
       return true;
@@ -135,11 +139,14 @@ export class RestDashboardRepository implements IDashboardRepository {
     const nowMs = now.getTime();
     const todayDhaka = getDhakaDateString(now);
 
-    const [cases, hearings, allTasks, appointments] = await Promise.all([
+    const [cases, hearings, allTasks, appointments, rawFiles] = await Promise.all([
       restFetch<CaseRecord[]>('/cases').catch(() => []),
       restFetch<HearingRecord[]>('/hearings').catch(() => []),
       this.fetchAllTasks(firmId),
       this.fetchAllAppointments(firmId),
+      can('files.view', currentUser)
+        ? restFetch<PhysicalFileRecord[]>('/physical-files').catch(() => [])
+        : Promise.resolve([] as PhysicalFileRecord[]),
     ]);
 
     const allowedCaseIds = new Set(cases.map((c) => c.id));
@@ -168,8 +175,7 @@ export class RestDashboardRepository implements IDashboardRepository {
     );
 
     // Overdue physical files
-    const store = localStore.getData();
-    const files = (store.physicalFiles || []).filter((f) => {
+    const files = rawFiles.filter((f) => {
       if (f.firmId !== firmId || f.deletedAt !== null) return false;
       if (f.caseId && !allowedCaseIds.has(f.caseId)) return false;
       return true;

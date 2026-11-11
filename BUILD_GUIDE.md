@@ -73,12 +73,12 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 - [x] Dual-mode parity: `RestTaskRepository` with full feature parity to `MockTaskRepository`.
 - [x] Central case visibility, firm isolation, audit trail (`TASK_ASSIGN`, `TASK_COMPLETE`, `UPDATE`, `DELETE`), and subscription read-only gate.
 
-### Phase 8: Physical File Tracking & Custody Backend `[RECOMMENDED NEXT TASK]`
-- [ ] Move physical files to PostgreSQL `physical_files` and `file_movements`.
-- [ ] Firm-scoped serial generator (`F-000001`).
-- [ ] Check-out / check-in custody workflows with holder assignment and return deadlines.
+### Phase 8: Physical File Tracking & Custody Backend `[COMPLETED]`
+- [x] Move physical files to PostgreSQL `physical_files` and `file_movements`.
+- [x] Firm-scoped serial generator (`F-000001`).
+- [x] Check-out / check-in custody workflows with holder assignment and return deadlines.
 
-### Phase 9: Calendar & Automated Reminders Backend `[PLANNED]`
+### Phase 9: Calendar & Automated Reminders Backend `[RECOMMENDED NEXT TASK]`
 - [ ] PostgreSQL `reminders` table and aggregation service.
 - [ ] Chronological calendar feed joining hearings, appointments, tasks, and file due dates.
 - [ ] In-app notification center and reminder dismissal.

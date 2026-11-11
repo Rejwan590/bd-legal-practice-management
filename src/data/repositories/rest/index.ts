@@ -7,6 +7,7 @@ export * from './restCase';
 export * from './restAppointment';
 export * from './restHearing';
 export * from './restTask';
+export * from './restPhysicalFile';
 export * from './restAccounts';
 export * from './restChamberExpenses';
 export * from './restDashboard';

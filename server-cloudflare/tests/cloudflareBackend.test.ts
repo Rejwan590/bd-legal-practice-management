@@ -1246,4 +1246,175 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     expect(updated.defendantLawyer).toBe('Advocate Defendant');
     expect(updated.responsibleLawyerId).toBeNull();
   });
+
+  it('22. Phase 8 Physical File Tracking & Custody lifecycle on Cloudflare Workers + D1', async () => {
+    const db = getDb(mockD1);
+    const [firmUser] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.firmId, firmDId))
+      .limit(1);
+
+    // Expired Firm A still gets 403 SUBSCRIPTION_READ_ONLY on write, while read succeeds
+    const expiredCreateRes = await app.request(
+      '/api/v1/physical-files',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+        body: JSON.stringify({ title: 'Blocked File' }),
+      },
+      env
+    );
+    expect(expiredCreateRes.status).toBe(403);
+
+    // Next serial preview starts at F-000101 for active Firm D
+    const nextRes1 = await app.request(
+      '/api/v1/physical-files/next-serial',
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(nextRes1.status).toBe(200);
+    expect(((await nextRes1.json()) as any).serial).toBe('F-000101');
+
+    // Create physical file linked to Firm D Case D
+    const createRes = await app.request(
+      '/api/v1/physical-files',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          title: 'Writ Dossier Bundle Vol-I',
+          caseId: firmDCaseId,
+          shelfLocation: 'Rack 1, Shelf A',
+          notes: 'Original annexures inside',
+        }),
+      },
+      env
+    );
+    expect(createRes.status).toBe(201);
+    const createdFile = (await createRes.json()) as any;
+    expect(createdFile.serial).toBe('F-000101');
+    expect(createdFile.status).toBe('in_chamber');
+    expect(createdFile.clientId).toBe(firmDClientId);
+
+    // Duplicate serial is rejected with 409 Conflict
+    const dupRes = await app.request(
+      '/api/v1/physical-files',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ title: 'Dup Serial', serial: 'F-000101' }),
+      },
+      env
+    );
+    expect(dupRes.status).toBe(409);
+
+    // Check-out file
+    const dueIso = new Date(Date.now() + 86400000 * 2).toISOString();
+    const outRes = await app.request(
+      `/api/v1/physical-files/${createdFile.id}/check-out`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ holderId: firmUser.id, dueBackAt: dueIso, note: 'Drafting submission' }),
+      },
+      env
+    );
+    expect(outRes.status).toBe(200);
+    const outJson = (await outRes.json()) as any;
+    expect(outJson.file.status).toBe('checked_out');
+    expect(outJson.file.currentHolderId).toBe(firmUser.id);
+    expect(outJson.movement.action).toBe('CHECKOUT');
+
+    // Client overview and case counts now reflect physical file
+    const overviewRes = await app.request(
+      `/api/v1/clients/${firmDClientId}/overview`,
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(overviewRes.status).toBe(200);
+    const overview = (await overviewRes.json()) as any;
+    expect(overview.files.some((f: any) => f.id === createdFile.id && f.status === 'checked_out')).toBe(true);
+
+    const countsRes = await app.request(
+      `/api/v1/cases/${firmDCaseId}/counts`,
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(countsRes.status).toBe(200);
+    expect(((await countsRes.json()) as any).filesCount).toBe(1);
+
+    // Dispatch to court & Check-in
+    const dispatchRes = await app.request(
+      `/api/v1/physical-files/${createdFile.id}/dispatch-court`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          courtName: 'High Court Annex 5',
+          holderId: firmUser.id,
+          dueBackAt: dueIso,
+        }),
+      },
+      env
+    );
+    expect(dispatchRes.status).toBe(200);
+    expect(((await dispatchRes.json()) as any).file.status).toBe('in_court');
+
+    const inRes = await app.request(
+      `/api/v1/physical-files/${createdFile.id}/check-in`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ shelfLocation: 'Rack 2, Shelf C', note: 'Returned intact' }),
+      },
+      env
+    );
+    expect(inRes.status).toBe(200);
+    const inJson = (await inRes.json()) as any;
+    expect(inJson.file.status).toBe('in_chamber');
+    expect(inJson.file.currentHolderId).toBeNull();
+    expect(inJson.file.shelfLocation).toBe('Rack 2, Shelf C');
+
+    // Movements timeline
+    const movRes = await app.request(
+      `/api/v1/physical-files/${createdFile.id}/movements`,
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(movRes.status).toBe(200);
+    const movements = (await movRes.json()) as any[];
+    expect(movements.length).toBe(3);
+
+    // Lookup by serial
+    const serialLookup = await app.request(
+      '/api/v1/physical-files/by-serial/F-000101',
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(serialLookup.status).toBe(200);
+
+    // Multi-tenant isolation: expired/other firm A cannot read Firm D physical file
+    const crossFirmGet = await app.request(
+      `/api/v1/physical-files/${createdFile.id}`,
+      { headers: { Cookie: ownerCookie } },
+      env
+    );
+    expect(crossFirmGet.status).toBe(404);
+
+    // Soft delete
+    const delRes = await app.request(
+      `/api/v1/physical-files/${createdFile.id}`,
+      { method: 'DELETE', headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(delRes.status).toBe(200);
+
+    const afterDel = await app.request(
+      `/api/v1/physical-files/${createdFile.id}`,
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(afterDel.status).toBe(404);
+  });
 });

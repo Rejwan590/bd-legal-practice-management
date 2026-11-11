@@ -742,5 +742,54 @@ export type NewChamberAdvance = typeof chamberAdvances.$inferInsert;
 export type ChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferSelect;
 export type NewChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferInsert;
 
+// Physical Files Table (Phase 8 - Physical File Tracking & Custody)
+export const physicalFiles = pgTable('physical_files', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  serial: text('serial').notNull(),
+  caseId: text('case_id').references(() => cases.id, { onDelete: 'set null' }),
+  clientId: text('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  shelfLocation: text('shelf_location'),
+  status: text('status').$type<'in_chamber' | 'checked_out' | 'in_court' | 'archived'>().default('in_chamber').notNull(),
+  currentHolderId: text('holder_id').references(() => users.id, { onDelete: 'set null' }),
+  checkedOutAt: timestamp('checked_out_at', { withTimezone: true }),
+  dueBackAt: timestamp('due_back_at', { withTimezone: true }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  uniqueIndex('uidx_physical_files_firm_serial').on(table.firmId, table.serial),
+  index('idx_physical_files_firm_id').on(table.firmId),
+  index('idx_physical_files_case_id').on(table.caseId),
+  index('idx_physical_files_client_id').on(table.clientId),
+  index('idx_physical_files_holder_id').on(table.currentHolderId),
+  index('idx_physical_files_status').on(table.status),
+]);
+
+// File Movements Table (Custody audit timeline for physical files)
+export const fileMovements = pgTable('file_movements', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  fileId: text('file_id').references(() => physicalFiles.id).notNull(),
+  action: text('action').$type<'CHECKOUT' | 'CHECKIN' | 'COURT_DISPATCH' | 'TRANSFER' | 'ARCHIVE'>().notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  at: timestamp('at', { withTimezone: true }).defaultNow().notNull(),
+  dueBackAt: timestamp('due_back_at', { withTimezone: true }),
+  note: text('note'),
+}, (table) => [
+  index('idx_file_movements_firm_id').on(table.firmId),
+  index('idx_file_movements_file_id').on(table.fileId),
+]);
+
+export type PhysicalFile = typeof physicalFiles.$inferSelect;
+export type NewPhysicalFile = typeof physicalFiles.$inferInsert;
+export type FileMovement = typeof fileMovements.$inferSelect;
+export type NewFileMovement = typeof fileMovements.$inferInsert;
+
+
 
 

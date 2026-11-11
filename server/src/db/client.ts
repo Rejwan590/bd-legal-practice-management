@@ -38,6 +38,7 @@ export interface ClientLinkedOverview {
   files: Array<{
     id: string;
     serial: string;
+    title?: string;
     status: string;
     holderName: string;
   }>;
@@ -229,6 +230,51 @@ export interface IDatabase {
   insertTask(task: schema.NewTask): Promise<schema.Task & { assignedToName?: string }>;
   updateTask(id: string, firmId: string, updates: Partial<schema.Task>): Promise<schema.Task & { assignedToName?: string }>;
   deleteTask(id: string, firmId: string, updatedBy?: string): Promise<{ success: boolean; softDeleted: true }>;
+  // Physical Files & Custody Tracking (Phase 8)
+  getNextPhysicalFileSerial(firmId: string): Promise<string>;
+  listPhysicalFiles(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      status?: string;
+      holderId?: string;
+      search?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.PhysicalFile & { currentHolderName?: string | null }>>;
+  getPhysicalFileById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null>;
+  getPhysicalFileBySerial(
+    serial: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null>;
+  getPhysicalFileByCaseId(
+    caseId: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null>;
+  insertPhysicalFile(
+    file: schema.NewPhysicalFile
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }>;
+  updatePhysicalFile(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.PhysicalFile>
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }>;
+  deletePhysicalFile(
+    id: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; softDeleted: true }>;
+  listFileMovements(
+    fileId: string,
+    firmId: string
+  ): Promise<Array<schema.FileMovement & { userName: string }>>;
+  insertFileMovement(
+    movement: schema.NewFileMovement
+  ): Promise<schema.FileMovement & { userName: string }>;
   // Accounts Module (Accounts Phase 1)
   getAccountsSummary(
     firmId: string,
@@ -447,6 +493,8 @@ class MemoryDatabase implements IDatabase {
   public chamberAdvances: schema.ChamberAdvance[] = [];
   public chamberExpenses: schema.ChamberExpense[] = [];
   public chamberAdvanceSettlements: schema.ChamberAdvanceSettlement[] = [];
+  public physicalFiles: schema.PhysicalFile[] = [];
+  public fileMovements: schema.FileMovement[] = [];
   private initialized = false;
 
   public async init() {
@@ -924,6 +972,10 @@ class MemoryDatabase implements IDatabase {
       (t) => t.clientId === clientId && t.firmId === firmId && !t.deletedAt && (!t.caseId || visibleIds.has(t.caseId))
     );
 
+    const clientFiles = this.physicalFiles.filter(
+      (f) => f.clientId === clientId && f.firmId === firmId && !f.deletedAt && (!f.caseId || visibleIds.has(f.caseId))
+    );
+
     return {
       cases: clientCases.map((c) => ({
         id: c.id,
@@ -939,7 +991,16 @@ class MemoryDatabase implements IDatabase {
         status: t.status,
         dueAt: new Date(t.dueAt).toISOString(),
       })),
-      files: [],
+      files: clientFiles.map((f) => {
+        const holder = f.currentHolderId ? this.users.find((u) => u.id === f.currentHolderId) : null;
+        return {
+          id: f.id,
+          serial: f.serial,
+          title: f.title,
+          status: f.status,
+          holderName: holder ? holder.name : 'Chamber Archive',
+        };
+      }),
     };
   }
 
@@ -1299,10 +1360,13 @@ class MemoryDatabase implements IDatabase {
     const tasksCount = this.tasks.filter(
       (t) => t.caseId === caseId && t.firmId === firmId && !t.deletedAt && t.status !== 'cancelled'
     ).length;
+    const filesCount = this.physicalFiles.filter(
+      (f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt
+    ).length;
     return {
       hearingsCount,
       tasksCount,
-      filesCount: 0,
+      filesCount,
       remindersCount: 0,
     };
   }
@@ -1633,6 +1697,223 @@ class MemoryDatabase implements IDatabase {
     this.tasks[idx].updatedAt = new Date();
     if (updatedBy) this.tasks[idx].updatedBy = updatedBy;
     return { success: true, softDeleted: true };
+  }
+
+  // Physical Files & Custody Methods (Phase 8)
+  private enrichPhysicalFileForMemory(f: schema.PhysicalFile): schema.PhysicalFile & { currentHolderName?: string | null } {
+    const holder = f.currentHolderId ? this.users.find((u) => u.id === f.currentHolderId) : null;
+    return {
+      ...f,
+      currentHolderName: holder ? holder.name : null,
+    };
+  }
+
+  public async getNextPhysicalFileSerial(firmId: string): Promise<string> {
+    await this.init();
+    const firmFiles = this.physicalFiles.filter((f) => f.firmId === firmId);
+    let maxNumber = 100;
+    for (const f of firmFiles) {
+      const match = f.serial.match(/^F-(\d+)$/i) || f.serial.match(/(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!Number.isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+    return `F-${String(maxNumber + 1).padStart(6, '0')}`;
+  }
+
+  public async listPhysicalFiles(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      status?: string;
+      holderId?: string;
+      search?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.PhysicalFile & { currentHolderName?: string | null }>> {
+    await this.init();
+    const includeRestricted = user
+      ? user.role === 'Owner' || Boolean(user.permissions?.includes('restricted.view'))
+      : true;
+    const visibleIds = user ? this.getVisibleCaseSetForMemory(firmId, user, includeRestricted) : null;
+
+    let result = this.physicalFiles.filter((f) => {
+      if (f.firmId !== firmId || f.deletedAt) return false;
+      if (visibleIds && f.caseId && !visibleIds.has(f.caseId)) return false;
+      return true;
+    });
+
+    if (filter?.caseId) {
+      result = result.filter((f) => f.caseId === filter.caseId);
+    }
+    if (filter?.clientId) {
+      result = result.filter((f) => f.clientId === filter.clientId);
+    }
+    if (filter?.status && filter.status !== 'all') {
+      result = result.filter((f) => f.status === filter.status);
+    }
+    if (filter?.holderId) {
+      result = result.filter((f) => f.currentHolderId === filter.holderId);
+    }
+
+    const enriched = result.map((f) => this.enrichPhysicalFileForMemory(f));
+    const finalFiltered = filter?.search
+      ? enriched.filter((f) => {
+          const q = filter.search!.trim().toLowerCase();
+          return (
+            f.serial.toLowerCase().includes(q) ||
+            f.title.toLowerCase().includes(q) ||
+            (f.shelfLocation || '').toLowerCase().includes(q) ||
+            (f.notes || '').toLowerCase().includes(q) ||
+            (f.currentHolderName || '').toLowerCase().includes(q)
+          );
+        })
+      : enriched;
+
+    return finalFiltered.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  }
+
+  public async getPhysicalFileById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    await this.init();
+    const row = this.physicalFiles.find((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+    return row ? this.enrichPhysicalFileForMemory(row) : null;
+  }
+
+  public async getPhysicalFileBySerial(
+    serial: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    await this.init();
+    const clean = serial.trim().toLowerCase();
+    const row = this.physicalFiles.find(
+      (f) => f.firmId === firmId && !f.deletedAt && f.serial.toLowerCase() === clean
+    );
+    return row ? this.enrichPhysicalFileForMemory(row) : null;
+  }
+
+  public async getPhysicalFileByCaseId(
+    caseId: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    await this.init();
+    const row = this.physicalFiles.find(
+      (f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt
+    );
+    return row ? this.enrichPhysicalFileForMemory(row) : null;
+  }
+
+  public async insertPhysicalFile(
+    file: schema.NewPhysicalFile
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }> {
+    await this.init();
+    const duplicate = this.physicalFiles.find(
+      (f) => f.firmId === file.firmId && f.serial.toLowerCase() === file.serial.toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error(`DUPLICATE_SERIAL: Serial ${file.serial} already exists in firm`);
+    }
+    const now = new Date();
+    const created: schema.PhysicalFile = {
+      id: file.id || `file-${crypto.randomUUID()}`,
+      firmId: file.firmId,
+      serial: file.serial,
+      caseId: file.caseId ?? null,
+      clientId: file.clientId ?? null,
+      title: file.title,
+      shelfLocation: file.shelfLocation ?? 'General File Rack',
+      status: file.status ?? 'in_chamber',
+      currentHolderId: file.currentHolderId ?? null,
+      checkedOutAt: file.checkedOutAt ?? null,
+      dueBackAt: file.dueBackAt ?? null,
+      notes: file.notes ?? null,
+      createdAt: file.createdAt ?? now,
+      updatedAt: file.updatedAt ?? now,
+      deletedAt: null,
+      createdBy: file.createdBy ?? null,
+      updatedBy: file.updatedBy ?? null,
+    };
+    this.physicalFiles.push(created);
+    return this.enrichPhysicalFileForMemory(created);
+  }
+
+  public async updatePhysicalFile(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.PhysicalFile>
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }> {
+    await this.init();
+    const idx = this.physicalFiles.findIndex((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+    if (idx === -1) throw new Error(`Physical file not found: ${id}`);
+
+    const updated: schema.PhysicalFile = {
+      ...this.physicalFiles[idx],
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.physicalFiles[idx] = updated;
+    return this.enrichPhysicalFileForMemory(updated);
+  }
+
+  public async deletePhysicalFile(
+    id: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    await this.init();
+    const idx = this.physicalFiles.findIndex((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+    if (idx === -1) throw new Error(`Physical file not found: ${id}`);
+    this.physicalFiles[idx].deletedAt = new Date();
+    this.physicalFiles[idx].updatedAt = new Date();
+    if (updatedBy) this.physicalFiles[idx].updatedBy = updatedBy;
+    return { success: true, softDeleted: true };
+  }
+
+  public async listFileMovements(
+    fileId: string,
+    firmId: string
+  ): Promise<Array<schema.FileMovement & { userName: string }>> {
+    await this.init();
+    return this.fileMovements
+      .filter((m) => m.fileId === fileId && m.firmId === firmId)
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .map((m) => {
+        const u = this.users.find((usr) => usr.id === m.userId);
+        return {
+          ...m,
+          userName: u ? u.name : 'Unknown User',
+        };
+      });
+  }
+
+  public async insertFileMovement(
+    movement: schema.NewFileMovement
+  ): Promise<schema.FileMovement & { userName: string }> {
+    await this.init();
+    const created: schema.FileMovement = {
+      id: movement.id || `mov-${crypto.randomUUID()}`,
+      firmId: movement.firmId,
+      fileId: movement.fileId,
+      action: movement.action,
+      userId: movement.userId,
+      at: movement.at ?? new Date(),
+      dueBackAt: movement.dueBackAt ?? null,
+      note: movement.note ?? null,
+    };
+    this.fileMovements.push(created);
+    const u = this.users.find((usr) => usr.id === created.userId);
+    return {
+      ...created,
+      userName: u ? u.name : 'Unknown User',
+    };
   }
 
   // Accounts Methods (Accounts Phase 1)
@@ -3273,6 +3554,8 @@ class MemoryDatabase implements IDatabase {
       chamberAdvances: [...this.chamberAdvances],
       chamberExpenses: [...this.chamberExpenses],
       chamberAdvanceSettlements: [...this.chamberAdvanceSettlements],
+      physicalFiles: [...this.physicalFiles],
+      fileMovements: [...this.fileMovements],
     };
 
     try {
@@ -3309,6 +3592,8 @@ class MemoryDatabase implements IDatabase {
       this.chamberAdvances = snapshot.chamberAdvances;
       this.chamberExpenses = snapshot.chamberExpenses;
       this.chamberAdvanceSettlements = snapshot.chamberAdvanceSettlements;
+      this.physicalFiles = snapshot.physicalFiles;
+      this.fileMovements = snapshot.fileMovements;
       throw err;
     }
   }
@@ -3835,6 +4120,21 @@ class PostgresDatabase implements IDatabase {
       .from(schema.tasks)
       .where(and(...taskConditions));
 
+    const fileConditions = [
+      eq(schema.physicalFiles.clientId, clientId),
+      eq(schema.physicalFiles.firmId, firmId),
+      isNull(schema.physicalFiles.deletedAt),
+      sql`(${schema.physicalFiles.caseId} IS NULL OR ${schema.physicalFiles.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`,
+    ];
+    const clientFiles = await this.db
+      .select({
+        file: schema.physicalFiles,
+        holderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(and(...fileConditions));
+
     return {
       cases: clientCases.map((c) => ({
         id: c.id,
@@ -3850,7 +4150,13 @@ class PostgresDatabase implements IDatabase {
         status: t.status,
         dueAt: new Date(t.dueAt).toISOString(),
       })),
-      files: [],
+      files: clientFiles.map((row) => ({
+        id: row.file.id,
+        serial: row.file.serial,
+        title: row.file.title,
+        status: row.file.status,
+        holderName: row.holderName || 'Chamber Archive',
+      })),
     };
   }
 
@@ -4258,10 +4564,20 @@ class PostgresDatabase implements IDatabase {
           ne(schema.tasks.status, 'cancelled')
         )
       );
+    const filesRows = await this.db
+      .select({ id: schema.physicalFiles.id })
+      .from(schema.physicalFiles)
+      .where(
+        and(
+          eq(schema.physicalFiles.caseId, caseId),
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt)
+        )
+      );
     return {
       hearingsCount: hearingsRows.length,
       tasksCount: tasksRows.length,
-      filesCount: 0,
+      filesCount: filesRows.length,
       remindersCount: 0,
     };
   }
@@ -4599,7 +4915,283 @@ class PostgresDatabase implements IDatabase {
     return { success: true, softDeleted: true };
   }
 
-  // Accounts Methods (Accounts Phase 1)
+  // Physical Files & Custody Methods (Phase 8 - PostgreSQL)
+  private async resolveHolderNamePostgres(holderId: string | null | undefined): Promise<string | null> {
+    if (!holderId) return null;
+    const userRows = await this.db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, holderId))
+      .limit(1);
+    return userRows[0]?.name || null;
+  }
+
+  public async getNextPhysicalFileSerial(firmId: string): Promise<string> {
+    const rows = await this.db
+      .select({ serial: schema.physicalFiles.serial })
+      .from(schema.physicalFiles)
+      .where(eq(schema.physicalFiles.firmId, firmId));
+
+    let maxNumber = 100;
+    for (const r of rows) {
+      const match = r.serial.match(/^F-(\d+)$/i) || r.serial.match(/(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!Number.isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+    return `F-${String(maxNumber + 1).padStart(6, '0')}`;
+  }
+
+  public async listPhysicalFiles(
+    firmId: string,
+    filter?: {
+      caseId?: string;
+      clientId?: string;
+      status?: string;
+      holderId?: string;
+      search?: string;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.PhysicalFile & { currentHolderName?: string | null }>> {
+    const conditions: SQL[] = [
+      eq(schema.physicalFiles.firmId, firmId),
+      isNull(schema.physicalFiles.deletedAt),
+    ];
+
+    if (user) {
+      const includeRestricted =
+        user.role === 'Owner' || Boolean(user.permissions?.includes('restricted.view'));
+      const visCond = await this.buildPostgresCaseCondition(firmId, user, includeRestricted);
+      conditions.push(
+        sql`(${schema.physicalFiles.caseId} IS NULL OR ${schema.physicalFiles.caseId} IN (SELECT id FROM ${schema.cases} WHERE ${visCond}))`
+      );
+    }
+    if (filter?.caseId) {
+      conditions.push(eq(schema.physicalFiles.caseId, filter.caseId));
+    }
+    if (filter?.clientId) {
+      conditions.push(eq(schema.physicalFiles.clientId, filter.clientId));
+    }
+    if (filter?.status && filter.status !== 'all') {
+      conditions.push(eq(schema.physicalFiles.status, filter.status as any));
+    }
+    if (filter?.holderId) {
+      conditions.push(eq(schema.physicalFiles.currentHolderId, filter.holderId));
+    }
+    if (filter?.search) {
+      const q = `%${filter.search.trim()}%`;
+      conditions.push(
+        sql`(${schema.physicalFiles.serial} ILIKE ${q} OR ${schema.physicalFiles.title} ILIKE ${q} OR COALESCE(${schema.physicalFiles.shelfLocation}, '') ILIKE ${q} OR COALESCE(${schema.physicalFiles.notes}, '') ILIKE ${q} OR COALESCE(${schema.users.name}, '') ILIKE ${q})`
+      );
+    }
+
+    const rows = await this.db
+      .select({
+        file: schema.physicalFiles,
+        currentHolderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(desc(schema.physicalFiles.updatedAt));
+
+    return rows.map((r) => ({
+      ...r.file,
+      currentHolderName: r.currentHolderName || null,
+    }));
+  }
+
+  public async getPhysicalFileById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    const rows = await this.db
+      .select({
+        file: schema.physicalFiles,
+        currentHolderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(
+        and(
+          eq(schema.physicalFiles.id, id),
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].file,
+      currentHolderName: rows[0].currentHolderName || null,
+    };
+  }
+
+  public async getPhysicalFileBySerial(
+    serial: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    const clean = serial.trim();
+    const rows = await this.db
+      .select({
+        file: schema.physicalFiles,
+        currentHolderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(
+        and(
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt),
+          ilike(schema.physicalFiles.serial, clean)
+        )
+      )
+      .limit(1);
+
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].file,
+      currentHolderName: rows[0].currentHolderName || null,
+    };
+  }
+
+  public async getPhysicalFileByCaseId(
+    caseId: string,
+    firmId: string
+  ): Promise<(schema.PhysicalFile & { currentHolderName?: string | null }) | null> {
+    const rows = await this.db
+      .select({
+        file: schema.physicalFiles,
+        currentHolderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(
+        and(
+          eq(schema.physicalFiles.caseId, caseId),
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].file,
+      currentHolderName: rows[0].currentHolderName || null,
+    };
+  }
+
+  public async insertPhysicalFile(
+    file: schema.NewPhysicalFile
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }> {
+    const id = file.id || crypto.randomUUID();
+    const rows = await this.db
+      .insert(schema.physicalFiles)
+      .values({ ...file, id })
+      .returning();
+
+    const created = rows[0];
+    const holderName = await this.resolveHolderNamePostgres(created.currentHolderId);
+    return {
+      ...created,
+      currentHolderName: holderName,
+    };
+  }
+
+  public async updatePhysicalFile(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.PhysicalFile>
+  ): Promise<schema.PhysicalFile & { currentHolderName?: string | null }> {
+    const rows = await this.db
+      .update(schema.physicalFiles)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.physicalFiles.id, id),
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt)
+        )
+      )
+      .returning();
+
+    const updated = rows[0];
+    if (!updated) throw new Error(`Physical file not found: ${id}`);
+    const holderName = await this.resolveHolderNamePostgres(updated.currentHolderId);
+    return {
+      ...updated,
+      currentHolderName: holderName,
+    };
+  }
+
+  public async deletePhysicalFile(
+    id: string,
+    firmId: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; softDeleted: true }> {
+    await this.db
+      .update(schema.physicalFiles)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+        ...(updatedBy ? { updatedBy } : {}),
+      })
+      .where(
+        and(
+          eq(schema.physicalFiles.id, id),
+          eq(schema.physicalFiles.firmId, firmId),
+          isNull(schema.physicalFiles.deletedAt)
+        )
+      );
+    return { success: true, softDeleted: true };
+  }
+
+  public async listFileMovements(
+    fileId: string,
+    firmId: string
+  ): Promise<Array<schema.FileMovement & { userName: string }>> {
+    const rows = await this.db
+      .select({
+        movement: schema.fileMovements,
+        userName: schema.users.name,
+      })
+      .from(schema.fileMovements)
+      .leftJoin(schema.users, eq(schema.fileMovements.userId, schema.users.id))
+      .where(
+        and(
+          eq(schema.fileMovements.fileId, fileId),
+          eq(schema.fileMovements.firmId, firmId)
+        )
+      )
+      .orderBy(desc(schema.fileMovements.at));
+
+    return rows.map((r) => ({
+      ...r.movement,
+      userName: r.userName || 'Unknown User',
+    }));
+  }
+
+  public async insertFileMovement(
+    movement: schema.NewFileMovement
+  ): Promise<schema.FileMovement & { userName: string }> {
+    const id = movement.id || crypto.randomUUID();
+    const rows = await this.db
+      .insert(schema.fileMovements)
+      .values({ ...movement, id })
+      .returning();
+
+    const created = rows[0];
+    const userName = (await this.resolveHolderNamePostgres(created.userId)) || 'Unknown User';
+    return {
+      ...created,
+      userName,
+    };
+  }
   public async getAccountsSummary(
     firmId: string,
     filter: { clientId?: string; caseId?: string },

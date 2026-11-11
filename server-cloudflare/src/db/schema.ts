@@ -682,6 +682,49 @@ export const chamberAdvanceSettlements = sqliteTable('chamber_advance_settlement
   index('idx_chamber_advance_settlements_advance_id').on(table.advanceId),
 ]);
 
+// 32. Physical Files Table (Phase 8 - Physical File Tracking & Custody)
+export const physicalFiles = sqliteTable('physical_files', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  serial: text('serial').notNull(),
+  caseId: text('case_id').references(() => cases.id, { onDelete: 'set null' }),
+  clientId: text('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  shelfLocation: text('shelf_location'),
+  status: text('status').$type<'in_chamber' | 'checked_out' | 'in_court' | 'archived'>().default('in_chamber').notNull(),
+  currentHolderId: text('holder_id').references(() => users.id, { onDelete: 'set null' }),
+  checkedOutAt: text('checked_out_at'),
+  dueBackAt: text('due_back_at'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`(CURRENT_TIMESTAMP)`).notNull(),
+  updatedAt: text('updated_at').default(sql`(CURRENT_TIMESTAMP)`).notNull(),
+  deletedAt: text('deleted_at'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  uniqueIndex('uidx_physical_files_firm_serial').on(table.firmId, table.serial),
+  index('idx_physical_files_firm_id').on(table.firmId),
+  index('idx_physical_files_case_id').on(table.caseId),
+  index('idx_physical_files_client_id').on(table.clientId),
+  index('idx_physical_files_holder_id').on(table.currentHolderId),
+  index('idx_physical_files_status').on(table.status),
+]);
+
+// 33. File Movements Table (Custody audit timeline for physical files)
+export const fileMovements = sqliteTable('file_movements', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  fileId: text('file_id').references(() => physicalFiles.id).notNull(),
+  action: text('action').$type<'CHECKOUT' | 'CHECKIN' | 'COURT_DISPATCH' | 'TRANSFER' | 'ARCHIVE'>().notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  at: text('at').default(sql`(CURRENT_TIMESTAMP)`).notNull(),
+  dueBackAt: text('due_back_at'),
+  note: text('note'),
+}, (table) => [
+  index('idx_file_movements_firm_id').on(table.firmId),
+  index('idx_file_movements_file_id').on(table.fileId),
+]);
+
 // Type Inference Exports
 export type Plan = typeof plans.$inferSelect;
 export type Firm = typeof firms.$inferSelect;
@@ -742,3 +785,7 @@ export type ChamberAdvance = typeof chamberAdvances.$inferSelect;
 export type NewChamberAdvance = typeof chamberAdvances.$inferInsert;
 export type ChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferSelect;
 export type NewChamberAdvanceSettlement = typeof chamberAdvanceSettlements.$inferInsert;
+export type PhysicalFile = typeof physicalFiles.$inferSelect;
+export type NewPhysicalFile = typeof physicalFiles.$inferInsert;
+export type FileMovement = typeof fileMovements.$inferSelect;
+export type NewFileMovement = typeof fileMovements.$inferInsert;

@@ -332,7 +332,7 @@ clientsRouter.get('/:id/overview', requirePermission('clients.view'), async (c) 
     return c.json({ error: 'Not found', message: 'Client not found' }, 404);
   }
 
-  const [visible, clientCases, clientTasks] = await Promise.all([
+  const [visible, clientCases, clientTasks, clientFiles] = await Promise.all([
     getVisibleCaseIds(db, firm, user),
     db
       .select({
@@ -355,12 +355,33 @@ clientsRouter.get('/:id/overview', requirePermission('clients.view'), async (c) 
       })
       .from(schema.tasks)
       .where(and(eq(schema.tasks.firmId, firm.id), eq(schema.tasks.clientId, clientId), isNull(schema.tasks.deletedAt))),
+    db
+      .select({
+        id: schema.physicalFiles.id,
+        caseId: schema.physicalFiles.caseId,
+        serial: schema.physicalFiles.serial,
+        title: schema.physicalFiles.title,
+        status: schema.physicalFiles.status,
+        holderName: schema.users.name,
+      })
+      .from(schema.physicalFiles)
+      .leftJoin(schema.users, eq(schema.physicalFiles.currentHolderId, schema.users.id))
+      .where(and(eq(schema.physicalFiles.firmId, firm.id), eq(schema.physicalFiles.clientId, clientId), isNull(schema.physicalFiles.deletedAt))),
   ]);
 
   const cases = visible === 'ALL' ? clientCases : clientCases.filter((cs) => visible.includes(cs.id));
   const tasks = clientTasks.filter((t) => !t.caseId || visible === 'ALL' || visible.includes(t.caseId));
+  const files = clientFiles
+    .filter((f) => !f.caseId || visible === 'ALL' || visible.includes(f.caseId))
+    .map((f) => ({
+      id: f.id,
+      serial: f.serial,
+      title: f.title,
+      status: f.status,
+      holderName: f.holderName || 'Chamber Archive',
+    }));
 
-  return c.json({ cases, tasks, files: [] });
+  return c.json({ cases, tasks, files });
 });
 
 // Client Notes: GET / POST / PATCH / DELETE
