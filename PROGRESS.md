@@ -3,16 +3,18 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-- [ ] **Cloudflare Pages Assembly, Supabase Postgres Migration Push & GitHub `origin/cloudflare` Push (In Progress — Awaiting `wrangler` Auth for Cloudflare Pages/Worker Redeploy)**:
-  - **1. Supabase Postgres Schema Pushed (`rmuontqsoxwnzevtnvkc`, `ap-south-1`)**:
+- [x] **Full Cloudflare Pages, Cloudflare Worker, Supabase Postgres + Storage & GitHub `origin/cloudflare` Live Deployment**:
+  - **1. Supabase Postgres Schema & Security Hardening (`rmuontqsoxwnzevtnvkc`, `ap-south-1`)**:
     - Applied all 14 versioned PostgreSQL Drizzle migrations (`0000_shallow_kitty_pryde` through `0013_custom_trial_period`) via Supabase MCP; all 31 tables verified created (`public` schema) alongside existing private Supabase Storage buckets (`bdlegal-photos`, `bdlegal-backups`), while retaining Cloudflare D1 (`bdlegal-d1-prod`) + synthetic chamber data (`Dhaka Synthetic Law Chambers`) for the live Cloudflare Worker.
     - Applied `0014_enable_rls_public_tables` enabling Row-Level Security (`rls_enabled: true`) across all 31 `public` tables in Supabase (`rmuontqsoxwnzevtnvkc`), eliminating all `ERROR`-level security advisories (`get_advisors` returns only `INFO` `rls_enabled_no_policy`, blocking `anon`/`authenticated` Data API exposure while preserving `postgres`/`service_role` backend access).
   - **2. Unified Cloudflare Pages Build & Worker CORS Wiring (`cloudflare` branch)**:
     - Updated `.env.production` and `admin-app/.env.production` to point at `https://bdlegal-api.lawyers-e-chamber.workers.dev` / `/api/v1`.
     - Added `scripts/buildPages.mjs` (`npm run build:pages`) assembling the main Chamber SPA (`/`) and Super Admin Console (`/admin/`) together inside `dist/` with Cloudflare Pages `_redirects` (`/admin/* /admin/index.html 200`) and security `_headers`.
     - Updated `server-cloudflare/wrangler.toml` and `server-cloudflare/src/index.ts` (plus Test 19) to allow `https://bdlegal-app.pages.dev` and `*.bdlegal-app.pages.dev` preview subdomains.
-  - **3. Pending User Cloudflare CLI Authentication**:
-    - `npx --prefix server-cloudflare wrangler whoami` reports unauthenticated (`CLOUDFLARE_API_TOKEN` unset / no cached OAuth); ready to run `wrangler deploy` + `wrangler pages deploy dist --project-name bdlegal-app` once user runs `wrangler login` or provides a token.
+  - **3. Live Cloudflare Worker + Pages Deployment & Browser Verification**:
+    - Redeployed Worker `bdlegal-api` to `https://bdlegal-api.lawyers-e-chamber.workers.dev` (Version ID: `fa710435-adbd-498b-907b-6c860b3dc9d3`, `695.59 KiB` / `122.54 KiB` gzip, `15 ms` startup).
+    - Created Cloudflare Pages project `bdlegal-app` (`--production-branch cloudflare`) and deployed 47 assets + `_headers` + `_redirects` to `https://7bfaeca4.bdlegal-app.pages.dev` / `https://bdlegal-app.pages.dev`.
+    - Verified live browser authentication & rendering end-to-end on both `https://bdlegal-app.pages.dev/` (Chamber owner `owner@synthetic-demo.test`) and `https://bdlegal-app.pages.dev/admin/` (Super Admin `preview-admin@synthetic-demo.test`) with zero console or network errors.
 - [x] **Super Admin Dev Routing Fix (`/admin` Proxy) & Live Browser Verification**:
   - **Root Cause & Fix (`vite.config.ts`)**: Visiting `http://localhost:3000/admin/` previously looped in `src/App.tsx` (`window.location.replace('/admin/')`) because `admin-app` serves on port `3001` (`base: '/admin/'`) and port `3000` had no `/admin` proxy. Added `server.proxy['/admin']` forwarding to `http://localhost:3001` (`changeOrigin: true, ws: true`) in `vite.config.ts`.
   - **Live Browser & Runtime Verification**: Verified both `http://localhost:3001/admin/` and `http://localhost:3000/admin/` end-to-end against `https://bdlegal-api.lawyers-e-chamber.workers.dev` with synthetic Super Admin login (`preview-admin@synthetic-demo.test`), firm directory (`Dhaka Synthetic Law Chambers`), plans, firm details/devices, audit log, reload persistence, and logout.
