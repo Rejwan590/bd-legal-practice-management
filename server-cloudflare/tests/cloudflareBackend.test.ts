@@ -149,8 +149,8 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
 
     expect(res.status).toBe(201);
     const data = (await res.json() as any);
-    expect(data.client.name).toBe('Kazi Nazrul Islam');
-    clientAId = data.client.id;
+    expect(data.name).toBe('Kazi Nazrul Islam');
+    clientAId = data.id;
   });
 
   // 6. Create Case
@@ -177,8 +177,8 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
 
     expect(res.status).toBe(201);
     const data = (await res.json() as any);
-    expect(data.case.caseNumber).toBe('WP-1042/2026');
-    caseAId = data.case.id;
+    expect(data.caseNumber).toBe('WP-1042/2026');
+    caseAId = data.id;
   });
 
   // 7. Schedule Hearing & Sync Case Next Hearing (Scenario 4)
@@ -204,13 +204,13 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
 
     expect(res.status).toBe(201);
     const data = (await res.json() as any);
-    expect(data.hearing.scheduledAt).toBe(scheduledAt);
-    hearingAId = data.hearing.id;
+    expect(data.scheduledAt).toBe(scheduledAt);
+    hearingAId = data.id;
 
     // Verify Case nextHearingAt was synchronized in D1
     const caseRes = await app.request(`/api/v1/cases/${caseAId}`, { headers: { Cookie: ownerCookie } }, env);
     const caseData = (await caseRes.json() as any);
-    expect(caseData.case.nextHearingAt).toBe(scheduledAt);
+    expect(caseData.nextHearingAt).toBe(scheduledAt);
   });
 
   // 8. Adjourn Hearing with Date History (Scenario 5)
@@ -234,12 +234,12 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
 
     expect(res.status).toBe(200);
     const data = (await res.json() as any);
-    expect(data.newHearing.scheduledAt).toBe(nextDate);
+    expect(data.nextHearing.scheduledAt).toBe(nextDate);
 
     // Verify Case nextHearingAt was updated to the new date
     const caseRes = await app.request(`/api/v1/cases/${caseAId}`, { headers: { Cookie: ownerCookie } }, env);
     const caseData = (await caseRes.json() as any);
-    expect(caseData.case.nextHearingAt).toBe(nextDate);
+    expect(caseData.nextHearingAt).toBe(nextDate);
   });
 
   // 9. Fee Agreement & Sequential Receipt Numbering (Scenario 8)
@@ -267,8 +267,8 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     expect(res.status).toBe(201);
     const data = (await res.json() as any);
     const year = new Date().getFullYear();
-    expect(data.payment.receiptNumber).toBe(`REC-${year}-00001`);
-    expect(data.payment.amountPaisa).toBe(2500000); // Integer paisa invariant
+    expect(data.receiptNumber).toBe(`REC-${year}-00001`);
+    expect(data.amountPaisa).toBe(2500000); // Integer paisa invariant
   });
 
   // 10. Multi-Tenant Firm Isolation Guard
@@ -409,7 +409,7 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
       env
     );
     expect(createClientRes.status).toBe(201);
-    const clientCId = ((await createClientRes.json()) as any).client.id;
+    const clientCId = ((await createClientRes.json()) as any).id;
 
     // Stub global fetch for Supabase Storage REST API calls
     const storedObjects = new Map<string, { bytes: Uint8Array; contentType: string }>();
@@ -547,5 +547,549 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  // ===========================================================================
+  // COMPREHENSIVE PARITY & INVARIANT SUITE (TESTS 13-18)
+  // ===========================================================================
+
+  let firmDId: string;
+  let firmDOwnerCookie: string;
+  let firmDClientId: string;
+  let firmDCaseId: string;
+  let juniorUserId: string;
+  let juniorCookie: string;
+
+  it('13. Staff provisioning, team visibility (reportsTo + restricted.view + case shares), and change-password', async () => {
+    const firmDRes = await app.request(
+      '/api/admin/firms',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          name: 'Delta Legal Chambers',
+          officeAddress: 'Motijheel C/A, Dhaka',
+          ownerName: 'Advocate Rashed Khan',
+          ownerEmail: 'owner@chamber-d.com',
+          maxUsers: 5,
+          maxDevices: 5,
+          devicePolicy: 'auto-approve',
+          licenseType: 'trial',
+        }),
+      },
+      env
+    );
+    expect(firmDRes.status).toBe(201);
+    const firmDData = (await firmDRes.json()) as any;
+    firmDId = firmDData.firm.id;
+
+    // Login owner -> change password
+    const loginRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@chamber-d.com', password: firmDData.temporaryPassword }),
+      },
+      env
+    );
+    expect(loginRes.status).toBe(200);
+    firmDOwnerCookie = loginRes.headers.get('set-cookie')!.split(';')[0];
+
+    const changePwRes = await app.request(
+      '/api/v1/auth/change-password',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ currentPassword: firmDData.temporaryPassword, newPassword: 'NewOwnerPassword#2026' }),
+      },
+      env
+    );
+    expect(changePwRes.status).toBe(200);
+
+    // Create junior associate & clerk
+    const juniorRes = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          name: 'Junior Barrister Arif',
+          email: 'junior@chamber-d.com',
+          preset: 'junior_lawyer',
+          temporaryPassword: 'JuniorPass#2026',
+        }),
+      },
+      env
+    );
+    expect(juniorRes.status).toBe(201);
+    const juniorData = (await juniorRes.json()) as any;
+    juniorUserId = juniorData.id;
+
+    // Login junior
+    const juniorLoginRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'junior@chamber-d.com', password: 'JuniorPass#2026' }),
+      },
+      env
+    );
+    expect(juniorLoginRes.status).toBe(200);
+    juniorCookie = juniorLoginRes.headers.get('set-cookie')!.split(';')[0];
+
+    // Owner creates client + a restricted case assigned to Owner
+    const clientRes = await app.request(
+      '/api/v1/clients',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ name: 'Padma Textiles Ltd', phone: '+8801811000222', address: 'Dhanmondi, Dhaka' }),
+      },
+      env
+    );
+    expect(clientRes.status).toBe(201);
+    firmDClientId = ((await clientRes.json()) as any).id;
+
+    const caseRes = await app.request(
+      '/api/v1/cases',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseNumber: 'CR-88/2026',
+          court: 'District Judge Court, Dhaka',
+          matterType: 'Commercial',
+          plaintiff: 'Padma Textiles Ltd',
+          defendant: 'Apex Suppliers',
+          isRestricted: true,
+        }),
+      },
+      env
+    );
+    expect(caseRes.status).toBe(201);
+    firmDCaseId = ((await caseRes.json()) as any).id;
+
+    // Under default team visibility + isRestricted=true, junior cannot see Owner's case yet
+    const juniorCasesBefore = (await (
+      await app.request('/api/v1/cases', { headers: { Cookie: juniorCookie } }, env)
+    ).json()) as any[];
+    expect(juniorCasesBefore.find((c) => c.id === firmDCaseId)).toBeUndefined();
+
+    // Share case explicitly with junior -> now visible even though restricted & owned by senior
+    const shareRes = await app.request(
+      `/api/v1/cases/${firmDCaseId}/shares`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ userId: juniorUserId }),
+      },
+      env
+    );
+    expect(shareRes.status).toBe(201);
+
+    const juniorCasesAfter = (await (
+      await app.request('/api/v1/cases', { headers: { Cookie: juniorCookie } }, env)
+    ).json()) as any[];
+    expect(juniorCasesAfter.some((c) => c.id === firmDCaseId)).toBe(true);
+  });
+
+  it('14. Manual device approval policy blocks unknown device until admin approves, then revokes access', async () => {
+    const firmERes = await app.request(
+      '/api/admin/firms',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          name: 'Strict Security Chamber',
+          ownerName: 'Advocate Salma',
+          ownerEmail: 'owner@chamber-e.com',
+          ownerPassword: 'StrictOwner#2026',
+          devicePolicy: 'manual',
+          licenseType: 'trial',
+        }),
+      },
+      env
+    );
+    expect(firmERes.status).toBe(201);
+    const firmEId = ((await firmERes.json()) as any).firm.id;
+
+    // First login with manual policy -> 403 DEVICE_PENDING_APPROVAL
+    const blockedLogin = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 Chrome/120' },
+        body: JSON.stringify({ email: 'owner@chamber-e.com', password: 'StrictOwner#2026' }),
+      },
+      env
+    );
+    expect(blockedLogin.status).toBe(403);
+    const blockedBody = (await blockedLogin.json()) as any;
+    expect(blockedBody.code).toBe('DEVICE_PENDING');
+    const blockedCookies: string[] =
+      (blockedLogin.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ??
+      [blockedLogin.headers.get('set-cookie') || ''];
+    const deviceKeyPair = blockedCookies.find((c: string) => c.includes('device_key='))!.trim().split(';')[0];
+
+    // Admin inspects pending device and approves it
+    const listDevRes = await app.request(`/api/admin/firms/${firmEId}/devices`, { headers: { Cookie: adminCookie } }, env);
+    expect(listDevRes.status).toBe(200);
+    const devicesList = ((await listDevRes.json()) as any).devices as any[];
+    expect(devicesList.length).toBe(1);
+    expect(devicesList[0].status).toBe('pending');
+    const devId = devicesList[0].id;
+
+    const approveRes = await app.request(
+      `/api/admin/devices/${devId}/approve`,
+      { method: 'POST', headers: { Cookie: adminCookie } },
+      env
+    );
+    expect(approveRes.status).toBe(200);
+
+    // Retry login sending the device_key cookie -> 200 OK
+    const allowedLogin = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: deviceKeyPair },
+        body: JSON.stringify({ email: 'owner@chamber-e.com', password: 'StrictOwner#2026' }),
+      },
+      env
+    );
+    expect(allowedLogin.status).toBe(200);
+    const allowedCookiesList: string[] =
+      (allowedLogin.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ??
+      [allowedLogin.headers.get('set-cookie') || ''];
+    const approvedAccess = allowedCookiesList.find((c: string) => c.includes('access_token='))!.trim().split(';')[0];
+
+    // Admin revokes device -> authenticated API call immediately denied
+    const revokeRes = await app.request(
+      `/api/admin/devices/${devId}/revoke`,
+      { method: 'POST', headers: { Cookie: adminCookie } },
+      env
+    );
+    expect(revokeRes.status).toBe(200);
+
+    const postRevokeRes = await app.request(
+      '/api/v1/clients',
+      { headers: { Cookie: `${approvedAccess}; ${deviceKeyPair}` } },
+      env
+    );
+    expect(postRevokeRes.status).toBe(403);
+    expect(((await postRevokeRes.json()) as any).code).toBe('DEVICE_REVOKED');
+  });
+
+  it('15. Tasks, appointments, client/case notes, counts, and audit log work cleanly', async () => {
+    // Task create -> reassign -> complete
+    const taskRes = await app.request(
+      '/api/v1/tasks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          title: 'File Vakalatnama',
+          assignedTo: juniorUserId,
+          dueAt: '2026-12-01T12:00:00.000Z',
+          priority: 'high',
+          caseId: firmDCaseId,
+          clientId: firmDClientId,
+        }),
+      },
+      env
+    );
+    expect(taskRes.status).toBe(201);
+    const taskId = ((await taskRes.json()) as any).id;
+
+    const completeRes = await app.request(
+      `/api/v1/tasks/${taskId}/complete`,
+      { method: 'POST', headers: { Cookie: juniorCookie } },
+      env
+    );
+    expect(completeRes.status).toBe(200);
+    expect(((await completeRes.json()) as any).status).toBe('completed');
+
+    // Appointment create with court_conference normalization -> court_visit
+    const apptRes = await app.request(
+      '/api/v1/appointments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          title: 'Pre-trial conference',
+          type: 'court_conference',
+          startsAt: '2026-12-02T09:00:00.000Z',
+          endsAt: '2026-12-02T10:00:00.000Z',
+          clientId: firmDClientId,
+          caseId: firmDCaseId,
+          attendees: [juniorUserId],
+        }),
+      },
+      env
+    );
+    expect(apptRes.status).toBe(201);
+    const apptBody = (await apptRes.json()) as any;
+    expect(apptBody.type).toBe('court_visit');
+    expect(apptBody.attendees).toContain(juniorUserId);
+
+    // Client note & Case note
+    const cNoteRes = await app.request(
+      `/api/v1/clients/${firmDClientId}/notes`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ noteDate: '2026-11-11', body: 'Client delivered original LC documents' }),
+      },
+      env
+    );
+    expect(cNoteRes.status).toBe(201);
+
+    const caseNoteRes = await app.request(
+      `/api/v1/cases/${firmDCaseId}/notes`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ noteDate: '2026-11-11', body: 'Interim injunction requested' }),
+      },
+      env
+    );
+    expect(caseNoteRes.status).toBe(201);
+
+    const countsRes = await app.request(`/api/v1/cases/${firmDCaseId}/counts`, { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(countsRes.status).toBe(200);
+    const counts = (await countsRes.json()) as any;
+    expect(counts.tasksCount).toBe(1);
+    expect(counts.activeTasksCount).toBe(0);
+    expect(counts.notesCount).toBe(1);
+
+    const auditRes = await app.request('/api/v1/audit-log', { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(auditRes.status).toBe(200);
+    const auditLogs = (await auditRes.json()) as any[];
+    expect(auditLogs.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('16. Bulk hearing reschedule & adjourn preserve hearing_date_history and case nextHearingAt', async () => {
+    const h1 = (await (
+      await app.request(
+        '/api/v1/hearings',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+          body: JSON.stringify({ caseId: firmDCaseId, scheduledAt: '2026-12-05T10:00:00.000Z', purpose: 'Framing Issues' }),
+        },
+        env
+      )
+    ).json()) as any;
+
+    const bulkResched = await app.request(
+      '/api/v1/hearings/bulk-reschedule',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          items: [
+            {
+              hearingId: h1.id,
+              newDate: '2026-12-18T11:00:00.000Z',
+              reason: 'Bar Association holiday declared',
+            },
+          ],
+        }),
+      },
+      env
+    );
+    expect(bulkResched.status).toBe(200);
+
+    const histRes = await app.request(`/api/v1/hearings/${h1.id}/history`, { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(histRes.status).toBe(200);
+    const hist = (await histRes.json()) as any[];
+    expect(hist.length).toBe(1);
+    expect(hist[0].newAt).toBe('2026-12-18T11:00:00.000Z');
+
+    const caseAfter = (await (
+      await app.request(`/api/v1/cases/${firmDCaseId}`, { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any;
+    expect(caseAfter.nextHearingAt).toBe('2026-12-18T11:00:00.000Z');
+  });
+
+  it('17. Full accounts suite: fee agreements, payment idempotency, client expenses, and chamber advances/settlements', async () => {
+    // Fee agreement -> revise
+    const agrRes = await app.request(
+      '/api/v1/fee-agreements',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: firmDCaseId,
+          feeType: 'fixed',
+          agreedAmountBdt: 50000,
+          agreementDate: '2026-11-11',
+        }),
+      },
+      env
+    );
+    expect(agrRes.status).toBe(201);
+    const agr = (await agrRes.json()) as any;
+    expect(agr.agreedAmountPaisa).toBe(5000000);
+
+    // Fee payment with idempotency key deduplication
+    const payPayload = {
+      feeAgreementId: agr.id,
+      paymentDate: '2026-11-11',
+      amountPaisa: 2000000,
+      method: 'bkash',
+      purposeNote: 'First milestone payment',
+      idempotencyKey: 'idem-firm-d-pay-001',
+    };
+    const pay1 = await app.request(
+      '/api/v1/fee-payments',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie }, body: JSON.stringify(payPayload) },
+      env
+    );
+    expect(pay1.status).toBe(201);
+    const p1Body = (await pay1.json()) as any;
+
+    const pay2 = await app.request(
+      '/api/v1/fee-payments',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie }, body: JSON.stringify(payPayload) },
+      env
+    );
+    expect(pay2.status).toBe(200);
+    expect(((await pay2.json()) as any).id).toBe(p1Body.id);
+
+    // Client expense
+    const expCats = (await (
+      await app.request('/api/v1/expenses/categories', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(expCats.length).toBeGreaterThanOrEqual(4);
+
+    const expRes = await app.request(
+      '/api/v1/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: firmDCaseId,
+          categoryId: expCats[0].id,
+          expenseDate: '2026-11-11',
+          amountPaisa: 150000,
+          description: 'Court filing stamp',
+        }),
+      },
+      env
+    );
+    expect(expRes.status).toBe(201);
+
+    // Chamber advance + partial settlement + chamber overhead summary
+    const advRes = await app.request(
+      '/api/v1/chamber-expenses/advances',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          givenTo: 'Clerk Rahim',
+          amountPaisa: 500000,
+          givenDate: '2026-11-11',
+          purpose: 'High Court taidad float',
+          paymentMethod: 'cash',
+        }),
+      },
+      env
+    );
+    expect(advRes.status).toBe(201);
+    const advId = ((await advRes.json()) as any).id;
+
+    const settleRes = await app.request(
+      `/api/v1/chamber-expenses/advances/${advId}/settle`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ type: 'refund', amountPaisa: 500000, settledDate: '2026-11-11' }),
+      },
+      env
+    );
+    expect(settleRes.status).toBe(201);
+
+    const advDetailRes = await app.request(`/api/v1/chamber-expenses/advances/${advId}`, { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(advDetailRes.status).toBe(200);
+    expect(((await advDetailRes.json()) as any).status).toBe('settled');
+
+    const acctSummary = (await (
+      await app.request('/api/v1/accounts/summary', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any;
+    expect(acctSummary.totalAgreedPaisa).toBe(5000000);
+    expect(acctSummary.totalPaidPaisa).toBe(2000000);
+    expect(acctSummary.balancePaisa).toBe(3000000);
+    expect(acctSummary.totalExpensesPaisa).toBe(150000);
+  });
+
+  it('18. Platform Admin plans, firm suspend/reactivate, renew, billing payment, and admin audit', async () => {
+    // Plans create -> list -> patch
+    const createPlanRes = await app.request(
+      '/api/admin/plans',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          id: 'chamber',
+          name: 'Chamber Standard',
+          priceBdt: 3000,
+          includedUsers: 5,
+          includedDevices: 5,
+          extraUserPriceBdt: 500,
+          extraDevicePriceBdt: 300,
+        }),
+      },
+      env
+    );
+    expect(createPlanRes.status).toBe(201);
+
+    const plansRes = await app.request('/api/admin/plans', { headers: { Cookie: adminCookie } }, env);
+    expect(plansRes.status).toBe(200);
+    expect(((await plansRes.json()) as any).plans.length).toBeGreaterThanOrEqual(1);
+
+    // Firm detail -> update -> suspend -> reactivate -> renew -> record payment
+    const detailRes = await app.request(`/api/admin/firms/${firmDId}`, { headers: { Cookie: adminCookie } }, env);
+    expect(detailRes.status).toBe(200);
+
+    const suspendRes = await app.request(
+      `/api/admin/firms/${firmDId}/suspend`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie }, body: JSON.stringify({ reason: 'Manual review' }) },
+      env
+    );
+    expect(suspendRes.status).toBe(200);
+
+    const reactivateRes = await app.request(
+      `/api/admin/firms/${firmDId}/reactivate`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie }, body: JSON.stringify({ reason: 'Verified' }) },
+      env
+    );
+    expect(reactivateRes.status).toBe(200);
+
+    const renewRes = await app.request(
+      `/api/admin/firms/${firmDId}/renew`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie }, body: JSON.stringify({ months: 1 }) },
+      env
+    );
+    expect(renewRes.status).toBe(200);
+
+    const bPayRes = await app.request(
+      `/api/admin/firms/${firmDId}/payments`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({ amount: 3000, method: 'bkash', txnId: 'TRX9988', note: 'Monthly renewal' }),
+      },
+      env
+    );
+    expect(bPayRes.status).toBe(201);
+
+    const adminAuditRes = await app.request('/api/admin/audit', { headers: { Cookie: adminCookie } }, env);
+    expect(adminAuditRes.status).toBe(200);
+    expect(((await adminAuditRes.json()) as any).logs.length).toBeGreaterThanOrEqual(5);
   });
 });

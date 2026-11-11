@@ -3,6 +3,22 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Workers Full Express Feature & API Contract Parity on `cloudflare` Branch (Deployed & Verified)**:
+  - **1. Remote D1 Cleanup & Hygiene**:
+    - Cleaned synthetic E2E test rows from remote `bdlegal-d1-prod` while preserving all 4 seeded subscription plans (`plans_count: 4`, `firms_count: 0`, `admins_count: 0`).
+  - **2. Shared Domain & Security Utilities (`server-cloudflare/src/utils/`)**:
+    - Added `pricing.ts` (`calculatePricing`, `calculateMonthlyPriceBdt`), `subscription.ts` (`LICENSE_GRACE_PERIOD_DAYS = 5`, `evaluateServerSubscription`), `security.ts` (`generateRandomHex`, `sha256Hex`, `summarizeUserAgent`, `validatePasswordStrength`, `generateSecureTemporaryPassword`), `visibility.ts` (`getVisibleCaseIds`, `canUserSeeCaseId` enforcing `open` / `team` visibility, supervisor chain, `case_shares`, and `restricted.view`), and `audit.ts` (`buildAuditEntry`, `buildAdminAuditEntry`).
+  - **3. Auth, Devices, & Middleware Hardening (`server-cloudflare/src/`)**:
+    - Upgraded `middleware/auth.ts` and `utils/jwt.ts` with `device_key` SHA-256 hash binding, device status enforcement (`pending`/`rejected`/`revoked` -> 403), `evaluateServerSubscription` grace-period & read-only enforcement (allowing `/auth/logout`), and `requireAnyPermission`.
+    - Upgraded `routes/auth.ts` (`processDeviceLogin` for `auto-approve` vs `manual` policy, 5-attempt lockout, `GET /me`, `POST|PUT /change-password`, `POST /logout`) and added `routes/devices.ts` (`/api/v1/devices/my`, `DELETE /api/v1/devices/:id`).
+  - **4. Full Domain & Platform Admin API Parity (`server-cloudflare/src/routes/`)**:
+    - Added missing chamber modules: `firms.ts` (`GET/PATCH /api/v1/firms/current`), `users.ts` (full staff CRUD, presets, permissions, deactivate/reactivate/reassign-team/reset-password), `tasks.ts`, `appointments.ts`, `audit.ts`, `feeAgreements.ts`, `feePayments.ts`, `expenses.ts`, and `chamberExpenses.ts` (categories, overhead summary, advances, settlements, voiding).
+    - Aligned `clients.ts`, `cases.ts`, `hearings.ts`, and `accounts.ts` response shapes with Express/frontend REST repositories (unwrapped payloads, `counts`, `case_shares`, `client_notes`, `case_notes`, `bulk-adjourn`, `bulk-reschedule`, `history`, `/accounts/summary`, `/client-balances`, `/case-balances`).
+    - Expanded `admin.ts` with plans CRUD (`/api/admin/plans`), firm detail/update/soft-delete/suspend/disable/reactivate/users/reset-password/license/renew/payments/license-events/devices, device approve/reject/revoke, and `/api/admin/audit` matching `firms` and `users` D1 schema columns.
+  - **5. Expanded Test Suite & Live Edge Deployment Verification**:
+    - Expanded `server-cloudflare/tests/cloudflareBackend.test.ts` to 18 end-to-end Vitest integration tests covering multi-tenant isolation, `canUserSeeCaseId` + `restricted.view`, manual device approval/revocation, tasks/appointments/notes, bulk hearing reschedule/history, fee agreements/payment idempotency/chamber advances, read-only enforcement, Supabase Storage photos, and platform admin lifecycle (`18/18` passing, `0` skipped).
+    - Published `bdlegal-api` to `https://bdlegal-api.lawyers-e-chamber.workers.dev` (Version ID: `a0d4db8f-c6e3-416e-89cf-b31bebef0334`, 693.42 KiB / 122.09 KiB gzip, 16 ms startup) and verified live 200/401 responses on health and newly deployed protected routes.
+    - Verified `npm run lint`, `npm run build --prefix server-cloudflare`, `npm test --prefix server-cloudflare`, and `npm run build` all pass cleanly.
 - [x] **Supabase Storage Integration Replacing R2 on 'cloudflare' Branch (Live Secret Bound & Storage Smoke-Tested)**:
   - **1. Supabase Project & Private Buckets Provisioned**:
     - Connected via Supabase MCP to project `rmuontqsoxwnzevtnvkc` (`ap-south-1`, `https://rmuontqsoxwnzevtnvkc.supabase.co`).
