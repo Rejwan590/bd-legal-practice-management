@@ -18,6 +18,13 @@ export default defineConfig(() => {
       port: 3000,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/admin': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          ws: true,
+        },
+      },
     },
   };
 });

@@ -3,6 +3,9 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Super Admin Dev Routing Fix (`/admin` Proxy) & Live Browser Verification**:
+  - **Root Cause & Fix (`vite.config.ts`)**: Visiting `http://localhost:3000/admin/` previously looped in `src/App.tsx` (`window.location.replace('/admin/')`) because `admin-app` serves on port `3001` (`base: '/admin/'`) and port `3000` had no `/admin` proxy. Added `server.proxy['/admin']` forwarding to `http://localhost:3001` (`changeOrigin: true, ws: true`) in `vite.config.ts`.
+  - **Live Browser & Runtime Verification**: Verified both `http://localhost:3001/admin/` and `http://localhost:3000/admin/` end-to-end against `https://bdlegal-api.lawyers-e-chamber.workers.dev` with synthetic Super Admin login (`preview-admin@synthetic-demo.test`), firm directory (`Dhaka Synthetic Law Chambers`), plans, firm details/devices, audit log, reload persistence, and logout.
 - [x] **Live Browser E2E Verification & Runtime Parity Fixes on `cloudflare` Branch (Live on `bdlegal-api.lawyers-e-chamber.workers.dev`)**:
   - **1. Live Synthetic Preview Provisioned on `bdlegal-d1-prod`**:
     - Provisioned synthetic chamber `"Dhaka Synthetic Law Chambers"`, synthetic owner (`owner@synthetic-demo.test`), synthetic clients, cases (`WP-101/2026 (Synthetic)`, `CR-405/2026 (Synthetic)`), scheduled hearings, fee agreement (BDT 75,000), and receipt `REC-2026-00001` (BDT 35,000) directly via live Worker requests (`https://bdlegal-api.lawyers-e-chamber.workers.dev`).
