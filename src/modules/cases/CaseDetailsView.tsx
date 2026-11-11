@@ -404,7 +404,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
       count: activityLogs.length,
       icon: Activity,
     },
-    ...(can('accounts.view')
+    ...(can('accounts.view') || can('billing.view') || can('expenses.record')
       ? [
           {
             id: 'billing' as CaseDossierTab,
@@ -1506,7 +1506,7 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
         )}
 
         {/* TAB: BILLING */}
-        {activeTab === 'billing' && can('accounts.view') && (
+        {activeTab === 'billing' && (can('accounts.view') || can('billing.view') || can('expenses.record')) && (
           <div className="p-4 sm:p-6" data-testid="dossier-panel-billing">
             <BillingTab clientId={caseData.clientId} caseId={caseData.id} />
           </div>

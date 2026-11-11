@@ -6,13 +6,14 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { canUserSeeCaseId, getVisibleCaseIds } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import { enrichAgreements } from '../utils/billing';
 
 export const feeAgreementsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
 feeAgreementsRouter.use('*', authMiddleware);
 
 const readPerm = requireAnyPermission(['accounts.view', 'billing.view']);
-const writePerm = requireAnyPermission(['accounts.manage', 'billing.edit']);
+const writePerm = requireAnyPermission(['accounts.manage', 'billing.manage', 'billing.edit']);
 
 // GET /api/v1/fee-agreements
 feeAgreementsRouter.get('/', readPerm, async (c) => {
@@ -21,6 +22,7 @@ feeAgreementsRouter.get('/', readPerm, async (c) => {
   const clientId = c.req.query('clientId');
   const caseId = c.req.query('caseId');
   const status = c.req.query('status');
+  const search = (c.req.query('search') || '').trim().toLowerCase();
 
   const db = getDb(c.env.DB);
   const [rows, visible] = await Promise.all([
@@ -28,7 +30,7 @@ feeAgreementsRouter.get('/', readPerm, async (c) => {
       .select()
       .from(schema.feeAgreements)
       .where(and(eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)))
-      .orderBy(desc(schema.feeAgreements.createdAt)),
+      .orderBy(desc(schema.feeAgreements.agreementDate), desc(schema.feeAgreements.createdAt)),
     getVisibleCaseIds(db, firm, user),
   ]);
 
@@ -36,11 +38,30 @@ feeAgreementsRouter.get('/', readPerm, async (c) => {
     if (a.caseId && visible !== 'ALL' && !visible.includes(a.caseId)) return false;
     if (clientId && a.clientId !== clientId) return false;
     if (caseId && a.caseId !== caseId) return false;
-    if (status && a.status !== status) return false;
+    if (status && status !== 'all' && a.status !== status) return false;
     return true;
   });
 
-  return c.json(filtered);
+  const enriched = await enrichAgreements(db, firm.id, filtered);
+  if (!search) return c.json(enriched);
+
+  return c.json(
+    enriched.filter((a) => {
+      const hay = [
+        a.clientName,
+        a.clientNameBn,
+        a.caseNumber,
+        a.caseTitle,
+        a.feeType,
+        a.notes,
+        a.agreementDate,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(search);
+    })
+  );
 });
 
 // GET /api/v1/fee-agreements/:id
@@ -57,11 +78,12 @@ feeAgreementsRouter.get('/:id', readPerm, async (c) => {
     .limit(1);
 
   const agreement = rows[0];
-  if (!agreement) return c.json({ error: 'Not found', message: 'Fee agreement not found' }, 404);
+  if (!agreement) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
   if (agreement.caseId && !(await canUserSeeCaseId(db, firm, user, agreement.caseId))) {
-    return c.json({ error: 'Not found', message: 'Fee agreement not found' }, 404);
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
   }
-  return c.json(agreement);
+  const [enriched] = await enrichAgreements(db, firm.id, [agreement]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/fee-agreements
@@ -75,10 +97,10 @@ feeAgreementsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) 
       clientId: z.string().min(1),
       caseId: z.string().nullable().optional(),
       feeType: z.enum(['fixed', 'per_hearing', 'hourly', 'retainer', 'installment']).default('fixed'),
-      agreedAmountPaisa: z.number().int().min(0).optional(),
-      agreedAmountBdt: z.number().int().min(0).optional(),
+      agreedAmountPaisa: z.number().int().min(1).optional(),
+      agreedAmountBdt: z.number().int().min(1).optional(),
       agreementDate: z.string().min(1),
-      notes: z.string().nullable().optional(),
+      notes: z.string().trim().max(2000).nullable().optional(),
     })
     .refine((d) => d.agreedAmountPaisa !== undefined || d.agreedAmountBdt !== undefined, {
       message: 'agreedAmountPaisa or agreedAmountBdt is required',
@@ -88,8 +110,34 @@ feeAgreementsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) 
   if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
 
   const db = getDb(c.env.DB);
-  if (parse.data.caseId && !(await canUserSeeCaseId(db, firm, user, parse.data.caseId))) {
-    return c.json({ error: 'Not found', message: 'Case not found or access denied' }, 404);
+
+  // Verify client exists in this firm
+  const clientRows = await db
+    .select()
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, parse.data.clientId), eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt)))
+    .limit(1);
+  if (!clientRows[0]) {
+    return c.json({ error: 'NotFound', message: 'Client not found' }, 404);
+  }
+
+  // Verify case if provided: firm isolation + visibility + client ownership
+  const normalizedCaseId = parse.data.caseId || null;
+  if (normalizedCaseId) {
+    if (!(await canUserSeeCaseId(db, firm, user, normalizedCaseId))) {
+      return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+    }
+    const caseRows = await db
+      .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+      .from(schema.cases)
+      .where(and(eq(schema.cases.id, normalizedCaseId), eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt)))
+      .limit(1);
+    if (!caseRows[0]) {
+      return c.json({ error: 'NotFound', message: 'Case not found' }, 404);
+    }
+    if (caseRows[0].clientId !== parse.data.clientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the selected client' }, 400);
+    }
   }
 
   const agreedAmountPaisa = parse.data.agreedAmountPaisa ?? parse.data.agreedAmountBdt! * 100;
@@ -100,11 +148,11 @@ feeAgreementsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) 
     id,
     firmId: firm.id,
     clientId: parse.data.clientId,
-    caseId: parse.data.caseId || null,
+    caseId: normalizedCaseId,
     feeType: parse.data.feeType,
     agreedAmountPaisa,
     agreementDate: parse.data.agreementDate,
-    notes: parse.data.notes ?? null,
+    notes: parse.data.notes || null,
     status: 'active' as const,
     createdAt: now,
     updatedAt: now,
@@ -129,17 +177,27 @@ feeAgreementsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) 
     ),
   ] as any);
 
-  return c.json(agreement, 201);
+  const [enriched] = await enrichAgreements(db, firm.id, [agreement]);
+  return c.json(enriched, 201);
 });
 
-// POST /api/v1/fee-agreements/:id/revise
-feeAgreementsRouter.post('/:id/revise', enforceSubscriptionReadOnly, writePerm, async (c) => {
+// PATCH /api/v1/fee-agreements/:id
+feeAgreementsRouter.patch('/:id', enforceSubscriptionReadOnly, writePerm, async (c) => {
   const firm = c.get('firm') as schema.Firm;
   const user = c.get('user') as schema.User;
   const id = c.req.param('id') as string;
   const body = await c.req.json().catch(() => ({}));
 
-  const parse = z.object({ newAmountPaisa: z.number().int().min(0), reason: z.string().min(1) }).safeParse(body);
+  const patchSchema = z.object({
+    caseId: z.string().nullable().optional(),
+    feeType: z.enum(['fixed', 'per_hearing', 'hourly', 'retainer', 'installment']).optional(),
+    agreedAmountPaisa: z.number().int().min(1).optional(),
+    agreementDate: z.string().min(1).optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    revisionReason: z.string().trim().min(3).max(500).optional(),
+  });
+
+  const parse = patchSchema.safeParse(body);
   if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
 
   const db = getDb(c.env.DB);
@@ -151,6 +209,129 @@ feeAgreementsRouter.post('/:id/revise', enforceSubscriptionReadOnly, writePerm, 
 
   const existing = rows[0];
   if (!existing) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  }
+  if (existing.status !== 'active') {
+    return c.json({ error: 'BadRequest', message: 'Can only edit active agreements' }, 400);
+  }
+
+  let nextCaseId = existing.caseId;
+  if (parse.data.caseId !== undefined) {
+    nextCaseId = parse.data.caseId || null;
+    if (nextCaseId) {
+      if (!(await canUserSeeCaseId(db, firm, user, nextCaseId))) {
+        return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+      }
+      const caseRows = await db
+        .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+        .from(schema.cases)
+        .where(and(eq(schema.cases.id, nextCaseId), eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt)))
+        .limit(1);
+      if (!caseRows[0]) {
+        return c.json({ error: 'NotFound', message: 'Case not found' }, 404);
+      }
+      if (caseRows[0].clientId !== existing.clientId) {
+        return c.json({ error: 'BadRequest', message: 'Case does not belong to the agreement client' }, 400);
+      }
+    }
+  }
+
+  const amountChanged =
+    parse.data.agreedAmountPaisa !== undefined && parse.data.agreedAmountPaisa !== existing.agreedAmountPaisa;
+  if (amountChanged && !parse.data.revisionReason) {
+    return c.json(
+      { error: 'ValidationError', message: 'revisionReason (min 3 characters) is required when changing agreed amount' },
+      400
+    );
+  }
+
+  const now = new Date().toISOString();
+  const nextValues = {
+    caseId: nextCaseId,
+    feeType: parse.data.feeType ?? existing.feeType,
+    agreedAmountPaisa: parse.data.agreedAmountPaisa ?? existing.agreedAmountPaisa,
+    agreementDate: parse.data.agreementDate ?? existing.agreementDate,
+    notes: parse.data.notes !== undefined ? (parse.data.notes || null) : existing.notes,
+    updatedAt: now,
+    updatedBy: user.id,
+  };
+
+  const batchOps: any[] = [
+    db
+      .update(schema.feeAgreements)
+      .set(nextValues)
+      .where(and(eq(schema.feeAgreements.id, id), eq(schema.feeAgreements.firmId, firm.id))),
+  ];
+
+  if (amountChanged) {
+    batchOps.push(
+      db.insert(schema.feeAgreementChanges).values({
+        id: crypto.randomUUID(),
+        firmId: firm.id,
+        feeAgreementId: id,
+        oldAmountPaisa: existing.agreedAmountPaisa,
+        newAmountPaisa: nextValues.agreedAmountPaisa,
+        reason: parse.data.revisionReason!,
+        changedBy: user.id,
+        createdAt: now,
+      })
+    );
+  }
+
+  batchOps.push(
+    db.insert(schema.auditLog).values(
+      buildAuditEntry({
+        firmId: firm.id,
+        userId: user.id,
+        userName: user.name,
+        entity: 'FeeAgreement',
+        entityId: id,
+        action: 'UPDATE',
+        oldValue: {
+          caseId: existing.caseId,
+          feeType: existing.feeType,
+          agreedAmountPaisa: existing.agreedAmountPaisa,
+          agreementDate: existing.agreementDate,
+          notes: existing.notes,
+        },
+        newValue: {
+          ...nextValues,
+          ...(amountChanged ? { revisionReason: parse.data.revisionReason } : {}),
+        },
+        now,
+      })
+    )
+  );
+
+  await db.batch(batchOps as any);
+
+  const [enriched] = await enrichAgreements(db, firm.id, [{ ...existing, ...nextValues }]);
+  return c.json(enriched);
+});
+
+// POST /api/v1/fee-agreements/:id/revise
+feeAgreementsRouter.post('/:id/revise', enforceSubscriptionReadOnly, writePerm, async (c) => {
+  const firm = c.get('firm') as schema.Firm;
+  const user = c.get('user') as schema.User;
+  const id = c.req.param('id') as string;
+  const body = await c.req.json().catch(() => ({}));
+
+  const parse = z.object({ newAmountPaisa: z.number().int().min(1), reason: z.string().trim().min(3).max(500) }).safeParse(body);
+  if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
+
+  const db = getDb(c.env.DB);
+  const rows = await db
+    .select()
+    .from(schema.feeAgreements)
+    .where(and(eq(schema.feeAgreements.id, id), eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)))
+    .limit(1);
+
+  const existing = rows[0];
+  if (!existing) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  }
   if (existing.status !== 'active') return c.json({ error: 'BadRequest', message: 'Can only revise active agreements' }, 400);
 
   const now = new Date().toISOString();
@@ -186,7 +367,8 @@ feeAgreementsRouter.post('/:id/revise', enforceSubscriptionReadOnly, writePerm, 
     ),
   ] as any);
 
-  return c.json(updated);
+  const [enriched] = await enrichAgreements(db, firm.id, [updated]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/fee-agreements/:id/close
@@ -203,6 +385,10 @@ feeAgreementsRouter.post('/:id/close', enforceSubscriptionReadOnly, writePerm, a
     .limit(1);
   const existing = rows[0];
   if (!existing) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  }
+  if (existing.status !== 'active') return c.json({ error: 'BadRequest', message: 'Can only close active agreements' }, 400);
 
   const now = new Date().toISOString();
   await db.batch([
@@ -225,7 +411,8 @@ feeAgreementsRouter.post('/:id/close', enforceSubscriptionReadOnly, writePerm, a
     ),
   ] as any);
 
-  return c.json({ ...existing, status: 'closed', updatedAt: now });
+  const [enriched] = await enrichAgreements(db, firm.id, [{ ...existing, status: 'closed', updatedAt: now, updatedBy: user.id }]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/fee-agreements/:id/void
@@ -234,7 +421,8 @@ feeAgreementsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, as
   const user = c.get('user') as schema.User;
   const id = c.req.param('id') as string;
   const body = await c.req.json().catch(() => ({}));
-  const reason = typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'Voided';
+  const parse = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(body);
+  const reason = parse.success ? parse.data.reason : typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'Voided';
 
   const db = getDb(c.env.DB);
   const rows = await db
@@ -244,6 +432,10 @@ feeAgreementsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, as
     .limit(1);
   const existing = rows[0];
   if (!existing) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  }
+  if (existing.status === 'void') return c.json({ error: 'BadRequest', message: 'Agreement is already voided' }, 400);
 
   const now = new Date().toISOString();
   await db.batch([
@@ -266,14 +458,26 @@ feeAgreementsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, as
     ),
   ] as any);
 
-  return c.json({ ...existing, status: 'void', updatedAt: now });
+  const [enriched] = await enrichAgreements(db, firm.id, [{ ...existing, status: 'void', updatedAt: now, updatedBy: user.id }]);
+  return c.json(enriched);
 });
 
 // GET /api/v1/fee-agreements/:id/changes
 feeAgreementsRouter.get('/:id/changes', readPerm, async (c) => {
   const firm = c.get('firm') as schema.Firm;
+  const user = c.get('user') as schema.User;
   const id = c.req.param('id') as string;
   const db = getDb(c.env.DB);
+
+  const agrRows = await db
+    .select()
+    .from(schema.feeAgreements)
+    .where(and(eq(schema.feeAgreements.id, id), eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)))
+    .limit(1);
+  if (!agrRows[0]) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (agrRows[0].caseId && !(await canUserSeeCaseId(db, firm, user, agrRows[0].caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  }
 
   const rows = await db
     .select()

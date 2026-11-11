@@ -305,7 +305,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
       count: files.length,
       icon: FolderArchive,
     },
-    ...(can('accounts.view')
+    ...(can('accounts.view') || can('billing.view') || can('expenses.record')
       ? [
           {
             id: 'billing' as ClientProfileTab,
@@ -947,8 +947,8 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
           </div>
         )}
 
-        {/* TAB 4: FILES */}
-        {activeTab === 'billing' && can('accounts.view') && (
+        {/* TAB 4: BILLING */}
+        {activeTab === 'billing' && (can('accounts.view') || can('billing.view') || can('expenses.record')) && (
           <div className="pt-2">
             <BillingTab clientId={client.id} />
           </div>

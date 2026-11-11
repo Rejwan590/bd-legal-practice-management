@@ -579,17 +579,29 @@ export interface IAccountsRepository {
   getSummary(context: SecurityContext, filter: { clientId?: string; caseId?: string }): Promise<AccountsSummary>;
   getClientBalances(context: SecurityContext): Promise<ClientBalanceOverview[]>;
   getCaseBalances(context: SecurityContext): Promise<CaseBalanceOverview[]>;
-  listAgreements(context: SecurityContext, filter?: { clientId?: string; caseId?: string; status?: string }): Promise<FeeAgreement[]>;
+  listAgreements(context: SecurityContext, filter?: { clientId?: string; caseId?: string; status?: string; search?: string }): Promise<FeeAgreement[]>;
   getAgreementById(context: SecurityContext, id: string): Promise<FeeAgreement | null>;
   createAgreement(
     context: SecurityContext,
     agreement: {
       clientId: string;
-      caseId: string;
+      caseId?: string | null;
       feeType: FeeType;
       agreedAmountPaisa: number;
       agreementDate: string;
       notes?: string | null;
+    }
+  ): Promise<FeeAgreement>;
+  updateAgreement(
+    context: SecurityContext,
+    id: string,
+    data: {
+      caseId?: string | null;
+      feeType?: FeeType;
+      agreedAmountPaisa?: number;
+      agreementDate?: string;
+      notes?: string | null;
+      revisionReason?: string;
     }
   ): Promise<FeeAgreement>;
   reviseAgreement(context: SecurityContext, id: string, newAmountPaisa: number, reason: string): Promise<FeeAgreement>;
@@ -597,7 +609,7 @@ export interface IAccountsRepository {
   voidAgreement(context: SecurityContext, id: string, reason: string): Promise<FeeAgreement>;
   listAgreementChanges(context: SecurityContext, agreementId: string): Promise<FeeAgreementChange[]>;
 
-  listPayments(context: SecurityContext, filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean }): Promise<FeePayment[]>;
+  listPayments(context: SecurityContext, filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean; method?: string; search?: string }): Promise<FeePayment[]>;
   getPaymentById(context: SecurityContext, id: string): Promise<FeePayment | null>;
   recordPayment(
     context: SecurityContext,
@@ -618,7 +630,7 @@ export interface IAccountsRepository {
   attachPaymentToAgreement(context: SecurityContext, paymentId: string, feeAgreementId: string): Promise<FeePayment>;
 
   listExpenseCategories(context: SecurityContext): Promise<ExpenseCategory[]>;
-  listExpenses(context: SecurityContext, filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string }): Promise<Array<Expense & { categoryName?: string }>>;
+  listExpenses(context: SecurityContext, filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string; search?: string }): Promise<Array<Expense & { categoryName?: string }>>;
   getExpenseById(context: SecurityContext, id: string): Promise<(Expense & { categoryName?: string }) | null>;
   recordExpense(
     context: SecurityContext,
@@ -629,6 +641,18 @@ export interface IAccountsRepository {
       expenseDate: string;
       amountPaisa: number;
       description: string;
+      reimbursable?: boolean;
+    }
+  ): Promise<Expense>;
+  updateExpense(
+    context: SecurityContext,
+    id: string,
+    data: {
+      caseId?: string | null;
+      categoryId?: string;
+      expenseDate?: string;
+      amountPaisa?: number;
+      description?: string;
       reimbursable?: boolean;
     }
   ): Promise<Expense>;

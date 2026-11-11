@@ -7,6 +7,7 @@ import { ClientBalanceOverview, CaseBalanceOverview } from '../../data/types';
 import { TablePagination } from '../../components/responsive/TablePagination';
 import { ChamberExpensesCard } from '../dashboard/chamberExpenses/ChamberExpensesCard';
 import { ChamberExpensesModal } from '../dashboard/chamberExpenses/ChamberExpensesModal';
+import { MattersBillingLedger } from './MattersBillingLedger';
 import {
   CreditCard,
   Search,
@@ -18,6 +19,7 @@ import {
   Clock,
   Briefcase,
   Receipt,
+  ListChecks,
 } from 'lucide-react';
 import { formatBdt } from '../../utils/currency';
 
@@ -27,8 +29,11 @@ export const BillingScreen: React.FC = () => {
   const { openClientProfile, openCaseDossier, refreshVersion, triggerRefresh } = useNavigation();
   const repos = getRepositories();
 
-  // Top-level section tabs: 'caseBalances' | 'chamberExpenses'
-  const [activeTab, setActiveTab] = useState<'caseBalances' | 'chamberExpenses'>('caseBalances');
+  const canReadBilling = can('accounts.view') || can('billing.view');
+  const canAccessAnyBilling = canReadBilling || can('expenses.record');
+
+  // Top-level section tabs: 'ledger' | 'caseBalances' | 'chamberExpenses'
+  const [activeTab, setActiveTab] = useState<'ledger' | 'caseBalances' | 'chamberExpenses'>('ledger');
   const [chamberModalOpen, setChamberModalOpen] = useState(false);
   const [chamberModalTab, setChamberModalTab] = useState<'expenses' | 'summary' | 'advances'>('expenses');
 
@@ -118,12 +123,12 @@ export const BillingScreen: React.FC = () => {
     return { totalAgreed, totalPaid, totalOutstanding, totalCredit };
   }, [clientBalances]);
 
-  if (!can('accounts.view')) {
+  if (!canAccessAnyBilling) {
     return (
       <div className="p-8 text-center text-slate-500">
         <AlertTriangle className="w-8 h-8 mx-auto text-amber-500 mb-2" />
         <p className="font-medium text-slate-800">{t('common.accessDenied', 'Access Denied')}</p>
-        <p className="text-xs text-slate-500 mt-1">{t('billing.permissionRequired', 'accounts.view permission is required.')}</p>
+        <p className="text-xs text-slate-500 mt-1">{t('billing.permissionRequired', 'Billing view permission is required.')}</p>
       </div>
     );
   }
@@ -138,13 +143,27 @@ export const BillingScreen: React.FC = () => {
             <span>{t('nav.billing', 'Billing & Accounts')}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            {t('billing.screenSubtitle', 'Chamber fee agreements, client balances, and receipts overview')}
+            {t('billing.screenSubtitle', 'Matters billing ledger, case balances, and chamber expenses')}
           </p>
         </div>
 
-        {/* Section Tabs: Case Fee Balances | Chamber Expenses */}
-        {can('chamber_expenses.view') && (
-          <div className="inline-flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto">
+        {/* Section Tabs: Matters Billing Ledger | Case Fee Balances | Chamber Expenses */}
+        <div className="inline-flex flex-wrap items-center p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto gap-1">
+          <button
+            type="button"
+            data-testid="billing-tab-ledger"
+            onClick={() => setActiveTab('ledger')}
+            className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              activeTab === 'ledger'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ListChecks className="w-3.5 h-3.5" />
+            <span>{t('billing.mattersLedgerTitle', 'Matters Billing Ledger')}</span>
+          </button>
+
+          {canReadBilling && (
             <button
               type="button"
               data-testid="billing-tab-cases"
@@ -161,7 +180,9 @@ export const BillingScreen: React.FC = () => {
                 {caseBalances.length}
               </span>
             </button>
+          )}
 
+          {can('chamber_expenses.view') && (
             <button
               type="button"
               data-testid="billing-tab-chamber-expenses"
@@ -175,8 +196,8 @@ export const BillingScreen: React.FC = () => {
               <Receipt className="w-3.5 h-3.5" />
               <span>{t('chamberExpenses.cardTitle', 'Chamber Expenses')}</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {errorMsg && (
@@ -186,8 +207,10 @@ export const BillingScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Tab Content: Chamber Expenses */}
-      {activeTab === 'chamberExpenses' ? (
+      {/* Tab Content */}
+      {activeTab === 'ledger' ? (
+        <MattersBillingLedger />
+      ) : activeTab === 'chamberExpenses' ? (
         <div className="space-y-4">
           <ChamberExpensesCard
             onOpenModal={(tab) => {

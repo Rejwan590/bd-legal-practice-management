@@ -15,6 +15,7 @@ import { runBackupTests } from './backupTests';
 import { runSubscriptionTests } from './subscriptionTests';
 import { runTeamVisibilityTests } from './teamVisibilityTests';
 import { runHubNavigationTests } from './hubNavigationTests';
+import { runBillingLedgerTests } from './billingLedgerTests';
 
 export * from './types';
 export {
@@ -31,6 +32,7 @@ export {
   runSubscriptionTests,
   runTeamVisibilityTests,
   runHubNavigationTests,
+  runBillingLedgerTests,
 };
 
 export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
@@ -124,6 +126,10 @@ export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
     // 13. Case Dossier & Client Hub Navigation Chains
     const hubNavResults = await runHubNavigationTests(ctx);
     suite.push(...hubNavResults);
+
+    // 14. Unified Matters Billing Ledger
+    const billingLedgerResults = await runBillingLedgerTests(ctx);
+    suite.push(...billingLedgerResults);
   } finally {
     // Item 7: Always restore exact snapshot so user's demo data is never altered
     localStore.restoreSnapshot(preSuiteSnapshot);

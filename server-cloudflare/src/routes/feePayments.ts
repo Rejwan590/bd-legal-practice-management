@@ -6,13 +6,14 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import { enrichPayments } from '../utils/billing';
 
 export const feePaymentsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
 feePaymentsRouter.use('*', authMiddleware);
 
 const readPerm = requireAnyPermission(['accounts.view', 'billing.view']);
-const writePerm = requireAnyPermission(['accounts.manage', 'billing.edit']);
+const writePerm = requireAnyPermission(['accounts.manage', 'billing.manage', 'billing.edit']);
 
 // GET /api/v1/fee-payments
 feePaymentsRouter.get('/', readPerm, async (c) => {
@@ -22,7 +23,9 @@ feePaymentsRouter.get('/', readPerm, async (c) => {
   const caseId = c.req.query('caseId');
   const feeAgreementId = c.req.query('feeAgreementId');
   const status = c.req.query('status');
+  const method = c.req.query('method');
   const legacyUnassigned = c.req.query('legacyUnassigned');
+  const search = (c.req.query('search') || '').trim().toLowerCase();
 
   const db = getDb(c.env.DB);
   const [rows, visible] = await Promise.all([
@@ -39,12 +42,34 @@ feePaymentsRouter.get('/', readPerm, async (c) => {
     if (clientId && p.clientId !== clientId) return false;
     if (caseId && p.caseId !== caseId) return false;
     if (feeAgreementId && p.feeAgreementId !== feeAgreementId) return false;
-    if (status && p.status !== status) return false;
+    if (status && status !== 'all' && p.status !== status) return false;
+    if (method && method !== 'all' && p.method !== method) return false;
     if (legacyUnassigned !== undefined && String(p.legacyUnassigned) !== legacyUnassigned) return false;
     return true;
   });
 
-  return c.json(filtered);
+  const enriched = await enrichPayments(db, firm.id, filtered);
+  if (!search) return c.json(enriched);
+
+  return c.json(
+    enriched.filter((p) => {
+      const hay = [
+        p.receiptNumber,
+        p.purposeNote,
+        p.reference,
+        p.clientName,
+        p.clientNameBn,
+        p.caseNumber,
+        p.caseTitle,
+        p.method,
+        p.paymentDate,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(search);
+    })
+  );
 });
 
 // GET /api/v1/fee-payments/:id
@@ -65,7 +90,8 @@ feePaymentsRouter.get('/:id', readPerm, async (c) => {
   if (payment.caseId && !(await canUserSeeCaseId(db, firm, user, payment.caseId))) {
     return c.json({ error: 'NotFound', message: 'Fee payment not found' }, 404);
   }
-  return c.json(payment);
+  const [enriched] = await enrichPayments(db, firm.id, [payment]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/fee-payments
@@ -78,15 +104,15 @@ feePaymentsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) =>
     .object({
       clientId: z.string().optional(),
       caseId: z.string().nullable().optional(),
-      feeAgreementId: z.string().nullable().optional(),
+      feeAgreementId: z.string().min(1, 'feeAgreementId is required'),
       hearingId: z.string().nullable().optional(),
       paymentDate: z.string().min(1),
       amountPaisa: z.number().int().min(1).optional(),
       amountBdt: z.number().int().min(1).optional(),
       method: z.enum(['cash', 'bank', 'bkash', 'nagad', 'cheque', 'other']),
-      reference: z.string().nullable().optional(),
-      purposeNote: z.string().min(1),
-      idempotencyKey: z.string().min(1).optional(),
+      reference: z.string().trim().max(120).nullable().optional(),
+      purposeNote: z.string().trim().min(1).max(500),
+      idempotencyKey: z.string().trim().min(1).max(128).optional(),
     })
     .refine((d) => d.amountPaisa !== undefined || d.amountBdt !== undefined, {
       message: 'amountPaisa or amountBdt is required',
@@ -104,29 +130,67 @@ feePaymentsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) =>
     .where(and(eq(schema.feePayments.firmId, firm.id), eq(schema.feePayments.idempotencyKey, idempotencyKey)))
     .limit(1);
   if (existingIdemp[0]) {
-    return c.json(existingIdemp[0]);
+    if (existingIdemp[0].caseId && !(await canUserSeeCaseId(db, firm, user, existingIdemp[0].caseId))) {
+      return c.json({ error: 'NotFound', message: 'Linked case not found or inaccessible' }, 404);
+    }
+    const [enrichedDup] = await enrichPayments(db, firm.id, [existingIdemp[0]]);
+    return c.json(enrichedDup);
   }
 
-  let resolvedClientId = parse.data.clientId;
-  let resolvedCaseId = parse.data.caseId ?? null;
+  const agrRows = await db
+    .select()
+    .from(schema.feeAgreements)
+    .where(and(eq(schema.feeAgreements.id, parse.data.feeAgreementId), eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)))
+    .limit(1);
+  const agr = agrRows[0];
+  if (!agr) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
+  if (agr.status !== 'active') {
+    return c.json({ error: 'BadRequest', message: 'Cannot record payment for closed or void fee agreement' }, 400);
+  }
 
-  if (parse.data.feeAgreementId) {
-    const agrRows = await db
-      .select()
-      .from(schema.feeAgreements)
-      .where(and(eq(schema.feeAgreements.id, parse.data.feeAgreementId), eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)))
+  if (parse.data.clientId && parse.data.clientId !== agr.clientId) {
+    return c.json({ error: 'BadRequest', message: 'Payment client does not match fee agreement client' }, 400);
+  }
+
+  if (parse.data.caseId && agr.caseId && parse.data.caseId !== agr.caseId) {
+    return c.json({ error: 'BadRequest', message: 'Payment case does not match fee agreement case' }, 400);
+  }
+
+  const resolvedClientId = agr.clientId;
+  const resolvedCaseId = parse.data.caseId ?? agr.caseId ?? null;
+
+  const clientRows = await db
+    .select({ id: schema.clients.id })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, resolvedClientId), eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt)))
+    .limit(1);
+  if (!clientRows[0]) {
+    return c.json({ error: 'NotFound', message: 'Client not found' }, 404);
+  }
+
+  if (resolvedCaseId) {
+    if (!(await canUserSeeCaseId(db, firm, user, resolvedCaseId))) {
+      return c.json({ error: 'NotFound', message: 'Linked case not found or inaccessible' }, 404);
+    }
+    const caseRows = await db
+      .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+      .from(schema.cases)
+      .where(and(eq(schema.cases.id, resolvedCaseId), eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt)))
       .limit(1);
-    const agr = agrRows[0];
-    if (!agr) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
-    resolvedClientId = resolvedClientId || agr.clientId;
-    resolvedCaseId = resolvedCaseId ?? agr.caseId;
+    if (!caseRows[0] || caseRows[0].clientId !== resolvedClientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the agreement client' }, 400);
+    }
   }
 
-  if (!resolvedClientId) {
-    return c.json({ error: 'BadRequest', message: 'clientId or valid feeAgreementId is required' }, 400);
-  }
-  if (resolvedCaseId && !(await canUserSeeCaseId(db, firm, user, resolvedCaseId))) {
-    return c.json({ error: 'NotFound', message: 'Linked case not found or inaccessible' }, 404);
+  if (parse.data.hearingId) {
+    const hearingRows = await db
+      .select({ id: schema.hearings.id, caseId: schema.hearings.caseId })
+      .from(schema.hearings)
+      .where(and(eq(schema.hearings.id, parse.data.hearingId), eq(schema.hearings.firmId, firm.id), isNull(schema.hearings.deletedAt)))
+      .limit(1);
+    if (!hearingRows[0] || (resolvedCaseId && hearingRows[0].caseId !== resolvedCaseId)) {
+      return c.json({ error: 'BadRequest', message: 'Hearing does not belong to this case' }, 400);
+    }
   }
 
   const chamberDb = new ChamberDatabase(db, c.env.DB);
@@ -140,12 +204,12 @@ feePaymentsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) =>
     firmId: firm.id,
     clientId: resolvedClientId,
     caseId: resolvedCaseId,
-    feeAgreementId: parse.data.feeAgreementId || null,
+    feeAgreementId: agr.id,
     hearingId: parse.data.hearingId || null,
     paymentDate: parse.data.paymentDate,
     amountPaisa,
     method: parse.data.method,
-    reference: parse.data.reference ?? null,
+    reference: parse.data.reference || null,
     receiptNumber,
     purposeNote: parse.data.purposeNote,
     status: 'posted' as const,
@@ -153,7 +217,7 @@ feePaymentsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) =>
     voidedBy: null,
     voidedAt: null,
     idempotencyKey,
-    legacyUnassigned: !parse.data.feeAgreementId,
+    legacyUnassigned: false,
     createdAt: now,
     updatedAt: now,
     createdBy: user.id,
@@ -161,23 +225,37 @@ feePaymentsRouter.post('/', enforceSubscriptionReadOnly, writePerm, async (c) =>
     deletedAt: null,
   };
 
-  await db.batch([
-    db.insert(schema.feePayments).values(newPayment),
-    db.insert(schema.auditLog).values(
-      buildAuditEntry({
-        firmId: firm.id,
-        userId: user.id,
-        userName: user.name,
-        entity: 'FeePayment',
-        entityId: paymentId,
-        action: 'CREATE',
-        newValue: newPayment,
-        now,
-      })
-    ),
-  ] as any);
+  try {
+    await db.batch([
+      db.insert(schema.feePayments).values(newPayment),
+      db.insert(schema.auditLog).values(
+        buildAuditEntry({
+          firmId: firm.id,
+          userId: user.id,
+          userName: user.name,
+          entity: 'FeePayment',
+          entityId: paymentId,
+          action: 'CREATE',
+          newValue: newPayment,
+          now,
+        })
+      ),
+    ] as any);
+  } catch (err) {
+    const dupCheck = await db
+      .select()
+      .from(schema.feePayments)
+      .where(and(eq(schema.feePayments.firmId, firm.id), eq(schema.feePayments.idempotencyKey, idempotencyKey)))
+      .limit(1);
+    if (dupCheck[0]) {
+      const [enrichedDup] = await enrichPayments(db, firm.id, [dupCheck[0]]);
+      return c.json(enrichedDup);
+    }
+    throw err;
+  }
 
-  return c.json(newPayment, 201);
+  const [enriched] = await enrichPayments(db, firm.id, [newPayment]);
+  return c.json(enriched, 201);
 });
 
 // POST /api/v1/fee-payments/:id/attach
@@ -197,15 +275,20 @@ feePaymentsRouter.post('/:id/attach', enforceSubscriptionReadOnly, writePerm, as
 
   const payment = payRows[0];
   if (!payment) return c.json({ error: 'NotFound', message: 'Fee payment not found' }, 404);
+  if (payment.caseId && !(await canUserSeeCaseId(db, firm, user, payment.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee payment not found' }, 404);
+  }
   const agreement = agrRows[0];
   if (!agreement) return c.json({ error: 'NotFound', message: 'Fee agreement not found' }, 404);
   if (agreement.status !== 'active') return c.json({ error: 'BadRequest', message: 'Cannot attach to closed or void agreement' }, 400);
-  if (!agreement.caseId) return c.json({ error: 'BadRequest', message: 'Fee agreement must be linked to a case' }, 400);
+  if (agreement.caseId && !(await canUserSeeCaseId(db, firm, user, agreement.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Target agreement case not found or inaccessible' }, 404);
+  }
 
   const now = new Date().toISOString();
   const updates = {
     feeAgreementId: agreement.id,
-    caseId: agreement.caseId,
+    caseId: agreement.caseId ?? payment.caseId ?? null,
     clientId: agreement.clientId,
     legacyUnassigned: false,
     updatedAt: now,
@@ -229,7 +312,8 @@ feePaymentsRouter.post('/:id/attach', enforceSubscriptionReadOnly, writePerm, as
     ),
   ] as any);
 
-  return c.json({ ...payment, ...updates });
+  const [enriched] = await enrichPayments(db, firm.id, [{ ...payment, ...updates }]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/fee-payments/:id/void
@@ -238,7 +322,7 @@ feePaymentsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, asyn
   const user = c.get('user') as schema.User;
   const id = c.req.param('id') as string;
   const body = await c.req.json().catch(() => ({}));
-  const parse = z.object({ reason: z.string().min(1) }).safeParse(body);
+  const parse = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(body);
   if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
 
   const db = getDb(c.env.DB);
@@ -249,6 +333,9 @@ feePaymentsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, asyn
     .limit(1);
   const payment = rows[0];
   if (!payment) return c.json({ error: 'NotFound', message: 'Fee payment not found' }, 404);
+  if (payment.caseId && !(await canUserSeeCaseId(db, firm, user, payment.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Fee payment not found' }, 404);
+  }
   if (payment.status === 'void') return c.json({ error: 'BadRequest', message: 'Payment is already voided' }, 400);
 
   const now = new Date().toISOString();
@@ -278,5 +365,6 @@ feePaymentsRouter.post('/:id/void', enforceSubscriptionReadOnly, writePerm, asyn
     ),
   ] as any);
 
-  return c.json({ ...payment, ...updates });
+  const [enriched] = await enrichPayments(db, firm.id, [{ ...payment, ...updates }]);
+  return c.json(enriched);
 });

@@ -3,6 +3,25 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Unified Matters Billing Ledger (`cloudflare` branch)**:
+  - **Cloudflare Workers + D1 (`/server-cloudflare`)**:
+    - Added `server-cloudflare/migrations/0002_billing_ledger_indexes.sql` indexing `fee_agreements`, `fee_payments`, and `expenses` by firm/client/case without altering or duplicating existing billing tables.
+    - Added `server-cloudflare/src/utils/billing.ts` providing unified balance math (`computeAgreementBalance`, integer paisa) and client/case enrichment (`enrichAgreements`, `enrichPayments`, `enrichExpenses`).
+    - Extended `server-cloudflare/src/routes/feeAgreements.ts` (`billing.view` / `billing.manage` permissions, optional `caseId` for client-level agreements, `PATCH /api/v1/fee-agreements/:id` with mandatory `revisionReason` recording `fee_agreement_changes` + `audit_log` atomically, `search` filtering, client/case ownership & `canUserSeeCaseId` enforcement).
+    - Extended `server-cloudflare/src/routes/feePayments.ts` (enforced active `feeAgreementId` + client/case match, concurrent `idempotency_key` duplicate prevention, `canUserSeeCaseId` enforcement, `search`/`method` filters, attachment support for client-level or case-linked agreements, immutable historical amounts/receipts on `void`).
+    - Extended `server-cloudflare/src/routes/expenses.ts` (required valid firm client/case/category ownership, `canUserSeeCaseId` checks, enriched responses, `search` filtering, and `PATCH /api/v1/expenses/:id` for editing posted expenses with `audit_log` diffs).
+    - Extended `server-cloudflare/src/routes/accounts.ts` (`caseTitle`, `totalExpensesPaisa`, visibility/client-case checks on `/accounts/payments`).
+  - **Frontend Repositories & Ledger UI (`/src`)**:
+    - Exported `AgreementRecord`, `PaymentRecord`, `ExpenseRecord` aliases and enriched display/balance fields in `src/data/types.ts` and `src/data/interfaces.ts` (`updateAgreement`, `updateExpense`, `search`/`method` filters).
+    - Updated `RestAccountsRepository` (`src/data/repositories/rest/restAccounts.ts`) and `MockAccountsRepository` (`src/data/repositories/accounts.ts`) for 100% dual-mode parity, permission gating (`accounts.*` / `billing.view` / `expenses.record`), and client-level/case-linked flows.
+    - Built unified `src/modules/billing/MattersBillingLedger.tsx` (Agreements, Payments, Expenses sections, KPI cards, search & client/case/status/method filters, responsive tables & mobile cards, empty states, pagination, detail/edit/revise/close/attach/void actions), `src/modules/billing/EditAgreementModal.tsx`, and `src/modules/billing/BillingRecordDetailModal.tsx`.
+    - Updated `CreateAgreementModal.tsx`, `RecordPaymentModal.tsx` (stable per-session idempotency key in `useRef`, balance summary, client/case selectors), `AddExpenseModal.tsx` (create + edit modes, client/case selectors), `AttachPaymentModal.tsx`, `BillingTab.tsx`, `BillingScreen.tsx`, `AppShell.tsx`, `CaseDetailsView.tsx`, and `ClientProfileView.tsx` so Main Billing Navigation, Client Dossier, and Case Dossier all manage the exact same underlying records.
+    - Added full English (`src/locales/en.json`) and Bangla (`src/locales/bn.json`) translations with key parity.
+  - **Tests & Verification**:
+    - Added Test 23 in `server-cloudflare/tests/cloudflareBackend.test.ts` verifying Case `88/90` (`Civil / Land Title Partition Suit`), Client Dossier & Main Billing parity without duplicates, agreement balance recalculation, `PATCH` edits + revision history + audit logs, payment idempotency + voiding, cross-firm isolation, central visibility (`restricted.view`), permission gating, and read-only mode.
+    - Added `src/modules/health/tests/billingLedgerTests.ts` wired into `src/modules/health/tests/index.ts`.
+    - Verified `npm run lint` (0 errors), `npm test --prefix server-cloudflare` (`23 passed (23)`), `npm run test:health` (`89 total, 89 passed, 0 failed`), `npm run build` / `npm run build:pages` (0 errors), and `npx --prefix server-cloudflare wrangler deploy --dry-run -c server-cloudflare/wrangler.toml` (`747.37 KiB / gzip: 127.69 KiB`).
+
 - [x] **Phase 8 — Physical File Tracking & Custody Backend (`master` & `cloudflare`)**:
   - **PostgreSQL + Express (`/server`)**:
     - Added `physicalFiles` (`physical_files`) and `fileMovements` (`file_movements`) tables to `server/src/db/schema.ts` and migration `server/drizzle/0015_physical_files.sql` (+ journal entry in `server/drizzle/meta/_journal.json`).

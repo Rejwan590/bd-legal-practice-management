@@ -38,12 +38,13 @@ export class RestAccountsRepository implements IAccountsRepository {
 
   async listAgreements(
     _context: SecurityContext,
-    filter?: { clientId?: string; caseId?: string; status?: string }
+    filter?: { clientId?: string; caseId?: string; status?: string; search?: string }
   ): Promise<FeeAgreement[]> {
     const params = new URLSearchParams();
     if (filter?.clientId) params.set('clientId', filter.clientId);
     if (filter?.caseId) params.set('caseId', filter.caseId);
     if (filter?.status) params.set('status', filter.status);
+    if (filter?.search) params.set('search', filter.search);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<FeeAgreement[]>(`/fee-agreements${qs}`);
   }
@@ -63,7 +64,7 @@ export class RestAccountsRepository implements IAccountsRepository {
     _context: SecurityContext,
     agreement: {
       clientId: string;
-      caseId: string;
+      caseId?: string | null;
       feeType: FeeType;
       agreedAmountPaisa: number;
       agreementDate: string;
@@ -73,6 +74,24 @@ export class RestAccountsRepository implements IAccountsRepository {
     return restFetch<FeeAgreement>('/fee-agreements', {
       method: 'POST',
       body: JSON.stringify(agreement),
+    });
+  }
+
+  async updateAgreement(
+    _context: SecurityContext,
+    id: string,
+    data: {
+      caseId?: string | null;
+      feeType?: FeeType;
+      agreedAmountPaisa?: number;
+      agreementDate?: string;
+      notes?: string | null;
+      revisionReason?: string;
+    }
+  ): Promise<FeeAgreement> {
+    return restFetch<FeeAgreement>(`/fee-agreements/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   }
 
@@ -107,7 +126,7 @@ export class RestAccountsRepository implements IAccountsRepository {
 
   async listPayments(
     _context: SecurityContext,
-    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean }
+    filter?: { clientId?: string; caseId?: string; feeAgreementId?: string; status?: string; legacyUnassigned?: boolean; method?: string; search?: string }
   ): Promise<FeePayment[]> {
     const params = new URLSearchParams();
     if (filter?.clientId) params.set('clientId', filter.clientId);
@@ -115,6 +134,8 @@ export class RestAccountsRepository implements IAccountsRepository {
     if (filter?.feeAgreementId) params.set('feeAgreementId', filter.feeAgreementId);
     if (filter?.status) params.set('status', filter.status);
     if (filter?.legacyUnassigned !== undefined) params.set('legacyUnassigned', String(filter.legacyUnassigned));
+    if (filter?.method) params.set('method', filter.method);
+    if (filter?.search) params.set('search', filter.search);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<FeePayment[]>(`/fee-payments${qs}`);
   }
@@ -176,13 +197,14 @@ export class RestAccountsRepository implements IAccountsRepository {
 
   async listExpenses(
     _context: SecurityContext,
-    filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string }
+    filter?: { clientId?: string; caseId?: string; categoryId?: string; status?: string; search?: string }
   ): Promise<Array<Expense & { categoryName?: string }>> {
     const params = new URLSearchParams();
     if (filter?.clientId) params.set('clientId', filter.clientId);
     if (filter?.caseId) params.set('caseId', filter.caseId);
     if (filter?.categoryId) params.set('categoryId', filter.categoryId);
     if (filter?.status) params.set('status', filter.status);
+    if (filter?.search) params.set('search', filter.search);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return restFetch<Array<Expense & { categoryName?: string }>>(`/expenses${qs}`);
   }
@@ -216,6 +238,24 @@ export class RestAccountsRepository implements IAccountsRepository {
     return restFetch<Expense>('/expenses', {
       method: 'POST',
       body: JSON.stringify(expense),
+    });
+  }
+
+  async updateExpense(
+    _context: SecurityContext,
+    id: string,
+    data: {
+      caseId?: string | null;
+      categoryId?: string;
+      expenseDate?: string;
+      amountPaisa?: number;
+      description?: string;
+      reimbursable?: boolean;
+    }
+  ): Promise<Expense> {
+    return restFetch<Expense>(`/expenses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   }
 

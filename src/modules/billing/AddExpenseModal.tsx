@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { ExpenseCategory } from '../../data/types';
-import { Receipt, AlertCircle } from 'lucide-react';
+import { CaseRecord, ClientRecord, ExpenseCategory, ExpenseRecord } from '../../data/types';
+import { Receipt, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa, formatBdt } from '../../utils/currency';
 import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
@@ -12,6 +12,7 @@ interface AddExpenseModalProps {
   isOpen: boolean;
   clientId?: string | null;
   caseId?: string | null;
+  initialExpense?: ExpenseRecord | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -20,6 +21,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   isOpen,
   clientId,
   caseId,
+  initialExpense,
   onClose,
   onSuccess,
 }) => {
@@ -27,6 +29,11 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
+  const isEdit = Boolean(initialExpense);
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('');
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [takaAmount, setTakaAmount] = useState('');
@@ -35,30 +42,72 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const [reimbursable, setReimbursable] = useState(true);
 
   const [saving, setSaving] = useState(false);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingCases, setLoadingCases] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && currentUser) {
-      setTakaAmount('');
-      setExpenseDate(new Date().toISOString().slice(0, 10));
-      setDescription('');
-      setReimbursable(true);
       setErrorMsg(null);
+      if (initialExpense) {
+        setSelectedClientId(initialExpense.clientId || clientId || '');
+        setSelectedCaseId(initialExpense.caseId || '');
+        setCategoryId(initialExpense.categoryId);
+        setTakaAmount(String(initialExpense.amountPaisa / 100));
+        setExpenseDate(toDateInputValue(initialExpense.expenseDate) || getDhakaDateString());
+        setDescription(initialExpense.description);
+        setReimbursable(initialExpense.reimbursable);
+      } else {
+        setSelectedClientId(clientId || '');
+        setSelectedCaseId(caseId || '');
+        setTakaAmount('');
+        setExpenseDate(getDhakaDateString());
+        setDescription('');
+        setReimbursable(true);
+      }
 
-      repos.accounts.listExpenseCategories({ currentUser })
+      repos.accounts
+        .listExpenseCategories({ currentUser })
         .then((cats) => {
           setCategories(cats);
-          if (cats.length > 0 && !categoryId) {
-            setCategoryId(cats[0].id);
+          if (!initialExpense && cats.length > 0) {
+            setCategoryId((prev) => prev || cats[0].id);
           }
         })
         .catch(() => setCategories([]));
+
+      if (!clientId && !initialExpense?.clientId) {
+        setLoadingClients(true);
+        repos.client
+          .list({ currentUser })
+          .then((list) => setClients(list))
+          .catch(() => setClients([]))
+          .finally(() => setLoadingClients(false));
+      }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, clientId, caseId, initialExpense, currentUser]);
+
+  useEffect(() => {
+    if (isOpen && currentUser && selectedClientId) {
+      setLoadingCases(true);
+      repos.case
+        .list({ currentUser }, { clientId: selectedClientId })
+        .then((list) => setCases(list))
+        .catch(() => setCases([]))
+        .finally(() => setLoadingCases(false));
+    } else if (isOpen && !selectedClientId) {
+      setCases([]);
+    }
+  }, [isOpen, selectedClientId, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    if (!selectedClientId) {
+      setErrorMsg(t('billing.errors.clientRequired', 'Please select a client'));
+      return;
+    }
 
     const paisa = takaToPaisa(takaAmount);
     if (paisa <= 0) {
@@ -80,32 +129,46 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
     setErrorMsg(null);
 
     try {
-      await repos.accounts.recordExpense(
-        { currentUser },
-        {
-          clientId: clientId || null,
-          caseId: caseId || null,
+      if (initialExpense) {
+        await repos.accounts.updateExpense({ currentUser }, initialExpense.id, {
+          caseId: selectedCaseId || null,
           categoryId,
           expenseDate: toDateInputValue(expenseDate) || getDhakaDateString(),
           amountPaisa: paisa,
           description: description.trim(),
           reimbursable,
-        }
-      );
+        });
+      } else {
+        await repos.accounts.recordExpense(
+          { currentUser },
+          {
+            clientId: selectedClientId,
+            caseId: selectedCaseId || null,
+            categoryId,
+            expenseDate: toDateInputValue(expenseDate) || getDhakaDateString(),
+            amountPaisa: paisa,
+            description: description.trim(),
+            reimbursable,
+          }
+        );
+      }
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : t('billing.errors.saveFailed', 'Failed to record expense'));
+      setErrorMsg(err instanceof Error ? err.message : t('billing.errors.saveFailed', 'Failed to save expense'));
     } finally {
       setSaving(false);
     }
   };
 
+  const isClientLocked = Boolean(clientId) || isEdit;
+  const isCaseLocked = Boolean(caseId);
+
   return (
     <ResponsiveModal
       isOpen={isOpen}
       onClose={onClose}
-      title={t('billing.addExpense', 'Record Expense')}
+      title={isEdit ? t('billing.editExpense', 'Edit Expense') : t('billing.addExpense', 'Record Expense')}
       subtitle={t('billing.addExpenseSub', 'Disbursement / chamber operational expense')}
       icon={Receipt}
       maxWidth="md"
@@ -123,9 +186,13 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             type="submit"
             form="add-expense-form"
             className="px-5 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg min-h-[44px] flex items-center gap-2 disabled:opacity-50"
-            disabled={saving}
+            disabled={saving || !selectedClientId}
           >
-            {saving ? t('common.saving', 'Recording...') : t('billing.addExpense', 'Record Expense')}
+            {saving
+              ? t('common.saving', 'Saving...')
+              : isEdit
+                ? t('common.saveChanges', 'Save Changes')
+                : t('billing.addExpense', 'Record Expense')}
           </button>
         </div>
       }
@@ -137,6 +204,51 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             <span>{errorMsg}</span>
           </div>
         )}
+
+        {!isClientLocked && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              {t('clients.client', 'Client')} *
+            </label>
+            <select
+              value={selectedClientId}
+              onChange={(e) => {
+                setSelectedClientId(e.target.value);
+                if (!isCaseLocked) setSelectedCaseId('');
+              }}
+              disabled={loadingClients}
+              required
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px]"
+            >
+              <option value="">{t('billing.selectClient', '-- Select Client --')}</option>
+              {clients.map((cl) => (
+                <option key={cl.id} value={cl.id}>
+                  {cl.name} {cl.phone ? `(${cl.phone})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <span>{t('cases.case', 'Case')}</span>
+            {isCaseLocked && <Lock className="w-3 h-3 text-slate-400" />}
+          </label>
+          <select
+            value={selectedCaseId}
+            onChange={(e) => setSelectedCaseId(e.target.value)}
+            disabled={isCaseLocked || loadingCases || !selectedClientId}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            <option value="">{t('billing.generalClientLevel', '-- General / Client-level (No specific case) --')}</option>
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.caseNumber} - {c.matterType || c.court} {c.fileSerial ? `(${c.fileSerial})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">

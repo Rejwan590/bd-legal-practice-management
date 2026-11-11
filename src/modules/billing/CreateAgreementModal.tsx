@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, FeeType } from '../../data/types';
+import { CaseRecord, ClientRecord, FeeType } from '../../data/types';
 import { FileText, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa, formatBdt } from '../../utils/currency';
@@ -10,7 +10,7 @@ import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface CreateAgreementModalProps {
   isOpen: boolean;
-  clientId: string;
+  clientId?: string | null;
   caseId?: string | null;
   onClose: () => void;
   onSuccess: () => void;
@@ -27,6 +27,8 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>(clientId || '');
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || '');
   const [feeType, setFeeType] = useState<FeeType>('fixed');
@@ -35,39 +37,58 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
   const [notes, setNotes] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [loadingClients, setLoadingClients] = useState(false);
   const [loadingCases, setLoadingCases] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && currentUser && clientId) {
+    if (isOpen && currentUser) {
       setFeeType('fixed');
       setTakaAmount('');
       setAgreementDate(getDhakaDateString());
       setNotes('');
       setErrorMsg(null);
+      setSelectedClientId(clientId || '');
+      setSelectedCaseId(caseId || '');
 
-      const initialCaseId = caseId || '';
-      setSelectedCaseId(initialCaseId);
+      if (!clientId) {
+        setLoadingClients(true);
+        repos.client
+          .list({ currentUser })
+          .then((list) => setClients(list))
+          .catch(() => setClients([]))
+          .finally(() => setLoadingClients(false));
+      }
+    }
+  }, [isOpen, clientId, caseId, currentUser]);
 
+  useEffect(() => {
+    if (isOpen && currentUser && selectedClientId) {
       setLoadingCases(true);
-      repos.case.list({ currentUser }, { clientId })
+      repos.case
+        .list({ currentUser }, { clientId: selectedClientId })
         .then((caseList) => {
           setCases(caseList);
-          if (!initialCaseId && caseList.length === 1) {
+          if (caseId) {
+            setSelectedCaseId(caseId);
+          } else if (caseList.length === 1 && !selectedCaseId) {
             setSelectedCaseId(caseList[0].id);
           }
         })
         .catch(() => setCases([]))
         .finally(() => setLoadingCases(false));
+    } else if (isOpen && !selectedClientId) {
+      setCases([]);
+      if (!caseId) setSelectedCaseId('');
     }
-  }, [isOpen, clientId, caseId, currentUser]);
+  }, [isOpen, selectedClientId, caseId, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
-    if (!selectedCaseId) {
-      setErrorMsg(t('billing.errors.caseRequired', 'Please select a case for this fee agreement'));
+    if (!selectedClientId) {
+      setErrorMsg(t('billing.errors.clientRequired', 'Please select a client'));
       return;
     }
 
@@ -84,8 +105,8 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
       await repos.accounts.createAgreement(
         { currentUser },
         {
-          clientId,
-          caseId: selectedCaseId,
+          clientId: selectedClientId,
+          caseId: selectedCaseId || null,
           feeType,
           agreedAmountPaisa: paisa,
           agreementDate: toDateInputValue(agreementDate) || getDhakaDateString(),
@@ -101,6 +122,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
     }
   };
 
+  const isClientLocked = Boolean(clientId);
   const isCaseLocked = Boolean(caseId);
 
   return (
@@ -125,7 +147,7 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
             type="submit"
             form="create-agreement-form"
             className="px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg min-h-[44px] flex items-center gap-2 disabled:opacity-50"
-            disabled={saving || !selectedCaseId}
+            disabled={saving || !selectedClientId}
           >
             {saving ? t('common.saving', 'Saving...') : t('billing.createAgreement', 'Create Agreement')}
           </button>
@@ -140,28 +162,52 @@ export const CreateAgreementModal: React.FC<CreateAgreementModalProps> = ({
           </div>
         )}
 
+        {!isClientLocked && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              {t('clients.client', 'Client')} *
+            </label>
+            <select
+              value={selectedClientId}
+              onChange={(e) => {
+                setSelectedClientId(e.target.value);
+                if (!isCaseLocked) setSelectedCaseId('');
+              }}
+              disabled={loadingClients}
+              required
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
+            >
+              <option value="">{t('billing.selectClient', '-- Select Client --')}</option>
+              {clients.map((cl) => (
+                <option key={cl.id} value={cl.id}>
+                  {cl.name} {cl.phone ? `(${cl.phone})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Case Selector */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-            <span>{t('cases.case', 'Case')} *</span>
+            <span>{t('cases.case', 'Case')}</span>
             {isCaseLocked && <Lock className="w-3 h-3 text-slate-400" />}
           </label>
           <select
             value={selectedCaseId}
             onChange={(e) => setSelectedCaseId(e.target.value)}
-            disabled={isCaseLocked || loadingCases}
-            required
+            disabled={isCaseLocked || loadingCases || !selectedClientId}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
           >
-            <option value="">{t('billing.selectCase', '-- Select Case --')}</option>
+            <option value="">{t('billing.generalClientLevel', '-- General / Client-level (No specific case) --')}</option>
             {cases.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.caseNumber} - {c.matterType || c.court} {c.fileSerial ? `(${c.fileSerial})` : ''}
               </option>
             ))}
           </select>
-          {cases.length === 0 && !loadingCases && (
-            <p className="text-xs text-amber-600 mt-1">{t('billing.noCasesFound', 'No active visible cases found for this client.')}</p>
+          {selectedClientId && cases.length === 0 && !loadingCases && (
+            <p className="text-xs text-slate-500 mt-1">{t('billing.noCasesFoundClientLevelOk', 'No active cases linked yet — will be recorded as a client-level agreement.')}</p>
           )}
         </div>
 

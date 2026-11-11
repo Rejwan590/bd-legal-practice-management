@@ -486,6 +486,13 @@ export interface FeeAgreement extends BaseRecord {
   agreementDate: string;
   notes: string | null;
   status: FeeAgreementStatus;
+  clientName?: string;
+  clientNameBn?: string | null;
+  caseNumber?: string | null;
+  caseTitle?: string | null;
+  paidPaisa?: number;
+  outstandingPaisa?: number;
+  creditPaisa?: number;
 }
 
 export interface FeeAgreementChange {
@@ -516,6 +523,12 @@ export interface FeePayment extends BaseRecord {
   voidedAt: string | null;
   idempotencyKey: string;
   legacyUnassigned?: boolean;
+  clientName?: string;
+  clientNameBn?: string | null;
+  caseNumber?: string | null;
+  caseTitle?: string | null;
+  agreementFeeType?: FeeType | null;
+  agreementAmountPaisa?: number | null;
 }
 
 export interface ExpenseCategory extends BaseRecord {
@@ -536,7 +549,15 @@ export interface Expense extends BaseRecord {
   voidReason: string | null;
   voidedBy: string | null;
   voidedAt: string | null;
+  clientName?: string | null;
+  clientNameBn?: string | null;
+  caseNumber?: string | null;
+  caseTitle?: string | null;
 }
+
+export type AgreementRecord = FeeAgreement;
+export type PaymentRecord = FeePayment;
+export type ExpenseRecord = Expense;
 
 export interface AccountsSummary {
   totalAgreedPaisa: number;
@@ -565,6 +586,7 @@ export interface ClientBalanceOverview {
   clientPhone: string;
   totalAgreedPaisa: number;
   totalPaidPaisa: number;
+  totalExpensesPaisa?: number;
   balancePaisa: number;
   isCredit: boolean;
   creditPaisa: number;
@@ -582,6 +604,7 @@ export interface CaseBalanceOverview {
   fileSerial?: string | null;
   totalAgreedPaisa: number;
   totalPaidPaisa: number;
+  totalExpensesPaisa?: number;
   balancePaisa: number;
   isCredit: boolean;
   creditPaisa: number;

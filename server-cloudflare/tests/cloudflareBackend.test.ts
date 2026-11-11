@@ -1417,4 +1417,363 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     );
     expect(afterDel.status).toBe(404);
   });
+
+  it('23. Unified Matters Billing Ledger: Case 88/90, Client Dossier & Main Billing parity, balances, edits, idempotency, visibility & firm isolation', async () => {
+    // Provision Case 88/90 ("Civil / Land Title Partition Suit") under Firm D client
+    const case88Res = await app.request(
+      '/api/v1/cases',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseNumber: '88/90',
+          court: 'Joint District Judge Court, Dhaka',
+          matterType: 'Civil / Land Title Partition Suit',
+          plaintiff: 'Padma Textiles Ltd',
+          defendant: 'Sharif Estate Co-Sharers',
+          status: 'ongoing',
+          isRestricted: true,
+        }),
+      },
+      env
+    );
+    expect(case88Res.status).toBe(201);
+    const case88 = (await case88Res.json()) as any;
+    expect(case88.caseNumber).toBe('88/90');
+    expect(case88.matterType).toBe('Civil / Land Title Partition Suit');
+
+    // 1) Create AgreementRecord for Case 88/90 + a client-level AgreementRecord (no caseId)
+    const agrCaseRes = await app.request(
+      '/api/v1/fee-agreements',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: case88.id,
+          feeType: 'fixed',
+          agreedAmountPaisa: 12000000, // BDT 120,000
+          agreementDate: '2026-11-11',
+          notes: 'Full partition suit representation up to preliminary decree',
+        }),
+      },
+      env
+    );
+    expect(agrCaseRes.status).toBe(201);
+    const agrCase = (await agrCaseRes.json()) as any;
+    expect(agrCase.caseNumber).toBe('88/90');
+    expect(agrCase.caseTitle).toBe('Civil / Land Title Partition Suit');
+    expect(agrCase.outstandingPaisa).toBe(12000000);
+    expect(agrCase.paidPaisa).toBe(0);
+
+    const agrClientRes = await app.request(
+      '/api/v1/fee-agreements',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: null,
+          feeType: 'retainer',
+          agreedAmountPaisa: 3000000, // BDT 30,000 client retainer
+          agreementDate: '2026-11-11',
+          notes: 'General client advisory retainer',
+        }),
+      },
+      env
+    );
+    expect(agrClientRes.status).toBe(201);
+    const agrClient = (await agrClientRes.json()) as any;
+    expect(agrClient.caseId).toBeNull();
+
+    // 2) Record PaymentRecord with idempotency key (no duplicates on retry)
+    const payRes1 = await app.request(
+      '/api/v1/fee-payments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          feeAgreementId: agrCase.id,
+          paymentDate: '2026-11-11',
+          amountPaisa: 4500000, // BDT 45,000
+          method: 'bank',
+          reference: 'DBBL-TXN-8890',
+          purposeNote: 'Advance retainer for Title Suit 88/90',
+          idempotencyKey: 'idem-case-88-90-pay-1',
+        }),
+      },
+      env
+    );
+    expect(payRes1.status).toBe(201);
+    const pay1 = (await payRes1.json()) as any;
+    expect(pay1.caseId).toBe(case88.id);
+    expect(pay1.clientId).toBe(firmDClientId);
+    expect(pay1.caseNumber).toBe('88/90');
+    expect(pay1.receiptNumber).toMatch(/^REC-\d{4}-\d{5}$/);
+
+    // Duplicate retry returns same record without creating a second payment
+    const payResDup = await app.request(
+      '/api/v1/fee-payments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          feeAgreementId: agrCase.id,
+          paymentDate: '2026-11-11',
+          amountPaisa: 4500000,
+          method: 'bank',
+          reference: 'DBBL-TXN-8890',
+          purposeNote: 'Advance retainer for Title Suit 88/90',
+          idempotencyKey: 'idem-case-88-90-pay-1',
+        }),
+      },
+      env
+    );
+    expect(payResDup.status).toBe(200);
+    const payDup = (await payResDup.json()) as any;
+    expect(payDup.id).toBe(pay1.id);
+    expect(payDup.receiptNumber).toBe(pay1.receiptNumber);
+
+    // Client/case mismatch on payment rejected
+    const badPayRes = await app.request(
+      '/api/v1/fee-payments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          feeAgreementId: agrCase.id,
+          caseId: firmDCaseId, // Wrong case
+          paymentDate: '2026-11-11',
+          amountPaisa: 500000,
+          method: 'cash',
+          purposeNote: 'Mismatched case check',
+          idempotencyKey: 'idem-mismatch-88-90',
+        }),
+      },
+      env
+    );
+    expect(badPayRes.status).toBe(400);
+
+    // 3) Create and Edit ExpenseRecord on Case 88/90
+    const expCats = (await (
+      await app.request('/api/v1/expenses/categories', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    const expCreateRes = await app.request(
+      '/api/v1/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: case88.id,
+          categoryId: expCats[0].id,
+          expenseDate: '2026-11-11',
+          amountPaisa: 220000, // BDT 2,200
+          description: 'Amin survey commissioner fee for 88/90',
+          reimbursable: true,
+        }),
+      },
+      env
+    );
+    expect(expCreateRes.status).toBe(201);
+    const expCreated = (await expCreateRes.json()) as any;
+    expect(expCreated.caseNumber).toBe('88/90');
+    expect(expCreated.amountPaisa).toBe(220000);
+
+    const expPatchRes = await app.request(
+      `/api/v1/expenses/${expCreated.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          amountPaisa: 250000,
+          description: 'Amin survey commissioner fee + trace map copy',
+        }),
+      },
+      env
+    );
+    expect(expPatchRes.status).toBe(200);
+    const expEdited = (await expPatchRes.json()) as any;
+    expect(expEdited.amountPaisa).toBe(250000);
+    expect(expEdited.description).toBe('Amin survey commissioner fee + trace map copy');
+
+    // 4) Edit Agreement via PATCH (with mandatory revisionReason for amount change -> audit + changes log)
+    const agrPatchNoReason = await app.request(
+      `/api/v1/fee-agreements/${agrCase.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ agreedAmountPaisa: 13500000 }),
+      },
+      env
+    );
+    expect(agrPatchNoReason.status).toBe(400);
+
+    const agrPatchOk = await app.request(
+      `/api/v1/fee-agreements/${agrCase.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          agreedAmountPaisa: 13500000,
+          revisionReason: 'Added local commission and demarcation hearings',
+          notes: 'Full partition suit including commission report objection',
+        }),
+      },
+      env
+    );
+    expect(agrPatchOk.status).toBe(200);
+    const agrUpdated = (await agrPatchOk.json()) as any;
+    expect(agrUpdated.agreedAmountPaisa).toBe(13500000);
+    expect(agrUpdated.paidPaisa).toBe(4500000);
+    expect(agrUpdated.outstandingPaisa).toBe(9000000);
+
+    const changesRes = await app.request(
+      `/api/v1/fee-agreements/${agrCase.id}/changes`,
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(changesRes.status).toBe(200);
+    const changes = (await changesRes.json()) as any[];
+    expect(changes.length).toBe(1);
+    expect(changes[0].oldAmountPaisa).toBe(12000000);
+    expect(changes[0].newAmountPaisa).toBe(13500000);
+
+    // 5) Main Billing Ledger, Client Dossier & Case 88/90 Dossier return exact same record IDs without duplication
+    const [firmAgs, clientAgs, caseAgs, firmPays, clientPays, casePays, firmExps, clientExps, caseExps, caseBalRes] =
+      await Promise.all([
+        app.request('/api/v1/fee-agreements?search=88/90', { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/fee-agreements?clientId=${firmDClientId}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/fee-agreements?caseId=${case88.id}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request('/api/v1/fee-payments?search=DBBL-TXN-8890', { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/fee-payments?clientId=${firmDClientId}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/fee-payments?caseId=${case88.id}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request('/api/v1/expenses?search=Amin', { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/expenses?clientId=${firmDClientId}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request(`/api/v1/expenses?caseId=${case88.id}`, { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+        app.request('/api/v1/accounts/case-balances', { headers: { Cookie: firmDOwnerCookie } }, env).then((r) => r.json()) as Promise<any[]>,
+      ]);
+
+    expect(firmAgs.map((a) => a.id)).toEqual([agrCase.id]);
+    expect(caseAgs.map((a) => a.id)).toEqual([agrCase.id]);
+    expect(clientAgs.some((a) => a.id === agrCase.id) && clientAgs.some((a) => a.id === agrClient.id)).toBe(true);
+
+    expect(firmPays.map((p) => p.id)).toEqual([pay1.id]);
+    expect(casePays.map((p) => p.id)).toEqual([pay1.id]);
+    expect(clientPays.some((p) => p.id === pay1.id)).toBe(true);
+    // Only 1 payment matching idempotencyKey exists
+    expect(casePays.filter((p) => p.idempotencyKey === 'idem-case-88-90-pay-1').length).toBe(1);
+
+    expect(firmExps.map((e) => e.id)).toEqual([expCreated.id]);
+    expect(caseExps.map((e) => e.id)).toEqual([expCreated.id]);
+    expect(clientExps.some((e) => e.id === expCreated.id)).toBe(true);
+
+    const case88Bal = caseBalRes.find((b) => b.caseId === case88.id);
+    expect(case88Bal).toBeDefined();
+    expect(case88Bal.caseNumber).toBe('88/90');
+    expect(case88Bal.totalAgreedPaisa).toBe(13500000);
+    expect(case88Bal.totalPaidPaisa).toBe(4500000);
+    expect(case88Bal.totalExpensesPaisa).toBe(250000);
+    expect(case88Bal.outstandingPaisa).toBe(9000000);
+
+    // 6) Voiding Payment preserves historical payment row (immutable amount/receipt) & restores balance
+    const voidPayRes = await app.request(
+      `/api/v1/fee-payments/${pay1.id}/void`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({ reason: 'Cheque dishonored' }),
+      },
+      env
+    );
+    expect(voidPayRes.status).toBe(200);
+    const voidedPay = (await voidPayRes.json()) as any;
+    expect(voidedPay.status).toBe('void');
+    expect(voidedPay.amountPaisa).toBe(4500000);
+    expect(voidedPay.receiptNumber).toBe(pay1.receiptNumber);
+
+    const agrAfterVoidPay = (await (
+      await app.request(`/api/v1/fee-agreements/${agrCase.id}`, { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any;
+    expect(agrAfterVoidPay.paidPaisa).toBe(0);
+    expect(agrAfterVoidPay.outstandingPaisa).toBe(13500000);
+
+    // 7) Cross-firm isolation & expired-subscription read-only check:
+    // Firm A owner cannot view Firm D Case 88/90 billing records (404), and Firm A reads still work (200) while writes are blocked (403 READ_ONLY_MODE)
+    expect((await app.request(`/api/v1/fee-agreements/${agrCase.id}`, { headers: { Cookie: ownerCookie } }, env)).status).toBe(404);
+    expect((await app.request(`/api/v1/fee-payments/${pay1.id}`, { headers: { Cookie: ownerCookie } }, env)).status).toBe(404);
+    expect((await app.request(`/api/v1/expenses/${expCreated.id}`, { headers: { Cookie: ownerCookie } }, env)).status).toBe(404);
+
+    const firmAListRes = await app.request('/api/v1/fee-payments', { headers: { Cookie: ownerCookie } }, env);
+    expect(firmAListRes.status).toBe(200);
+    const firmAPays = (await firmAListRes.json()) as any[];
+    expect(firmAPays.some((p) => p.id === pay1.id)).toBe(false);
+
+    const readOnlyWriteRes = await app.request(
+      `/api/v1/expenses/${expCreated.id}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', Cookie: ownerCookie }, body: JSON.stringify({ description: 'Hacked' }) },
+      env
+    );
+    expect(readOnlyWriteRes.status).toBe(403);
+
+    // 8) Central visibility + Permissions:
+    // Staff without billing perms gets 403
+    expect((await app.request('/api/v1/fee-agreements', { headers: { Cookie: juniorCookie } }, env)).status).toBe(403);
+
+    // Provision a staff member with billing.view (no billing.manage, no restricted.view)
+    const billViewerRes = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          name: 'Accounts Clerk',
+          email: 'accounts.clerk@chamber-d.com',
+          jobType: 'clerk',
+          jobTitleLabel: 'Accounts Clerk',
+          permissions: ['cases.view', 'clients.view', 'billing.view'],
+        }),
+      },
+      env
+    );
+    expect(billViewerRes.status).toBe(201);
+    const bvJson = (await billViewerRes.json()) as any;
+    const bvLoginRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'accounts.clerk@chamber-d.com', password: bvJson.temporaryPassword }),
+      },
+      env
+    );
+    const bvCookie = bvLoginRes.headers.get('set-cookie')!.split(';')[0];
+
+    // Restricted Case 88/90 billing records are hidden from staff without restricted.view, while client-level agreement is visible
+    const bvAgs = (await (
+      await app.request(`/api/v1/fee-agreements?clientId=${firmDClientId}`, { headers: { Cookie: bvCookie } }, env)
+    ).json()) as any[];
+    expect(bvAgs.some((a) => a.id === agrCase.id)).toBe(false);
+    expect(bvAgs.some((a) => a.id === agrClient.id)).toBe(true);
+    expect((await app.request(`/api/v1/fee-agreements/${agrCase.id}`, { headers: { Cookie: bvCookie } }, env)).status).toBe(404);
+
+    // Staff with only billing.view gets 403 on writes
+    const bvWriteRes = await app.request(
+      '/api/v1/fee-agreements',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: bvCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          caseId: null,
+          feeType: 'fixed',
+          agreedAmountPaisa: 100000,
+          agreementDate: '2026-11-11',
+        }),
+      },
+      env
+    );
+    expect(bvWriteRes.status).toBe(403);
+  });
 });

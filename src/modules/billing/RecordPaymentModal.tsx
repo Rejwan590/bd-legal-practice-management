@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { CaseRecord, FeeAgreement, HearingRecord, PaymentMethod } from '../../data/types';
+import { CaseRecord, ClientRecord, FeeAgreement, HearingRecord, PaymentMethod } from '../../data/types';
 import { CreditCard, AlertCircle, Lock } from 'lucide-react';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import { takaToPaisa, formatBdt } from '../../utils/currency';
@@ -10,7 +10,7 @@ import { getDhakaDateString, toDateInputValue } from '../../utils/dateUtils';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
-  clientId: string;
+  clientId?: string | null;
   caseId?: string | null;
   feeAgreementId?: string | null;
   onClose: () => void;
@@ -29,6 +29,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const { currentUser } = useAuth();
   const repos = getRepositories();
 
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>(clientId || '');
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || '');
   const [agreements, setAgreements] = useState<FeeAgreement[]>([]);
@@ -43,75 +45,102 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [purposeNote, setPurposeNote] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [loadingClients, setLoadingClients] = useState(false);
   const [loadingCases, setLoadingCases] = useState(false);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Load client's visible cases on open
+  // Stable idempotency key per modal session so retries/double-clicks never create duplicate receipts
+  const idempotencyKeyRef = useRef<string>('');
+
   useEffect(() => {
-    if (isOpen && currentUser && clientId) {
+    if (isOpen && currentUser) {
+      idempotencyKeyRef.current =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       setTakaAmount('');
-      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setPaymentDate(getDhakaDateString());
       setMethod('cash');
       setReference('');
       setPurposeNote('');
       setSelectedHearingId('');
       setErrorMsg(null);
-
-      const initialCaseId = caseId || '';
-      setSelectedCaseId(initialCaseId);
+      setSelectedClientId(clientId || '');
+      setSelectedCaseId(caseId || '');
       setSelectedAgreementId(feeAgreementId || '');
 
-      setLoadingCases(true);
-      repos.case.list({ currentUser }, { clientId })
-        .then((caseList) => {
-          setCases(caseList);
-          if (!initialCaseId && caseList.length === 1) {
-            setSelectedCaseId(caseList[0].id);
-          }
-        })
-        .catch(() => setCases([]))
-        .finally(() => setLoadingCases(false));
+      if (!clientId) {
+        setLoadingClients(true);
+        repos.client
+          .list({ currentUser })
+          .then((list) => setClients(list))
+          .catch(() => setClients([]))
+          .finally(() => setLoadingClients(false));
+      }
     }
   }, [isOpen, clientId, caseId, feeAgreementId, currentUser]);
 
-  // Load active agreements and hearings when selectedCaseId changes
+  // Load client's visible cases and active agreements when selectedClientId changes
   useEffect(() => {
-    if (isOpen && currentUser && selectedCaseId) {
+    if (isOpen && currentUser && selectedClientId) {
+      setLoadingCases(true);
       setLoadingAgreements(true);
       Promise.all([
-        repos.accounts.listAgreements({ currentUser }, { caseId: selectedCaseId, status: 'active' }),
-        repos.hearing.list({ currentUser }, { caseId: selectedCaseId }),
+        repos.case.list({ currentUser }, { clientId: selectedClientId }),
+        repos.accounts.listAgreements({ currentUser }, { clientId: selectedClientId, status: 'active' }),
       ])
-        .then(([agList, hList]) => {
-          setAgreements(agList);
-          setHearings(hList);
-          if (feeAgreementId && agList.some((a) => a.id === feeAgreementId)) {
+        .then(([caseList, agList]) => {
+          setCases(caseList);
+          const filteredAgreements = selectedCaseId
+            ? agList.filter((a) => a.caseId === selectedCaseId || !a.caseId)
+            : agList;
+          setAgreements(filteredAgreements);
+          if (feeAgreementId && filteredAgreements.some((a) => a.id === feeAgreementId)) {
             setSelectedAgreementId(feeAgreementId);
-          } else if (agList.length === 1) {
-            setSelectedAgreementId(agList[0].id);
-          } else if (!agList.some((a) => a.id === selectedAgreementId)) {
+          } else if (filteredAgreements.length === 1) {
+            setSelectedAgreementId(filteredAgreements[0].id);
+          } else if (!filteredAgreements.some((a) => a.id === selectedAgreementId)) {
             setSelectedAgreementId('');
           }
         })
         .catch(() => {
+          setCases([]);
           setAgreements([]);
-          setHearings([]);
         })
-        .finally(() => setLoadingAgreements(false));
-    } else {
+        .finally(() => {
+          setLoadingCases(false);
+          setLoadingAgreements(false);
+        });
+    } else if (isOpen && !selectedClientId) {
+      setCases([]);
       setAgreements([]);
-      setHearings([]);
       if (!feeAgreementId) setSelectedAgreementId('');
     }
-  }, [isOpen, selectedCaseId, feeAgreementId, currentUser]);
+  }, [isOpen, selectedClientId, selectedCaseId, feeAgreementId, currentUser]);
+
+  // Load hearings for selectedCaseId or selected agreement's case
+  const selectedAgreement = agreements.find((a) => a.id === selectedAgreementId);
+  const effectiveCaseId = selectedCaseId || selectedAgreement?.caseId || '';
+
+  useEffect(() => {
+    if (isOpen && currentUser && effectiveCaseId) {
+      repos.hearing
+        .list({ currentUser }, { caseId: effectiveCaseId })
+        .then((hList) => setHearings(hList))
+        .catch(() => setHearings([]));
+    } else {
+      setHearings([]);
+      setSelectedHearingId('');
+    }
+  }, [isOpen, effectiveCaseId, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
-    if (!selectedCaseId) {
-      setErrorMsg(t('billing.errors.caseRequired', 'Please select a case'));
+    if (!selectedClientId) {
+      setErrorMsg(t('billing.errors.clientRequired', 'Please select a client'));
       return;
     }
 
@@ -135,20 +164,19 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const idempotencyKey = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       await repos.accounts.recordPayment(
         { currentUser },
         {
           feeAgreementId: selectedAgreementId,
-          clientId,
-          caseId: selectedCaseId,
+          clientId: selectedClientId,
+          caseId: effectiveCaseId || null,
           hearingId: selectedHearingId || null,
           paymentDate: toDateInputValue(paymentDate) || getDhakaDateString(),
           amountPaisa: paisa,
           method,
           reference: reference.trim() || null,
           purposeNote: purposeNote.trim(),
-          idempotencyKey,
+          idempotencyKey: idempotencyKeyRef.current,
         }
       );
       onSuccess();
@@ -160,6 +188,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     }
   };
 
+  const isClientLocked = Boolean(clientId);
   const isCaseLocked = Boolean(caseId);
   const isAgreementLocked = Boolean(feeAgreementId);
 
@@ -200,29 +229,51 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </div>
         )}
 
-        {/* Case Selector */}
+        {!isClientLocked && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              {t('clients.client', 'Client')} *
+            </label>
+            <select
+              value={selectedClientId}
+              onChange={(e) => {
+                setSelectedClientId(e.target.value);
+                if (!isCaseLocked) setSelectedCaseId('');
+                if (!isAgreementLocked) setSelectedAgreementId('');
+              }}
+              disabled={loadingClients}
+              required
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px]"
+            >
+              <option value="">{t('billing.selectClient', '-- Select Client --')}</option>
+              {clients.map((cl) => (
+                <option key={cl.id} value={cl.id}>
+                  {cl.name} {cl.phone ? `(${cl.phone})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Case Filter / Selector */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-            <span>{t('cases.case', 'Case')} *</span>
+            <span>{t('cases.case', 'Case')}</span>
             {isCaseLocked && <Lock className="w-3 h-3 text-slate-400" />}
           </label>
           <select
             value={selectedCaseId}
             onChange={(e) => setSelectedCaseId(e.target.value)}
-            disabled={isCaseLocked || loadingCases}
-            required
+            disabled={isCaseLocked || loadingCases || !selectedClientId}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[44px] disabled:bg-slate-100 disabled:text-slate-500"
           >
-            <option value="">{t('billing.selectCase', '-- Select Case --')}</option>
+            <option value="">{t('billing.allClientAgreements', '-- General / All Client Matters --')}</option>
             {cases.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.caseNumber} - {c.matterType || c.court} {c.fileSerial ? `(${c.fileSerial})` : ''}
               </option>
             ))}
           </select>
-          {cases.length === 0 && !loadingCases && (
-            <p className="text-xs text-amber-600 mt-1">{t('billing.noCasesFound', 'No active visible cases found for this client.')}</p>
-          )}
         </div>
 
         {/* Agreement Selector */}
@@ -241,13 +292,31 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <option value="">{t('billing.selectAgreement', '-- Select Fee Agreement --')}</option>
             {agreements.map((a) => (
               <option key={a.id} value={a.id}>
+                {a.caseNumber ? `${a.caseNumber} · ` : `${t('billing.clientLevel', 'Client-level')} · `}
                 {t(`billing.feeTypes.${a.feeType}`, a.feeType)} - {formatBdt(a.agreedAmountPaisa, { lang: i18n.language })} ({a.agreementDate})
               </option>
             ))}
           </select>
-          {selectedCaseId && agreements.length === 0 && !loadingAgreements && (
+          {selectedAgreement && (
+            <div className="mt-1.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 flex flex-wrap gap-4">
+              <span>{t('billing.totalAgreed', 'Agreed')}: <strong>{formatBdt(selectedAgreement.agreedAmountPaisa, { lang: i18n.language })}</strong></span>
+              <span>{t('billing.totalPaid', 'Paid')}: <strong className="text-emerald-700">{formatBdt(selectedAgreement.paidPaisa ?? 0, { lang: i18n.language })}</strong></span>
+              <span>
+                {(selectedAgreement.creditPaisa ?? 0) > 0 ? t('billing.credit', 'Credit') : t('billing.outstanding', 'Outstanding')}:{' '}
+                <strong className={(selectedAgreement.creditPaisa ?? 0) > 0 ? 'text-sky-700' : 'text-amber-700'}>
+                  {formatBdt(
+                    (selectedAgreement.creditPaisa ?? 0) > 0
+                      ? selectedAgreement.creditPaisa ?? 0
+                      : selectedAgreement.outstandingPaisa ?? Math.max(0, selectedAgreement.agreedAmountPaisa - (selectedAgreement.paidPaisa ?? 0)),
+                    { lang: i18n.language }
+                  )}
+                </strong>
+              </span>
+            </div>
+          )}
+          {selectedClientId && agreements.length === 0 && !loadingAgreements && (
             <p className="text-xs text-amber-600 mt-1">
-              {t('billing.noAgreementsForCase', 'No active fee agreement exists for this case. Create a fee agreement first to track payments.')}
+              {t('billing.noAgreementsForSelection', 'No active fee agreement exists for this client/case. Create a fee agreement first to track payments.')}
             </p>
           )}
         </div>
@@ -322,7 +391,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </div>
         </div>
 
-        {selectedCaseId && hearings.length > 0 && (
+        {effectiveCaseId && hearings.length > 0 && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               {t('billing.linkedHearing', 'Link to Hearing (Optional)')}

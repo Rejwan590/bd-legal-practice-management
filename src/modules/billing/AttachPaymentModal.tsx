@@ -32,7 +32,7 @@ export const AttachPaymentModal: React.FC<AttachPaymentModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const activeAgreements = agreements.filter((a) => a.status === 'active' && a.caseId);
+  const activeAgreements = agreements.filter((a) => a.status === 'active');
 
   useEffect(() => {
     if (isOpen) {
@@ -68,10 +68,13 @@ export const AttachPaymentModal: React.FC<AttachPaymentModalProps> = ({
     }
   };
 
-  const getCaseLabel = (caseId: string | null) => {
-    if (!caseId) return '';
-    const c = cases.find((item) => item.id === caseId);
-    return c ? `${c.caseNumber} - ${c.matterType || c.court}` : caseId;
+  const getCaseLabel = (agreement: FeeAgreement) => {
+    if (!agreement.caseId) return t('billing.clientLevel', 'Client-level');
+    if (agreement.caseNumber) {
+      return `${agreement.caseNumber}${agreement.caseTitle ? ` - ${agreement.caseTitle}` : ''}`;
+    }
+    const c = cases.find((item) => item.id === agreement.caseId);
+    return c ? `${c.caseNumber} - ${c.matterType || c.court}` : agreement.caseId;
   };
 
   return (
@@ -145,7 +148,7 @@ export const AttachPaymentModal: React.FC<AttachPaymentModalProps> = ({
             <option value="">{t('billing.selectAgreement', '-- Select Fee Agreement --')}</option>
             {activeAgreements.map((a) => (
               <option key={a.id} value={a.id}>
-                {getCaseLabel(a.caseId)} | {t(`billing.feeTypes.${a.feeType}`, a.feeType)}: {formatBdt(a.agreedAmountPaisa, { lang: i18n.language })}
+                {getCaseLabel(a)} | {t(`billing.feeTypes.${a.feeType}`, a.feeType)}: {formatBdt(a.agreedAmountPaisa, { lang: i18n.language })}
               </option>
             ))}
           </select>

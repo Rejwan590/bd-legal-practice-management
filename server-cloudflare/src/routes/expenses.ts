@@ -6,14 +6,15 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, desc, asc } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import { enrichExpenses } from '../utils/billing';
 
 export const expensesRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
 expensesRouter.use('*', authMiddleware);
 
-const catReadPerm = requireAnyPermission(['accounts.view', 'accounts.manage', 'expenses.record', 'billing.view']);
-const expReadPerm = requireAnyPermission(['accounts.view', 'billing.view', 'expenses.record']);
-const expWritePerm = requireAnyPermission(['expenses.record', 'accounts.manage', 'billing.edit']);
+const catReadPerm = requireAnyPermission(['accounts.view', 'accounts.manage', 'expenses.record', 'billing.view', 'billing.manage']);
+const expReadPerm = requireAnyPermission(['accounts.view', 'accounts.manage', 'billing.view', 'billing.manage', 'expenses.record']);
+const expWritePerm = requireAnyPermission(['expenses.record', 'accounts.manage', 'billing.manage', 'billing.edit']);
 
 const DEFAULT_EXPENSE_CATEGORIES = ['Court Fee', 'Photocopy & Printing', 'Clerk / Taidad', 'Travel & Conveyance', 'Miscellaneous'];
 
@@ -60,6 +61,8 @@ expensesRouter.get('/', expReadPerm, async (c) => {
   const caseId = c.req.query('caseId');
   const categoryId = c.req.query('categoryId');
   const status = c.req.query('status');
+  const reimbursable = c.req.query('reimbursable');
+  const search = (c.req.query('search') || '').trim().toLowerCase();
 
   const db = getDb(c.env.DB);
   const [rows, categories, visible] = await Promise.all([
@@ -76,21 +79,37 @@ expensesRouter.get('/', expReadPerm, async (c) => {
   ]);
 
   const catMap = new Map(categories.map((cat) => [cat.id, cat.name]));
-  const filtered = rows
-    .filter((e) => {
-      if (e.caseId && visible !== 'ALL' && !visible.includes(e.caseId)) return false;
-      if (clientId && e.clientId !== clientId) return false;
-      if (caseId && e.caseId !== caseId) return false;
-      if (categoryId && e.categoryId !== categoryId) return false;
-      if (status && e.status !== status) return false;
-      return true;
-    })
-    .map((e) => ({
-      ...e,
-      categoryName: catMap.get(e.categoryId) || undefined,
-    }));
+  const filtered = rows.filter((e) => {
+    if (e.caseId && visible !== 'ALL' && !visible.includes(e.caseId)) return false;
+    if (clientId && e.clientId !== clientId) return false;
+    if (caseId && e.caseId !== caseId) return false;
+    if (categoryId && e.categoryId !== categoryId) return false;
+    if (status && status !== 'all' && e.status !== status) return false;
+    if (reimbursable === 'true' && !e.reimbursable) return false;
+    if (reimbursable === 'false' && e.reimbursable) return false;
+    return true;
+  });
 
-  return c.json(filtered);
+  const enriched = await enrichExpenses(db, firm.id, filtered, catMap);
+  if (!search) return c.json(enriched);
+
+  return c.json(
+    enriched.filter((e) => {
+      const hay = [
+        e.description,
+        e.categoryName,
+        e.clientName,
+        e.clientNameBn,
+        e.caseNumber,
+        e.caseTitle,
+        e.expenseDate,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(search);
+    })
+  );
 });
 
 // GET /api/v1/expenses/:id
@@ -112,13 +131,8 @@ expensesRouter.get('/:id', expReadPerm, async (c) => {
     return c.json({ error: 'NotFound', message: 'Expense not found' }, 404);
   }
 
-  const catRows = await db
-    .select({ name: schema.expenseCategories.name })
-    .from(schema.expenseCategories)
-    .where(eq(schema.expenseCategories.id, expense.categoryId))
-    .limit(1);
-
-  return c.json({ ...expense, categoryName: catRows[0]?.name });
+  const [enriched] = await enrichExpenses(db, firm.id, [expense]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/expenses
@@ -141,8 +155,54 @@ expensesRouter.post('/', enforceSubscriptionReadOnly, expWritePerm, async (c) =>
   if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
 
   const db = getDb(c.env.DB);
-  if (parse.data.caseId && !(await canUserSeeCaseId(db, firm, user, parse.data.caseId))) {
-    return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+  const catRows = await db
+    .select({ id: schema.expenseCategories.id })
+    .from(schema.expenseCategories)
+    .where(
+      and(
+        eq(schema.expenseCategories.id, parse.data.categoryId),
+        eq(schema.expenseCategories.firmId, firm.id),
+        isNull(schema.expenseCategories.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!catRows[0]) {
+    return c.json({ error: 'NotFound', message: 'Expense category not found' }, 404);
+  }
+
+  let resolvedClientId = parse.data.clientId || null;
+  const resolvedCaseId = parse.data.caseId || null;
+
+  if (resolvedCaseId) {
+    if (!(await canUserSeeCaseId(db, firm, user, resolvedCaseId))) {
+      return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+    }
+    const caseRows = await db
+      .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+      .from(schema.cases)
+      .where(and(eq(schema.cases.id, resolvedCaseId), eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt)))
+      .limit(1);
+    const caseRec = caseRows[0];
+    if (!caseRec) {
+      return c.json({ error: 'NotFound', message: 'Case not found' }, 404);
+    }
+    if (resolvedClientId && caseRec.clientId !== resolvedClientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the specified client' }, 400);
+    }
+    if (!resolvedClientId) resolvedClientId = caseRec.clientId;
+  }
+
+  if (!resolvedClientId) {
+    return c.json({ error: 'ValidationError', message: 'Client association is required for an expense record' }, 400);
+  }
+
+  const clientRows = await db
+    .select({ id: schema.clients.id })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, resolvedClientId), eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt)))
+    .limit(1);
+  if (!clientRows[0]) {
+    return c.json({ error: 'NotFound', message: 'Client not found' }, 404);
   }
 
   const id = crypto.randomUUID();
@@ -150,8 +210,8 @@ expensesRouter.post('/', enforceSubscriptionReadOnly, expWritePerm, async (c) =>
   const created = {
     id,
     firmId: firm.id,
-    clientId: parse.data.clientId || null,
-    caseId: parse.data.caseId || null,
+    clientId: resolvedClientId,
+    caseId: resolvedCaseId,
     categoryId: parse.data.categoryId,
     expenseDate: parse.data.expenseDate,
     amountPaisa: parse.data.amountPaisa,
@@ -184,7 +244,138 @@ expensesRouter.post('/', enforceSubscriptionReadOnly, expWritePerm, async (c) =>
     ),
   ] as any);
 
-  return c.json(created, 201);
+  const [enriched] = await enrichExpenses(db, firm.id, [created]);
+  return c.json(enriched, 201);
+});
+
+// PATCH /api/v1/expenses/:id
+expensesRouter.patch('/:id', enforceSubscriptionReadOnly, expWritePerm, async (c) => {
+  const firm = c.get('firm') as schema.Firm;
+  const user = c.get('user') as schema.User;
+  const id = c.req.param('id') as string;
+  const body = await c.req.json().catch(() => ({}));
+
+  const updateSchema = z.object({
+    clientId: z.string().min(1).optional(),
+    caseId: z.string().nullable().optional(),
+    categoryId: z.string().min(1).optional(),
+    expenseDate: z.string().min(1).optional(),
+    amountPaisa: z.number().int().min(1).optional(),
+    description: z.string().min(1).optional(),
+    reimbursable: z.boolean().optional(),
+  });
+
+  const parse = updateSchema.safeParse(body);
+  if (!parse.success) return c.json({ error: 'ValidationError', details: parse.error.issues }, 400);
+
+  const db = getDb(c.env.DB);
+  const rows = await db
+    .select()
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.id, id), eq(schema.expenses.firmId, firm.id), isNull(schema.expenses.deletedAt)))
+    .limit(1);
+
+  const existing = rows[0];
+  if (!existing) return c.json({ error: 'NotFound', message: 'Expense not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Expense not found' }, 404);
+  }
+  if (existing.status !== 'posted') {
+    return c.json({ error: 'BadRequest', message: 'Only posted expenses can be edited' }, 400);
+  }
+
+  if (parse.data.categoryId) {
+    const catRows = await db
+      .select({ id: schema.expenseCategories.id })
+      .from(schema.expenseCategories)
+      .where(
+        and(
+          eq(schema.expenseCategories.id, parse.data.categoryId),
+          eq(schema.expenseCategories.firmId, firm.id),
+          isNull(schema.expenseCategories.deletedAt)
+        )
+      )
+      .limit(1);
+    if (!catRows[0]) return c.json({ error: 'NotFound', message: 'Expense category not found' }, 404);
+  }
+
+  let nextClientId = parse.data.clientId !== undefined ? parse.data.clientId : existing.clientId;
+  const nextCaseId = parse.data.caseId !== undefined ? parse.data.caseId : existing.caseId;
+
+  if (nextCaseId) {
+    if (!(await canUserSeeCaseId(db, firm, user, nextCaseId))) {
+      return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+    }
+    const caseRows = await db
+      .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+      .from(schema.cases)
+      .where(and(eq(schema.cases.id, nextCaseId), eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt)))
+      .limit(1);
+    const caseRec = caseRows[0];
+    if (!caseRec) return c.json({ error: 'NotFound', message: 'Case not found' }, 404);
+    if (parse.data.clientId !== undefined && caseRec.clientId !== parse.data.clientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the specified client' }, 400);
+    }
+    if (parse.data.caseId !== undefined && parse.data.clientId === undefined) {
+      nextClientId = caseRec.clientId;
+    } else if (nextClientId && caseRec.clientId !== nextClientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the specified client' }, 400);
+    }
+  }
+
+  if (!nextClientId) {
+    return c.json({ error: 'ValidationError', message: 'Client association is required for an expense record' }, 400);
+  }
+
+  if (parse.data.clientId !== undefined || nextClientId !== existing.clientId) {
+    const clientRows = await db
+      .select({ id: schema.clients.id })
+      .from(schema.clients)
+      .where(and(eq(schema.clients.id, nextClientId), eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt)))
+      .limit(1);
+    if (!clientRows[0]) return c.json({ error: 'NotFound', message: 'Client not found' }, 404);
+  }
+
+  const now = new Date().toISOString();
+  const updates = {
+    clientId: nextClientId,
+    caseId: nextCaseId ?? null,
+    categoryId: parse.data.categoryId ?? existing.categoryId,
+    expenseDate: parse.data.expenseDate ?? existing.expenseDate,
+    amountPaisa: parse.data.amountPaisa ?? existing.amountPaisa,
+    description: parse.data.description ?? existing.description,
+    reimbursable: parse.data.reimbursable !== undefined ? parse.data.reimbursable : existing.reimbursable,
+    updatedAt: now,
+    updatedBy: user.id,
+  };
+
+  await db.batch([
+    db.update(schema.expenses).set(updates).where(and(eq(schema.expenses.id, id), eq(schema.expenses.firmId, firm.id))),
+    db.insert(schema.auditLog).values(
+      buildAuditEntry({
+        firmId: firm.id,
+        userId: user.id,
+        userName: user.name,
+        entity: 'Expense',
+        entityId: id,
+        action: 'UPDATE',
+        oldValue: {
+          clientId: existing.clientId,
+          caseId: existing.caseId,
+          categoryId: existing.categoryId,
+          expenseDate: existing.expenseDate,
+          amountPaisa: existing.amountPaisa,
+          description: existing.description,
+          reimbursable: existing.reimbursable,
+        },
+        newValue: updates,
+        now,
+      })
+    ),
+  ] as any);
+
+  const [enriched] = await enrichExpenses(db, firm.id, [{ ...existing, ...updates }]);
+  return c.json(enriched);
 });
 
 // POST /api/v1/expenses/:id/void
@@ -206,6 +397,9 @@ expensesRouter.post('/:id/void', enforceSubscriptionReadOnly, expWritePerm, asyn
 
   const existing = rows[0];
   if (!existing) return c.json({ error: 'NotFound', message: 'Expense not found' }, 404);
+  if (existing.caseId && !(await canUserSeeCaseId(db, firm, user, existing.caseId))) {
+    return c.json({ error: 'NotFound', message: 'Expense not found' }, 404);
+  }
   if (existing.status === 'void') return c.json({ error: 'BadRequest', message: 'Expense is already voided' }, 400);
 
   const now = new Date().toISOString();
@@ -235,5 +429,6 @@ expensesRouter.post('/:id/void', enforceSubscriptionReadOnly, expWritePerm, asyn
     ),
   ] as any);
 
-  return c.json({ ...existing, ...updates });
+  const [enriched] = await enrichExpenses(db, firm.id, [{ ...existing, ...updates }]);
+  return c.json(enriched);
 });

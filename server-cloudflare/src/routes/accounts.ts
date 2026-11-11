@@ -4,15 +4,16 @@ import { Env, authMiddleware, enforceSubscriptionReadOnly, requireAnyPermission 
 import { getDb, ChamberDatabase } from '../db/client';
 import * as schema from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
-import { getVisibleCaseIds } from '../utils/visibility';
+import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import { formatCaseTitle } from '../utils/billing';
 
 export const accountsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
 accountsRouter.use('*', authMiddleware);
 
 const readPerm = requireAnyPermission(['accounts.view', 'billing.view']);
-const writePerm = requireAnyPermission(['accounts.manage', 'billing.edit']);
+const writePerm = requireAnyPermission(['accounts.manage', 'billing.manage', 'billing.edit']);
 
 // GET /api/v1/accounts/summary
 accountsRouter.get('/summary', readPerm, async (c) => {
@@ -115,11 +116,12 @@ accountsRouter.get('/case-balances', readPerm, async (c) => {
   const user = c.get('user') as schema.User;
   const db = getDb(c.env.DB);
 
-  const [casesList, clientsList, agreements, payments, visible] = await Promise.all([
+  const [casesList, clientsList, agreements, payments, expensesRows, visible] = await Promise.all([
     db.select().from(schema.cases).where(and(eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt))),
     db.select().from(schema.clients).where(and(eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt))),
     db.select().from(schema.feeAgreements).where(and(eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt))),
     db.select().from(schema.feePayments).where(and(eq(schema.feePayments.firmId, firm.id), isNull(schema.feePayments.deletedAt))),
+    db.select().from(schema.expenses).where(and(eq(schema.expenses.firmId, firm.id), isNull(schema.expenses.deletedAt))),
     getVisibleCaseIds(db, firm, user),
   ]);
 
@@ -130,7 +132,10 @@ accountsRouter.get('/case-balances', readPerm, async (c) => {
     .map((cs) => {
       const agreed = agreements.filter((a) => a.caseId === cs.id && a.status !== 'void').reduce((s, a) => s + a.agreedAmountPaisa, 0);
       const paid = payments.filter((p) => p.caseId === cs.id && p.status === 'posted').reduce((s, p) => s + p.amountPaisa, 0);
-      if (agreed === 0 && paid === 0) return null;
+      const totalExpensesPaisa = expensesRows
+        .filter((e) => e.caseId === cs.id && e.status === 'posted')
+        .reduce((s, e) => s + e.amountPaisa, 0);
+      if (agreed === 0 && paid === 0 && totalExpensesPaisa === 0) return null;
       const cl = clientMap.get(cs.clientId);
       const balancePaisa = agreed - paid;
       const isCredit = balancePaisa < 0;
@@ -141,10 +146,11 @@ accountsRouter.get('/case-balances', readPerm, async (c) => {
         clientPhone: cl?.phone || '',
         caseId: cs.id,
         caseNumber: cs.caseNumber,
-        caseTitle: cs.matterType,
+        caseTitle: formatCaseTitle(cs),
         fileSerial: cs.fileSerial,
         totalAgreedPaisa: agreed,
         totalPaidPaisa: paid,
+        totalExpensesPaisa,
         balancePaisa,
         isCredit,
         creditPaisa: isCredit ? Math.abs(balancePaisa) : 0,
@@ -230,6 +236,7 @@ accountsRouter.get('/payments', readPerm, async (c) => {
 });
 
 accountsRouter.post('/payments', enforceSubscriptionReadOnly, writePerm, async (c) => {
+  const firm = c.get('firm') as schema.Firm;
   const firmId = c.get('firmId') as string;
   const user = c.get('user') as schema.User;
   const body = await c.req.json().catch(() => ({}));
@@ -249,6 +256,11 @@ accountsRouter.post('/payments', enforceSubscriptionReadOnly, writePerm, async (
     .safeParse(body);
   if (!parse.success) return c.json({ error: 'Validation failed', errors: parse.error.issues }, 400);
 
+  const amountPaisa = parse.data.amountPaisa ?? (parse.data.amountBdt || 0) * 100;
+  if (amountPaisa < 1) {
+    return c.json({ error: 'Validation failed', message: 'amountPaisa must be greater than 0' }, 400);
+  }
+
   const idempotencyKey = parse.data.idempotencyKey || crypto.randomUUID();
   const db = getDb(c.env.DB);
   const existing = await db
@@ -258,11 +270,31 @@ accountsRouter.post('/payments', enforceSubscriptionReadOnly, writePerm, async (
     .limit(1);
   if (existing[0]) return c.json(existing[0]);
 
+  const clientRows = await db
+    .select({ id: schema.clients.id })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, parse.data.clientId), eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)))
+    .limit(1);
+  if (!clientRows[0]) return c.json({ error: 'NotFound', message: 'Client not found' }, 404);
+
+  if (parse.data.caseId) {
+    if (!(await canUserSeeCaseId(db, firm, user, parse.data.caseId))) {
+      return c.json({ error: 'NotFound', message: 'Case not found or access denied' }, 404);
+    }
+    const caseRows = await db
+      .select({ id: schema.cases.id, clientId: schema.cases.clientId })
+      .from(schema.cases)
+      .where(and(eq(schema.cases.id, parse.data.caseId), eq(schema.cases.firmId, firmId), isNull(schema.cases.deletedAt)))
+      .limit(1);
+    if (!caseRows[0] || caseRows[0].clientId !== parse.data.clientId) {
+      return c.json({ error: 'BadRequest', message: 'Case does not belong to the specified client' }, 400);
+    }
+  }
+
   const chamberDb = new ChamberDatabase(db, c.env.DB);
   const receiptNumber = await chamberDb.getNextReceiptNumber(firmId);
   const paymentId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const amountPaisa = parse.data.amountPaisa ?? (parse.data.amountBdt || 0) * 100;
 
   const newPayment = {
     id: paymentId,

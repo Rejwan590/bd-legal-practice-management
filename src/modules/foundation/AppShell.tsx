@@ -148,7 +148,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       titleKey: 'app.sectionFinance',
       defaultTitle: 'Finance & Accounts',
       items: [
-        { id: 'billing' as ActiveTab, label: t('nav.billing', 'Billing'), icon: CreditCard, hide: !can('accounts.view') },
+        { id: 'billing' as ActiveTab, label: t('nav.billing', 'Billing'), icon: CreditCard, hide: !(can('accounts.view') || can('billing.view') || can('expenses.record')) },
       ],
     },
     {
