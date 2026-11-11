@@ -795,7 +795,7 @@
     "usageSummaryOwner": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices, renewal BDT {{renewalBdt}} {{unit}}",
     "usageSummaryStaff": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices",
     "contactSupportToAddMore": "To add more, contact support.",
-    "usageSummaryTrial": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices (Free Trial)"
+    "usageSummaryTrial": "{{usersCount}} of {{maxUsers}} users, {{devicesCount}} of {{maxDevices}} devices (Trial)"
   },
   "health": {
     "title": "System Diagnostic & Health Check",
@@ -982,10 +982,10 @@
     "simulateSuspended": "Simulate Suspended",
     "simulationUpdated": "Chamber subscription state updated to: {{status}}",
     "readOnlyMessage": "Chamber subscription is inactive or expired. Mutating operations are restricted.",
-    "statusTrial": "Free Trial",
-    "trialBanner": "Free trial: {{days}} days left",
-    "trialEndedTitle": "Free trial has ended",
-    "trialEndedDesc": "Your free trial has expired. Chamber is in read-only mode."
+    "statusTrial": "Trial",
+    "trialBanner": "Trial: {{days}} days left",
+    "trialEndedTitle": "Trial has ended",
+    "trialEndedDesc": "Your trial has expired. Chamber is in read-only mode."
   },
   "permissions": {
     "cases_view": "View Cases",

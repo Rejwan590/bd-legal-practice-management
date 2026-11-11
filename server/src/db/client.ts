@@ -549,6 +549,7 @@ class MemoryDatabase implements IDatabase {
       isTrial: firm.isTrial ?? false,
       trialStartedAt: firm.trialStartedAt ? new Date(firm.trialStartedAt) : null,
       trialDays: firm.trialDays ?? null,
+      trialPriceBdt: firm.trialPriceBdt ?? 0,
       devicePolicy: firm.devicePolicy ?? 'auto-approve',
       allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
       visibilityMode: firm.visibilityMode ?? 'team',

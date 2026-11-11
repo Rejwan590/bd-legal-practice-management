@@ -258,6 +258,7 @@ export const adminApi = {
       maxDevices?: number;
       startDate?: string;
       expiryDate?: string;
+      trialPriceBdt?: number;
     }
   ): Promise<{ message: string; firm: Firm }> {
     return adminFetch<{ message: string; firm: Firm }>(`/api/admin/firms/${id}/license`, {

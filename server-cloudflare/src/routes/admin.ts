@@ -130,9 +130,11 @@ async function buildFirmEnrichment(db: any, firm: schema.Firm, planMap?: Map<str
   if (plan) {
     pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
     if (firm.isTrial) {
+      const trialFee = firm.trialPriceBdt ?? 0;
       pricingBreakdown.isTrial = true;
       pricingBreakdown.note = 'after trial';
-      monthlyPriceBdt = 0;
+      pricingBreakdown.trialPriceBdt = trialFee;
+      monthlyPriceBdt = trialFee;
     } else {
       monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
     }
@@ -276,6 +278,7 @@ adminRouter.post('/firms', adminAuthMiddleware, async (c) => {
     devicePolicy: z.enum(['auto-approve', 'manual']).optional().default('auto-approve'),
     licenseType: z.enum(['trial', 'paid']).default('trial'),
     trialDays: z.number().int().min(1).max(365).default(14),
+    trialPriceBdt: z.number().int().min(0).max(10000000).optional().default(0),
     billingCycle: z.enum(['monthly', 'annual']).optional().default('monthly'),
     customBasePriceBdt: z.number().int().min(0).nullable().optional(),
     customAnnualPriceBdt: z.number().int().min(0).nullable().optional(),
@@ -350,6 +353,7 @@ adminRouter.post('/firms', adminAuthMiddleware, async (c) => {
     isTrial,
     trialStartedAt: isTrial ? nowIso : null,
     trialDays: isTrial ? data.trialDays : null,
+    trialPriceBdt: isTrial ? (data.trialPriceBdt ?? 0) : 0,
     visibilityMode: 'team' as const,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -397,11 +401,20 @@ adminRouter.post('/firms', adminAuthMiddleware, async (c) => {
     ),
   ] as any);
 
+  const ownerSummary = {
+    id: ownerId,
+    name: data.ownerName,
+    email: cleanOwnerEmail,
+    role: 'Owner',
+    mustChangePassword: !data.ownerPassword,
+  };
+
   return c.json(
     {
       message: 'Firm provisioned successfully',
       firm: firmData,
-      owner: { id: ownerId, name: data.ownerName, email: cleanOwnerEmail, role: 'Owner' },
+      owner: ownerSummary,
+      ownerUser: ownerSummary,
       temporaryPassword: rawPassword,
     },
     201
@@ -440,6 +453,7 @@ adminRouter.get('/firms/:id', adminAuthMiddleware, async (c) => {
     isTrial: firm.isTrial,
     trialStartedAt: firm.trialStartedAt,
     trialDays: firm.trialDays,
+    trialPriceBdt: firm.trialPriceBdt ?? 0,
     billingCycle: firm.billingCycle,
     customBasePriceBdt: firm.customBasePriceBdt,
     customAnnualPriceBdt: firm.customAnnualPriceBdt,
@@ -740,6 +754,7 @@ adminRouter.put('/firms/:id/license', adminAuthMiddleware, async (c) => {
     customExtraDevicePriceBdt: z.number().int().min(0).nullable().optional(),
     priceLockedUntil: z.string().nullable().optional(),
     pricingNote: z.string().nullable().optional(),
+    trialPriceBdt: z.number().int().min(0).max(10000000).optional(),
   });
 
   const parse = licenseSchema.safeParse(body);
@@ -782,6 +797,7 @@ adminRouter.put('/firms/:id/license', adminAuthMiddleware, async (c) => {
   if (data.customExtraDevicePriceBdt !== undefined) updates.customExtraDevicePriceBdt = data.customExtraDevicePriceBdt;
   if (data.priceLockedUntil !== undefined) updates.priceLockedUntil = data.priceLockedUntil;
   if (data.pricingNote !== undefined) updates.pricingNote = data.pricingNote;
+  if (data.trialPriceBdt !== undefined) updates.trialPriceBdt = data.trialPriceBdt;
   if (data.startDate) updates.licenseStartsAt = new Date(data.startDate).toISOString();
   if (data.expiryDate) {
     const newExpiry = new Date(data.expiryDate);
@@ -796,6 +812,7 @@ adminRouter.put('/firms/:id/license', adminAuthMiddleware, async (c) => {
     maxUsers: firm.maxUsers,
     maxDevices: firm.maxDevices,
     billingCycle: firm.billingCycle,
+    trialPriceBdt: firm.trialPriceBdt ?? 0,
     licenseExpiresAt: firm.licenseExpiresAt,
   };
 
@@ -894,10 +911,20 @@ adminRouter.post('/firms/:id/extend-trial', adminAuthMiddleware, async (c) => {
   const firmId = c.req.param('id') as string;
   const body = await c.req.json().catch(() => ({}));
 
-  const parse = z.object({ additionalDays: z.number().int().min(1).max(90) }).safeParse(body);
+  const parse = z
+    .object({
+      days: z.number().int().min(1).max(365).optional(),
+      additionalDays: z.number().int().min(1).max(365).optional(),
+    })
+    .refine((val) => val.days !== undefined || val.additionalDays !== undefined, {
+      message: 'days is required and must be an integer between 1 and 365',
+    })
+    .safeParse(body);
   if (!parse.success) {
     return c.json({ error: 'Validation failed', errors: parse.error.issues }, 400);
   }
+
+  const daysToAdd = (parse.data.days ?? parse.data.additionalDays)!;
 
   const db = getDb(c.env.DB);
   const firmRows = await db
@@ -912,15 +939,16 @@ adminRouter.post('/firms/:id/extend-trial', adminAuthMiddleware, async (c) => {
   }
 
   const baseTime = Math.max(Date.now(), new Date(firm.licenseExpiresAt).getTime());
-  const newExpiry = new Date(baseTime + parse.data.additionalDays * 24 * 60 * 60 * 1000).toISOString();
+  const newExpiry = new Date(baseTime + daysToAdd * 24 * 60 * 60 * 1000).toISOString();
   const nowIso = new Date().toISOString();
+  const newTrialDays = (firm.trialDays || 0) + daysToAdd;
 
   await db.batch([
     db
       .update(schema.firms)
       .set({
         licenseExpiresAt: newExpiry,
-        trialDays: (firm.trialDays || 14) + parse.data.additionalDays,
+        trialDays: newTrialDays,
         status: firm.status === 'expired' ? 'active' : firm.status,
         updatedAt: nowIso,
       })
@@ -928,25 +956,29 @@ adminRouter.post('/firms/:id/extend-trial', adminAuthMiddleware, async (c) => {
     db.insert(schema.licenseEvents).values({
       id: crypto.randomUUID(),
       firmId,
-      type: 'TRIAL_EXTENDED',
+      type: 'EXTEND_TRIAL',
       old: { licenseExpiresAt: firm.licenseExpiresAt },
-      new: { licenseExpiresAt: newExpiry, addedDays: parse.data.additionalDays },
+      new: { licenseExpiresAt: newExpiry, addedDays: daysToAdd },
       byAdmin: admin.id,
       at: nowIso,
     }),
     db.insert(schema.adminAudit).values(
       buildAdminAuditEntry({
         adminId: admin.id,
-        action: 'TRIAL_EXTENDED',
+        action: 'FIRM_EXTEND_TRIAL',
         targetFirmId: firmId,
         old: { licenseExpiresAt: firm.licenseExpiresAt },
-        new: { licenseExpiresAt: newExpiry },
+        new: { licenseExpiresAt: newExpiry, trialDays: newTrialDays },
         at: nowIso,
       })
     ),
   ] as any);
 
-  return c.json({ message: 'Trial extended successfully', firm: { ...firm, licenseExpiresAt: newExpiry }, newExpiry });
+  return c.json({
+    message: 'Trial extended successfully',
+    firm: { ...firm, licenseExpiresAt: newExpiry, trialDays: newTrialDays, status: firm.status === 'expired' ? 'active' : firm.status },
+    newExpiry,
+  });
 });
 
 adminRouter.post('/firms/:id/convert-to-paid', adminAuthMiddleware, async (c) => {
@@ -958,7 +990,8 @@ adminRouter.post('/firms/:id/convert-to-paid', adminAuthMiddleware, async (c) =>
     .object({
       planId: z.string().min(1),
       billingCycle: z.enum(['monthly', 'annual']).default('monthly'),
-      durationMonths: z.number().int().min(1).max(36).default(1),
+      durationMonths: z.number().int().min(1).max(36).optional(),
+      expiryDate: z.string().optional(),
     })
     .safeParse(body);
 
@@ -987,7 +1020,10 @@ adminRouter.post('/firms/:id/convert-to-paid', adminAuthMiddleware, async (c) =>
   }
 
   const now = new Date();
-  const newExpiry = new Date(now.getTime() + parse.data.durationMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const resolvedMonths = parse.data.durationMonths ?? (parse.data.billingCycle === 'annual' ? planRows[0].durationMonths || 12 : 1);
+  const newExpiry = parse.data.expiryDate
+    ? new Date(parse.data.expiryDate).toISOString()
+    : new Date(now.getTime() + resolvedMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
   const nowIso = now.toISOString();
 
   await db.batch([

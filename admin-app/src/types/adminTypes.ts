@@ -30,6 +30,7 @@ export interface Firm {
   isTrial?: boolean;
   trialStartedAt?: string | null;
   trialDays?: number | null;
+  trialPriceBdt?: number | null;
   pricingNote?: string | null;
   monthlyPriceBdt?: number;
   pricingBreakdown?: any;
@@ -71,6 +72,10 @@ export interface LicenseInfo {
   customExtraDevicePriceBdt?: number | null;
   priceLockedUntil?: string | null;
   pricingNote?: string | null;
+  isTrial?: boolean;
+  trialStartedAt?: string | null;
+  trialDays?: number | null;
+  trialPriceBdt?: number | null;
   licenseStartsAt: string | null;
   licenseExpiresAt: string;
   status: FirmStatus;
@@ -155,6 +160,7 @@ export interface CreateFirmPayload {
   maxDevices?: number;
   licenseType?: 'trial' | 'paid';
   trialDays?: number;
+  trialPriceBdt?: number;
 }
 
 export interface CreateFirmResponse {

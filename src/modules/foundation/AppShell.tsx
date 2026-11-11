@@ -614,7 +614,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Free Trial Active Banner (hidden for paid chambers) */}
+      {/* Trial Active Banner (hidden for paid chambers) */}
       {currentFirm?.isTrial && !subscription.isReadOnly && (
         <div className="bg-indigo-600 border-b border-indigo-700 text-white py-1.5 shadow-xs">
           <div className={`${SHELL_CONTAINER_CLASS} flex items-center justify-between text-xs font-medium`}>
@@ -624,7 +624,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               </span>
               <span>
                 {t('subscription.trialBanner', {
-                  defaultValue: `Free trial: ${trialDaysLeft} days left`,
+                  defaultValue: `Trial: ${trialDaysLeft} days left`,
                   days: i18n.language === 'bn' ? toBnDigits(trialDaysLeft) : trialDaysLeft,
                 })}
               </span>

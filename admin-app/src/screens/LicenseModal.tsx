@@ -65,6 +65,9 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     firm.priceLockedUntil ? firm.priceLockedUntil.split('T')[0] : ''
   );
   const [pricingNote, setPricingNote] = useState<string>(firm.pricingNote || '');
+  const [trialPriceBdtInput, setTrialPriceBdtInput] = useState<string>(
+    firm.trialPriceBdt !== null && firm.trialPriceBdt !== undefined ? String(firm.trialPriceBdt) : '0'
+  );
 
   // Trial management state
   const [activeTab, setActiveTab] = useState<'standard' | 'extend-trial' | 'convert-paid'>('standard');
@@ -251,6 +254,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     setLoading(true);
 
     try {
+      const parsedTrialPrice = trialPriceBdtInput.trim() === '' ? 0 : Math.max(0, parseInt(trialPriceBdtInput.trim(), 10) || 0);
       await adminApi.updateLicense(firm.id, {
         planId: selectedPlanId,
         billingCycle,
@@ -263,6 +267,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         maxUsers,
         maxDevices,
         expiryDate: expiryDate ? `${expiryDate}T23:59:59.000Z` : undefined,
+        ...(firm.isTrial ? { trialPriceBdt: parsedTrialPrice } : {}),
       });
       onSuccess();
       onClose();
@@ -329,7 +334,10 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-purple-300 font-semibold text-sm">
                 <Sparkles className="w-4 h-4 text-purple-400" />
-                <span>Active Free Trial — {firm.trialDays || 0} days granted</span>
+                <span>
+                  Active Trial — {firm.trialDays || 0} days granted • BDT{' '}
+                  {(firm.trialPriceBdt ?? 0).toLocaleString()}
+                </span>
               </div>
               <div className="text-xs text-purple-300 font-mono">
                 Expires: {formatLicenseDate(firm.licenseExpiresAt)}
@@ -635,6 +643,25 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                 </h4>
               </div>
 
+              {firm.isTrial && (
+                <div className="space-y-1 p-3 bg-purple-950/25 border border-purple-800/40 rounded-lg text-xs">
+                  <label className="text-purple-200 font-semibold block">
+                    Trial Fee (BDT)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={trialPriceBdtInput}
+                    onChange={(e) => setTrialPriceBdtInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-purple-700/60 rounded-lg text-slate-100 min-h-[44px]"
+                  />
+                  <p className="text-[11px] text-purple-300/90">
+                    Fee charged for this chamber's trial period in BDT (0 for complimentary).
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div className="space-y-1">
                   <label className="text-slate-300">
@@ -771,7 +798,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
 
               {firm.isTrial && (
                 <div className="text-[11px] text-amber-300/90 bg-amber-500/10 p-2 rounded border border-amber-500/20">
-                  Chamber is currently on a free trial (BDT 0 charged). The breakdown below reflects the price when converted to paid plan.
+                  Chamber is currently on a trial (BDT {(parseInt(trialPriceBdtInput || '0', 10) || 0).toLocaleString()} trial fee). The breakdown below reflects the price when converted to paid plan.
                 </div>
               )}
 

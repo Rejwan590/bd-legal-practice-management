@@ -52,6 +52,7 @@ export const firms = pgTable('firms', {
   isTrial: boolean('is_trial').default(false).notNull(),
   trialStartedAt: timestamp('trial_started_at', { withTimezone: true }),
   trialDays: integer('trial_days'),
+  trialPriceBdt: integer('trial_price_bdt').default(0).notNull(),
   devicePolicy: text('device_policy').$type<'auto-approve' | 'manual'>().default('auto-approve').notNull(),
   allowOwnerDeviceRemoval: boolean('allow_owner_device_removal').default(false).notNull(),
   visibilityMode: text('visibility_mode').$type<'open' | 'team'>().default('team').notNull(),

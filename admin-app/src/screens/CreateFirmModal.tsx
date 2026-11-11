@@ -37,6 +37,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
       return '';
     }
   });
+  const [trialPriceBdtInput, setTrialPriceBdtInput] = useState<string>('');
 
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,11 +67,16 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
     parsedTrialDays <= 365 &&
     String(parsedTrialDays) === trialDaysInput.trim();
 
+  const parsedTrialPrice = trialPriceBdtInput.trim() === '' ? 0 : parseInt(trialPriceBdtInput.trim(), 10);
+  const isValidTrialPrice =
+    trialPriceBdtInput.trim() === '' ||
+    (!isNaN(parsedTrialPrice) && parsedTrialPrice >= 0 && String(parsedTrialPrice) === trialPriceBdtInput.trim());
+
   const isFormValid =
     formData.name.trim() !== '' &&
     formData.ownerName.trim() !== '' &&
     formData.ownerEmail.trim() !== '' &&
-    (licenseType === 'paid' || isValidTrialDays);
+    (licenseType === 'paid' || (isValidTrialDays && isValidTrialPrice));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,11 +98,12 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
         ...formData,
         licenseType,
         trialDays: licenseType === 'trial' ? parsedTrialDays : undefined,
+        trialPriceBdt: licenseType === 'trial' ? parsedTrialPrice : undefined,
       };
 
       const res = await adminApi.createFirm(payload);
       setTempPassword(res.temporaryPassword);
-      setCreatedOwnerEmail(res.ownerUser.email);
+      setCreatedOwnerEmail(res.ownerUser?.email || (res as any).owner?.email || formData.ownerEmail);
       onSuccess();
     } catch (err: any) {
       setError(err?.message || 'Failed to create chamber firm.');
@@ -134,6 +141,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
     } catch {
       setTrialDaysInput('');
     }
+    setTrialPriceBdtInput('');
     onClose();
   };
 
@@ -196,7 +204,7 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
                     : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
                 }`}
               >
-                Free Trial
+                Trial
               </button>
               <button
                 type="button"
@@ -265,22 +273,39 @@ export const CreateFirmModal: React.FC<CreateFirmModalProps> = ({
 
           {/* Conditional Trial vs Paid fields */}
           {licenseType === 'trial' ? (
-            <div className="p-3.5 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-2">
-              <label className="text-xs font-semibold text-purple-200 block">
-                Trial Days * (1–365)
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={365}
-                required
-                value={trialDaysInput}
-                onChange={(e) => setTrialDaysInput(e.target.value)}
-                placeholder="Enter number of days"
-                className="w-full px-3 py-2 bg-slate-900 border border-purple-700/60 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-400 min-h-[44px]"
-              />
+            <div className="p-3.5 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-purple-200 block">
+                    Trial Days * (1–365)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    required
+                    value={trialDaysInput}
+                    onChange={(e) => setTrialDaysInput(e.target.value)}
+                    placeholder="Enter number of days"
+                    className="w-full px-3 py-2 bg-slate-900 border border-purple-700/60 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-400 min-h-[44px]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-purple-200 block">
+                    Trial Fee (BDT)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={trialPriceBdtInput}
+                    onChange={(e) => setTrialPriceBdtInput(e.target.value)}
+                    placeholder="0 (optional)"
+                    className="w-full px-3 py-2 bg-slate-900 border border-purple-700/60 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-400 min-h-[44px]"
+                  />
+                </div>
+              </div>
               <p className="text-[11px] text-purple-300">
-                Trial end timestamp will be set to end of day in Asia/Dhaka. No charges apply during trial.
+                Trial end timestamp will be set to end of day in Asia/Dhaka. Leave trial fee at 0 for complimentary, or set a custom BDT fee.
               </p>
             </div>
           ) : (

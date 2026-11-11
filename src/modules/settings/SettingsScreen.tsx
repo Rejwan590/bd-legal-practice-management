@@ -690,7 +690,7 @@ export const SettingsScreen: React.FC = () => {
                     }`}
                   >
                     {firm?.isTrial
-                      ? t('subscription.statusTrial', { defaultValue: 'Free Trial' })
+                      ? t('subscription.statusTrial', { defaultValue: 'Trial' })
                       : subscription.isReadOnly
                       ? t('subscription.statusExpired')
                       : subscription.inGracePeriod

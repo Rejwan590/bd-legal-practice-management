@@ -33,6 +33,7 @@ const createFirmSchema = z.object({
   name: z.string().trim().min(2, 'Firm name must be at least 2 characters').max(255),
   licenseType: z.enum(['trial', 'paid']).default('paid'),
   trialDays: z.number().int({ message: 'trialDays must be an integer' }).min(1, 'trialDays must be between 1 and 365').max(365, 'trialDays must be between 1 and 365').optional(),
+  trialPriceBdt: z.number().int({ message: 'trialPriceBdt must be an integer' }).min(0, 'trialPriceBdt must be non-negative').max(10000000).optional().default(0),
   planId: z.string().optional(),
   months: z.number().int().min(1).max(120).optional().default(12),
   maxUsers: z.number().int().min(1).max(100).optional().default(10),
@@ -95,6 +96,7 @@ const updateLicenseSchema = z.object({
   customExtraDevicePriceBdt: z.number().int().min(0).nullable().optional(),
   priceLockedUntil: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).nullable().optional(),
   pricingNote: z.string().max(500).nullable().optional(),
+  trialPriceBdt: z.number().int().min(0).max(10000000).optional(),
   startDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   expiryDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
 });
@@ -191,6 +193,7 @@ adminFirmsRouter.post('/', async (req: AuthenticatedAdminRequest, res: Response)
       isTrial,
       trialStartedAt: isTrial ? now : null,
       trialDays: isTrial ? data.trialDays! : null,
+      trialPriceBdt: isTrial ? (data.trialPriceBdt ?? 0) : 0,
       licenseStartsAt: startsAt,
       licenseExpiresAt: expiresAt,
       status: 'active',
@@ -296,9 +299,11 @@ adminFirmsRouter.get('/', async (req: AuthenticatedAdminRequest, res: Response) 
       if (plan) {
         pricingBreakdown = calculateMonthlyPriceBdt(plan, f);
         if (f.isTrial) {
+          const trialFee = f.trialPriceBdt ?? 0;
           pricingBreakdown.isTrial = true;
           pricingBreakdown.note = 'after trial';
-          monthlyPriceBdt = 0;
+          pricingBreakdown.trialPriceBdt = trialFee;
+          monthlyPriceBdt = trialFee;
         } else {
           monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
         }
@@ -344,6 +349,7 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
     isTrial: firm.isTrial,
     trialStartedAt: firm.trialStartedAt,
     trialDays: firm.trialDays,
+    trialPriceBdt: firm.trialPriceBdt ?? 0,
     billingCycle: firm.billingCycle,
     customBasePriceBdt: firm.customBasePriceBdt,
     customAnnualPriceBdt: firm.customAnnualPriceBdt,
@@ -362,9 +368,11 @@ adminFirmsRouter.get('/:id', async (req: AuthenticatedAdminRequest, res: Respons
   if (plan) {
     pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
     if (firm.isTrial) {
+      const trialFee = firm.trialPriceBdt ?? 0;
       pricingBreakdown.isTrial = true;
       pricingBreakdown.note = 'after trial';
-      monthlyPriceBdt = 0;
+      pricingBreakdown.trialPriceBdt = trialFee;
+      monthlyPriceBdt = trialFee;
     } else {
       monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
     }
@@ -652,6 +660,7 @@ adminFirmsRouter.put('/:id/license', async (req: AuthenticatedAdminRequest, res:
     customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
     priceLockedUntil: firm.priceLockedUntil,
     pricingNote: firm.pricingNote,
+    trialPriceBdt: firm.trialPriceBdt ?? 0,
     licenseStartsAt: firm.licenseStartsAt,
     licenseExpiresAt: firm.licenseExpiresAt,
   };
@@ -665,6 +674,7 @@ adminFirmsRouter.put('/:id/license', async (req: AuthenticatedAdminRequest, res:
   if (data.customExtraDevicePriceBdt !== undefined) updates.customExtraDevicePriceBdt = data.customExtraDevicePriceBdt;
   if (data.priceLockedUntil !== undefined) updates.priceLockedUntil = data.priceLockedUntil ? new Date(data.priceLockedUntil) : null;
   if (data.pricingNote !== undefined) updates.pricingNote = data.pricingNote;
+  if (data.trialPriceBdt !== undefined) updates.trialPriceBdt = data.trialPriceBdt;
   if (data.maxUsers) updates.maxUsers = data.maxUsers;
   if (data.maxDevices) updates.maxDevices = data.maxDevices;
   if (data.startDate) updates.licenseStartsAt = new Date(data.startDate);

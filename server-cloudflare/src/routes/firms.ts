@@ -14,10 +14,16 @@ firmsRouter.use('*', authMiddleware);
 // GET /api/v1/firms/current
 firmsRouter.get('/current', (c) => {
   const firm = c.get('firm') as schema.Firm;
-  return c.json({
+  const sanitizedFirm: Record<string, any> = {
     ...firm,
     subscription: evaluateServerSubscription(firm),
-  });
+  };
+  delete sanitizedFirm.pricingNote;
+  delete sanitizedFirm.customBasePriceBdt;
+  delete sanitizedFirm.customAnnualPriceBdt;
+  delete sanitizedFirm.customExtraUserPriceBdt;
+  delete sanitizedFirm.customExtraDevicePriceBdt;
+  return c.json(sanitizedFirm);
 });
 
 // PATCH /api/v1/firms/current

@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Custom Paid Trial Pricing (`trialPriceBdt`), Trial UI Labeling & Cloudflare `ownerUser` Contract Fix**:
+  - **1. Database Schemas & Migrations (`server/`, `server-cloudflare/`, Remote D1 & Supabase)**:
+    - Added `trialPriceBdt` (`trial_price_bdt integer DEFAULT 0 NOT NULL`) to both Postgres (`server/src/db/schema.ts`, `server/drizzle/0014_trial_price.sql`) and D1 SQLite (`server-cloudflare/src/db/schema.ts`, `server-cloudflare/migrations/0001_trial_price.sql`), plus in-memory DB adapter (`server/src/db/client.ts`) and seed (`server/src/db/seed.ts`).
+    - Updated `server-cloudflare/tests/d1Mock.ts` to apply all sorted `migrations/*.sql` files sequentially.
+    - Applied `add_trial_price_bdt` to remote Supabase (`rmuontqsoxwnzevtnvkc`) via Supabase MCP and `0001_trial_price.sql` to remote Cloudflare D1 (`bdlegal-d1-prod`) via `wrangler d1 migrations apply --remote`.
+  - **2. Backend Routes & Express/Cloudflare Contract Parity**:
+    - Updated `server/src/routes/adminFirms.ts` and `server-cloudflare/src/routes/admin.ts` so `POST /api/admin/firms` accepts optional `trialPriceBdt` (integer >= 0, default 0), `PUT /api/admin/firms/:id/license` allows editing `trialPriceBdt`, and `GET /api/admin/firms` + `GET /api/admin/firms/:id` return `trialPriceBdt` and `monthlyPriceBdt = firm.trialPriceBdt ?? 0` during trials instead of hardcoded `0`.
+    - Fixed Cloudflare `POST /api/admin/firms` to return both `owner` and `ownerUser` (including `mustChangePassword`), aligned `POST /api/admin/firms/:id/extend-trial` to accept `{ days }` (and `{ additionalDays }`) up to 365 days, aligned `POST /api/admin/firms/:id/convert-to-paid` with `expiryDate`, and added internal pricing field stripping to `server-cloudflare/src/routes/firms.ts` (`GET /current`).
+  - **3. Admin & Chamber Bilingual UI Updates**:
+    - Replaced `"Free Trial"` / `"ফ্রি ট্রায়াল"` labels with `"Trial"` / `"ট্রায়াল"` across `admin-app/src/screens/CreateFirmModal.tsx`, `LicenseModal.tsx`, `src/locales/en.json`, `src/locales/bn.json`, `src/modules/foundation/AppShell.tsx`, and `src/modules/settings/SettingsScreen.tsx`.
+    - Added optional `Trial Fee (BDT)` input (`min=0`, default `0`) to `CreateFirmModal.tsx` and `LicenseModal.tsx` (plus updated `adminTypes.ts` and `adminApi.ts`), and updated `FirmListScreen.tsx` and `LicenseModal.tsx` to display `BDT <trialPriceBdt> (Trial)` dynamically instead of hardcoded `BDT 0`.
+  - **4. Automated Verification & Live Redeploy**:
+    - Expanded `server/tests/customTrialStage2.test.ts` (67 passed, 0 failed) and `server-cloudflare/tests/cloudflareBackend.test.ts` (20 passed, 0 failed).
+    - Verified `npm run lint`, `npm run build --prefix server-cloudflare`, `npm test --prefix server-cloudflare`, `npm test --prefix server` (all 18 suites, 0 failures), and `npm run build:pages` all pass cleanly.
+    - Redeployed Cloudflare Worker `bdlegal-api` (`b3569089-86f4-4471-88d3-6b37053f9a47`) and Cloudflare Pages `bdlegal-app` (`https://ecb61eed.bdlegal-app.pages.dev` / `https://bdlegal-app.pages.dev`).
 - [x] **Full Cloudflare Pages, Cloudflare Worker, Supabase Postgres + Storage & GitHub `origin/cloudflare` Live Deployment**:
   - **1. Supabase Postgres Schema & Security Hardening (`rmuontqsoxwnzevtnvkc`, `ap-south-1`)**:
     - Applied all 14 versioned PostgreSQL Drizzle migrations (`0000_shallow_kitty_pryde` through `0013_custom_trial_period`) via Supabase MCP; all 31 tables verified created (`public` schema) alongside existing private Supabase Storage buckets (`bdlegal-photos`, `bdlegal-backups`), while retaining Cloudflare D1 (`bdlegal-d1-prod`) + synthetic chamber data (`Dhaka Synthetic Law Chambers`) for the live Cloudflare Worker.

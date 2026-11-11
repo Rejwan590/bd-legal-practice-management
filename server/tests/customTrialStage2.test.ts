@@ -271,6 +271,42 @@ async function runTests() {
       'Pricing breakdown is marked "after trial"'
     );
 
+    // Custom paid trial fee (BDT) support
+    const paidTrialRes = await makeRequest(server, '/api/admin/firms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: {
+        name: 'Paid Trial Chamber',
+        licenseType: 'trial',
+        trialDays: 14,
+        trialPriceBdt: 500,
+        planId: 'chamber',
+        ownerName: 'Advocate Paid Trial',
+        ownerEmail: 'paid.trial@firm.bd',
+      },
+    });
+    check(paidTrialRes.status === 201, 'POST paid trial firm with trialPriceBdt=500 succeeds');
+    check(paidTrialRes.body.firm?.trialPriceBdt === 500, 'Created trial firm stores trialPriceBdt=500');
+
+    const paidTrialGet = await makeRequest(server, `/api/admin/firms/${paidTrialRes.body.firm.id}`, {
+      cookie: adminCookie,
+    });
+    check(paidTrialGet.body.monthlyPriceBdt === 500, 'Admin GET paid trial firm returns monthlyPriceBdt=500');
+
+    const updateTrialPriceRes = await makeRequest(
+      server,
+      `/api/admin/firms/${paidTrialRes.body.firm.id}/license`,
+      {
+        method: 'PUT',
+        cookie: adminCookie,
+        body: { trialPriceBdt: 750 },
+      }
+    );
+    check(
+      updateTrialPriceRes.status === 200 && updateTrialPriceRes.body.firm?.trialPriceBdt === 750,
+      'PUT /license updates trialPriceBdt to 750'
+    );
+
     // Chamber owner route never receives price during trial
     const ownerUser = await db.getUserByEmail('trial.owner@firm.bd');
     assert(ownerUser, 'Owner user must exist');

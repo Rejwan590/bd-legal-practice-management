@@ -240,7 +240,8 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({
                           {firm.isTrial ? (
                             <div>
                               <div className="font-mono text-xs font-semibold text-purple-300">
-                                BDT 0 <span className="text-[10px] text-purple-400 font-normal">(Trial)</span>
+                                BDT {(firm.trialPriceBdt ?? firm.monthlyPriceBdt ?? 0).toLocaleString()}{' '}
+                                <span className="text-[10px] text-purple-400 font-normal">(Trial)</span>
                               </div>
                               {firm.pricingBreakdown && (
                                 <div className="text-[10px] text-amber-400 font-mono mt-0.5">
@@ -345,7 +346,7 @@ export const FirmListScreen: React.FC<FirmListScreenProps> = ({
                     <span className="text-slate-500 text-[11px]">Monthly Price</span>
                     <span className="font-mono font-semibold text-indigo-400">
                       {firm.isTrial
-                        ? 'BDT 0 (Trial)'
+                        ? `BDT ${(firm.trialPriceBdt ?? firm.monthlyPriceBdt ?? 0).toLocaleString()} (Trial)`
                         : firm.monthlyPriceBdt != null
                         ? `BDT ${firm.monthlyPriceBdt.toLocaleString()}/mo`
                         : '—'}

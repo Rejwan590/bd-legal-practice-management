@@ -97,7 +97,9 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     expect(data.firm).toBeDefined();
     expect(data.firm.name).toBe('Chamber Alpha & Associates');
     expect(data.firm.isTrial).toBe(true);
+    expect(data.firm.trialPriceBdt).toBe(0);
     expect(data.owner.email).toBe(ownerEmail);
+    expect(data.ownerUser.email).toBe(ownerEmail);
     expect(data.temporaryPassword).toBeDefined();
 
     firmAId = data.firm.id;
@@ -1126,5 +1128,61 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
       env
     );
     expect(evilRes.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('20. Custom paid trial fee (trialPriceBdt) and { days } extend-trial parity on Cloudflare D1', async () => {
+    const createRes = await app.request(
+      '/api/admin/firms',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          name: 'Paid Trial Cloudflare Chamber',
+          ownerName: 'Advocate Paid CF',
+          ownerEmail: 'paid-trial-cf@chamber.bd',
+          planId: 'chamber',
+          licenseType: 'trial',
+          trialDays: 14,
+          trialPriceBdt: 500,
+        }),
+      },
+      env
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as any;
+    expect(created.firm.trialPriceBdt).toBe(500);
+    expect(created.ownerUser.email).toBe('paid-trial-cf@chamber.bd');
+
+    const getRes = await app.request(`/api/admin/firms/${created.firm.id}`, { headers: { Cookie: adminCookie } }, env);
+    expect(getRes.status).toBe(200);
+    const detail = (await getRes.json()) as any;
+    expect(detail.monthlyPriceBdt).toBe(500);
+    expect(detail.license.trialPriceBdt).toBe(500);
+
+    const updateRes = await app.request(
+      `/api/admin/firms/${created.firm.id}/license`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({ trialPriceBdt: 900 }),
+      },
+      env
+    );
+    expect(updateRes.status).toBe(200);
+    const updated = (await updateRes.json()) as any;
+    expect(updated.firm.trialPriceBdt).toBe(900);
+
+    const extendRes = await app.request(
+      `/api/admin/firms/${created.firm.id}/extend-trial`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({ days: 7 }),
+      },
+      env
+    );
+    expect(extendRes.status).toBe(200);
+    const extended = (await extendRes.json()) as any;
+    expect(extended.firm.trialDays).toBe(21);
   });
 });

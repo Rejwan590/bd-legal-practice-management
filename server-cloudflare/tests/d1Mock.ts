@@ -5,18 +5,24 @@ import path from 'node:path';
 export function createInMemoryD1(): D1Database {
   const sqlite = new DatabaseSync(':memory:');
 
-  // Load and apply initial D1 migration
-  let migrationPath = path.resolve('server-cloudflare/migrations/0000_complete_magneto.sql');
-  if (!fs.existsSync(migrationPath)) {
-    migrationPath = path.resolve('migrations/0000_complete_magneto.sql');
+  // Load and apply all D1 migrations in sorted order
+  let migrationsDir = path.resolve('server-cloudflare/migrations');
+  if (!fs.existsSync(migrationsDir)) {
+    migrationsDir = path.resolve('migrations');
   }
-  if (fs.existsSync(migrationPath)) {
-    const ddl = fs.readFileSync(migrationPath, 'utf8');
-    const statements = ddl.split('--> statement-breakpoint');
-    for (const stmt of statements) {
-      const trimmed = stmt.trim();
-      if (trimmed) {
-        sqlite.exec(trimmed);
+  if (fs.existsSync(migrationsDir)) {
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
+    for (const file of migrationFiles) {
+      const ddl = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      const statements = ddl.split('--> statement-breakpoint');
+      for (const stmt of statements) {
+        const trimmed = stmt.trim();
+        if (trimmed) {
+          sqlite.exec(trimmed);
+        }
       }
     }
   }

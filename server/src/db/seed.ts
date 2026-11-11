@@ -127,6 +127,7 @@ export const SEED_FIRMS = [
     isTrial: false,
     trialStartedAt: null,
     trialDays: null,
+    trialPriceBdt: 0,
     devicePolicy: 'auto-approve' as const,
     allowOwnerDeviceRemoval: false,
     visibilityMode: 'open' as const,
