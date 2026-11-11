@@ -3,6 +3,18 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Upgrade Wrangler to v4 (`4.160.1`) in `server-cloudflare` (`cloudflare` branch)**:
+  - **Root Cause**: Upgrading `wrangler` from `^3.114.0` to `wrangler@4` (`4.160.1`) initially failed with `ERESOLVE` because `wrangler@4.160.1` expects `peerOptional @cloudflare/workers-types@^5.20261110.1` and `@cloudflare/vitest-pool-workers@0.7.8` pinned `wrangler@3.114.1`.
+  - **Fixes Applied**:
+    - Updated `server-cloudflare/package.json` (`server-cloudflare/package-lock.json`) devDependencies together to compatible versions: `wrangler@^4.160.1`, `@cloudflare/workers-types@^5.20261110.1`, `@cloudflare/vitest-pool-workers@^0.23.0`, and `vitest@^4.1.12`.
+  - **Verification**:
+    - `npx --prefix server-cloudflare wrangler --version` -> `4.160.1`.
+    - `npm test --prefix server-cloudflare` -> `21 passed (21)` (`tests/cloudflareBackend.test.ts`).
+    - `npm run lint` -> passed (exit 0).
+    - `npx --prefix server-cloudflare wrangler deploy --dry-run -c server-cloudflare/wrangler.toml` -> passed (`695.02 KiB / gzip: 121.57 KiB`).
+    - `npm run build --prefix server-cloudflare` (`tsc --noEmit`): 0 errors in `src/**/*`; 4 type errors in `tests/d1Mock.ts` (`node:sqlite`, `node:fs`, `node:path`) because `tsconfig.json` sets `"types": ["@cloudflare/workers-types"]`.
+    - `npx --prefix server-cloudflare wrangler whoami` -> unauthenticated (`You are not authenticated. Please run \`wrangler login\`.`); live redeploy awaiting user authentication.
+
 - [x] **Fix `RangeError: Invalid time value` in `AppointmentFormModal` & Appointments Screen/Repository Bugs**:
   - **Root Cause**:
     - In `src/modules/appointments/AppointmentFormModal.tsx`, `isRescheduling` evaluated `new Date(startsAt).toISOString()` and `new Date(endsAt).toISOString()` unconditionally during render. Because `AppointmentsScreen` keeps `<AppointmentFormModal>` mounted with `startsAt` / `endsAt` initialized to `''`, clicking Edit (or clearing a `datetime-local` input) ran a render pass with `initialData` set and `startsAt === ''` before `useEffect` ran, throwing `RangeError: Invalid time value` caught by `ErrorBoundary`.
@@ -17,6 +29,7 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - `tests/browserConsoleErrors.test.ts`: Added regression assertions for `toSafeIsoString` and appointment repository `range` partitioning.
   - **Verification**:
     - Verified `npm run lint`, `npm run build`, `npm run test:consoleErrors`, `npm run test:health` (87/87 passed), and `npm test --prefix server` (all 18 suites passed) all pass cleanly.
+    - Built unified Pages bundle (`npm run build:pages`) and deployed Cloudflare Pages `bdlegal-app` (`--branch=cloudflare`) to `https://e6b77c91.bdlegal-app.pages.dev` (`https://bdlegal-app.pages.dev`, 47/47 assets + `_headers` + `_redirects`).
 
 - [x] **Eliminate Repeated `/clients/:id/photo` 404 Fetches in `ClientAvatar` & Linked Screens**:
   - **Root Cause**: In `src/components/ClientAvatar.tsx`, `clientPhotoCache.has(clientId)` only returned early when cached value was non-null, and `useEffect` depended on the freshly-created `effectiveContext` object literal—re-fetching `/clients/:id/photo` (`404`) on re-renders whenever a client lacked a photo. Furthermore, `CasesScreen.tsx`, `CaseDetailsView.tsx`, and `AppointmentsScreen.tsx` omitted `hasPhoto` on `<ClientAvatar>`.
