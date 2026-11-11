@@ -4,9 +4,13 @@ import { PermissionKey } from '../../../permissions';
 import { restFetch } from './restCommon';
 
 export class RestUserRepository implements IUserRepository {
-  async list(_context: SecurityContext): Promise<UserRecord[]> {
+  async list(context: SecurityContext): Promise<UserRecord[]> {
+    if (!context?.currentUser?.firmId) {
+      throw new Error('Unauthorized firm access');
+    }
     const res = await restFetch<UserRecord[]>('/users');
-    return Array.isArray(res) ? res : ((res as any)?.users || []);
+    const users = Array.isArray(res) ? res : ((res as any)?.users || []);
+    return users.filter((u: UserRecord) => !u.firmId || u.firmId === context.currentUser.firmId);
   }
 
   async getById(_context: SecurityContext, id: string): Promise<UserRecord | null> {

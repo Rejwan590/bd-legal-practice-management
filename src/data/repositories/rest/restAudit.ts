@@ -1,3 +1,4 @@
+import { can } from '../../../permissions';
 import { IAuditLogRepository } from '../../interfaces';
 import { AuditAction, AuditLogRecord, SecurityContext } from '../../types';
 import { restFetch } from './restCommon';
@@ -10,6 +11,13 @@ export class RestAuditLogRepository implements IAuditLogRepository {
     context: SecurityContext,
     filter?: { entity?: string; action?: AuditAction; limit?: number; offset?: number }
   ): Promise<AuditLogRecord[]> {
+    if (!can('settings.manage', context.currentUser)) {
+      throw new Error('Permission denied: settings.manage required to view audit logs');
+    }
+    if (!context?.currentUser?.firmId) {
+      throw new Error('Unauthorized firm access');
+    }
+
     const params = new URLSearchParams();
     if (filter?.limit !== undefined) params.set('limit', String(filter.limit));
     if (filter?.offset !== undefined) params.set('offset', String(filter.offset));
@@ -20,7 +28,8 @@ export class RestAuditLogRepository implements IAuditLogRepository {
     let serverLogs: AuditLogRecord[] = [];
     try {
       const res = await restFetch<AuditLogRecord[] | { logs: AuditLogRecord[]; total?: number }>(`/audit-log${qs}`);
-      serverLogs = Array.isArray(res) ? res : (Array.isArray((res as any)?.logs) ? (res as any).logs : []);
+      const rawLogs: AuditLogRecord[] = Array.isArray(res) ? res : (Array.isArray((res as any)?.logs) ? (res as any).logs : []);
+      serverLogs = rawLogs.filter((log: AuditLogRecord) => !log.firmId || log.firmId === context.currentUser.firmId);
     } catch {
       serverLogs = [];
     }

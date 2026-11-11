@@ -15,7 +15,12 @@ export async function runFoundationTests(ctx: DiagnosticContext): Promise<TestRe
     const firm = await repos.firm.getFirm(ownerCtx);
     const users = await repos.user.list(ownerCtx);
 
-    const pass = firm.id === INITIAL_FIRM.id && users.length >= 2;
+    const isRestMode =
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATA_SOURCE === 'rest') ||
+      (typeof process !== 'undefined' && process.env?.VITE_DATA_SOURCE === 'rest');
+    const expectedFirmId = isRestMode ? ownerUser.firmId : INITIAL_FIRM.id;
+    const minUsers = isRestMode ? 1 : 2;
+    const pass = Boolean(firm?.id) && firm.id === expectedFirmId && users.length >= minUsers;
     suite.push({
       id: 'ctx-init',
       name: 'Chamber & User Context Initialization',

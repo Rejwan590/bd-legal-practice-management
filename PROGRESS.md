@@ -3,6 +3,28 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **REST-Mode System Diagnostic & Health Check + Repository Gatekeeping Fix (Completed & Verified)**:
+  - **1. Root Cause Analysis of 3 Failures in REST Mode (`/health`)**:
+    - **Chamber & User Context Initialization (`ctx-init`)**: `src/modules/health/tests/index.ts` initialized `ownerUser`/`staffUser` from `INITIAL_USERS` (`firm-bd-001`) and `foundationTests.ts` compared `firm.id === INITIAL_FIRM.id` and `users.length >= 2`, which failed against any real chamber in REST mode (`VITE_DATA_SOURCE=rest`, e.g., `firm-0beab37b-f44d-4b99-88d9-cc3f58c2e5ff`).
+    - **Repository Layer Permission Gatekeeping (`repo-security`)**: `RestFirmRepository.updateFirm` ignored `context` and sent `PATCH /api/v1/firms/current` using the active Owner browser cookie (`blockedSettings=false`), even mutating the live chamber name during the diagnostic check. `RestAuditLogRepository.list` also issued `GET /api/v1/audit-log` before checking `can('settings.manage', context.currentUser)`.
+    - **Multi-Tenant Firm ID Isolation (`firm-isolation`)**: `RestFirmRepository.getFirm` and `RestUserRepository.list` ignored `context.currentUser.firmId`, allowing a caller context with `firmId: 'foreign-firm-xyz'` to receive the session firm's data without throwing.
+  - **2. Fixes Implemented**:
+    - Updated `src/data/repositories/rest/restFirm.ts`: enforced `context.currentUser.firmId` matching in `getFirm` and `updateFirm`, and enforced `can('settings.manage', context.currentUser)` + `Owner` role check in `updateFirm` before making network requests.
+    - Updated `src/data/repositories/rest/restAudit.ts`: enforced `can('settings.manage', context.currentUser)` and `firmId` validation/filtering in `list` before calling `restFetch`.
+    - Updated `src/data/repositories/rest/restUser.ts`: enforced `firmId` validation and filtering in `list`.
+    - Updated `src/modules/health/HealthScreen.tsx` and `src/modules/health/tests/index.ts`: passed authenticated `{ currentUser, currentFirm }` from `useAuth()` into `runAllHealthDiagnostics`, scoping REST-mode diagnostic contexts to the active firm instead of `INITIAL_USERS`.
+    - Updated `src/modules/health/tests/foundationTests.ts`: compared `firm.id` against `ownerUser.firmId` and required `users.length >= 1` in REST mode while preserving Mock-mode checks (`INITIAL_FIRM.id`, `users.length >= 2`).
+    - Added automated regression suite `tests/restHealthDiagnostics.test.ts` (15 assertions).
+  - **3. Verification Results**:
+    - `npm run lint`: PASS (0 errors across root and admin-app).
+    - `npx tsx tests/restHealthDiagnostics.test.ts`: PASS (15/15 passed, zero unauthorized PATCH/GET calls).
+    - `npm run test:health`: PASS (87/87 passed in mock mode).
+    - `npm run test:auditTrail`: PASS (20/20 passed).
+    - `npm run test:restFetch`: PASS (14/14 passed).
+    - `npm run build`: PASS (built in 1.89s).
+    - `npm test --prefix server`: PASS (all 18 server test suites passed, exit code 0).
+    - Note: `npx tsx tests/restModeSecurity.test.ts` had 10 passed / 1 pre-existing failure (`REST mode strictly gates demo switcher behind !isRestMode` in `UserSwitchModal.tsx`, untouched).
+
 - [x] **Cloudflare Migration Phase 1: Architecture and Conversion Specification (Completed & Documented)**:
   - **1. Phase 1A Empirical Verification**:
     - Verified all 9 bcrypt call sites across 6 files (authService.ts, adminAuthService.ts, auth.ts, adminFirms.ts, users.ts, and admin scripts).

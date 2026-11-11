@@ -11,11 +11,13 @@ import {
   Loader2,
 } from 'lucide-react';
 import { runAllHealthDiagnostics, TestResult } from './tests/index';
+import { useAuth } from '../foundation/AuthContext';
 
 type DiagnosticState = 'running' | 'no-results' | 'error' | 'pass' | 'fail';
 
 export const HealthScreen: React.FC = () => {
   const { t } = useTranslation();
+  const { currentUser, currentFirm } = useAuth();
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<TestResult[]>([]);
   const [lastRun, setLastRun] = useState<Date | null>(null);
@@ -25,7 +27,7 @@ export const HealthScreen: React.FC = () => {
     setRunning(true);
     setRunnerError(null);
     try {
-      const suiteResults = await runAllHealthDiagnostics();
+      const suiteResults = await runAllHealthDiagnostics({ currentUser, currentFirm });
       setResults(suiteResults);
       setLastRun(new Date());
     } catch (err) {

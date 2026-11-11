@@ -1,6 +1,7 @@
 import { getRepositories } from '../../../data/repositories';
 import { INITIAL_USERS, localStore } from '../../../data/mockStore';
-import { SecurityContext } from '../../../data/types';
+import { FirmRecord, SecurityContext, UserRecord } from '../../../data/types';
+import { ALL_PERMISSIONS, DEFAULT_STAFF_PERMISSIONS } from '../../../permissions';
 import { DiagnosticContext, TestResult } from './types';
 import { runFoundationTests } from './foundationTests';
 import { runAuditTests } from './auditTests';
@@ -33,31 +34,69 @@ export {
   runHubNavigationTests,
 };
 
-export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
+export interface HealthDiagnosticOptions {
+  currentUser?: UserRecord;
+  currentFirm?: FirmRecord | null;
+}
+
+export async function runAllHealthDiagnostics(
+  options?: HealthDiagnosticOptions
+): Promise<TestResult[]> {
   const suite: TestResult[] = [];
-
-  // Item 7: Snapshot real demo store state prior to running diagnostic tests
-  const preSuiteSnapshot = localStore.getSnapshot();
-
   const repos = getRepositories();
-  const ownerUser = INITIAL_USERS.find((u) => u.role === 'Owner')!;
-  const staffUser = INITIAL_USERS.find((u) => u.role === 'Staff')!;
-  const ownerCtx: SecurityContext = { currentUser: ownerUser };
-  const staffCtx: SecurityContext = { currentUser: staffUser };
-
-  const ctx: DiagnosticContext = {
-    repos,
-    ownerUser,
-    staffUser,
-    ownerCtx,
-    staffCtx,
-  };
 
   const isRestMode =
-    typeof import.meta !== 'undefined' &&
-    import.meta.env?.VITE_DATA_SOURCE === 'rest';
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATA_SOURCE === 'rest') ||
+    (typeof process !== 'undefined' && process.env?.VITE_DATA_SOURCE === 'rest');
 
   if (isRestMode) {
+    const activeUser = options?.currentUser;
+    const activeFirmId = options?.currentFirm?.id || activeUser?.firmId || '';
+    const now = new Date().toISOString();
+
+    const ownerUser: UserRecord =
+      activeUser && activeUser.role === 'Owner'
+        ? activeUser
+        : {
+            id: 'diag-owner',
+            firmId: activeFirmId,
+            name: 'Diagnostic Owner',
+            email: 'diag-owner@chamber.local',
+            role: 'Owner',
+            permissions: ALL_PERMISSIONS,
+            language: 'en',
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+            createdBy: 'system',
+            updatedBy: 'system',
+          };
+
+    const staffUser: UserRecord = {
+      id: 'diag-staff',
+      firmId: activeFirmId,
+      name: 'Diagnostic Staff',
+      email: 'diag-staff@chamber.local',
+      role: 'Staff',
+      permissions: DEFAULT_STAFF_PERMISSIONS,
+      language: 'en',
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdBy: 'system',
+      updatedBy: 'system',
+    };
+
+    const ctx: DiagnosticContext = {
+      repos,
+      ownerUser,
+      staffUser,
+      ownerCtx: { currentUser: ownerUser },
+      staffCtx: { currentUser: staffUser },
+    };
+
     // In REST mode, execute read-only foundation/i18n tests and skip mutating write tests
     const foundationResults = await runFoundationTests(ctx);
     suite.push(...foundationResults);
@@ -71,6 +110,22 @@ export async function runAllHealthDiagnostics(): Promise<TestResult[]> {
     });
     return suite;
   }
+
+  // Item 7: Snapshot real demo store state prior to running diagnostic tests
+  const preSuiteSnapshot = localStore.getSnapshot();
+
+  const ownerUser = INITIAL_USERS.find((u) => u.role === 'Owner')!;
+  const staffUser = INITIAL_USERS.find((u) => u.role === 'Staff')!;
+  const ownerCtx: SecurityContext = { currentUser: ownerUser };
+  const staffCtx: SecurityContext = { currentUser: staffUser };
+
+  const ctx: DiagnosticContext = {
+    repos,
+    ownerUser,
+    staffUser,
+    ownerCtx,
+    staffCtx,
+  };
 
   try {
     // 1. Foundation & Permissions & Data Layer & i18n
