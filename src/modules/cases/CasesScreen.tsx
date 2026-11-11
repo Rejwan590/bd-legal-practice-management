@@ -499,7 +499,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                 const linkedClient = clientsMap[c.clientId];
                 return linkedClient ? (
                   <div className="text-xs flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
+                    <ClientAvatar
+                      clientId={linkedClient.id}
+                      clientName={linkedClient.name}
+                      hasPhoto={linkedClient.hasPhoto}
+                      size="xs"
+                    />
                     <div className="min-w-0">
                       <EntityLink
                         type="client"
@@ -608,7 +613,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                       className="flex items-center gap-1.5 text-[11px] text-slate-500"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
+                      <ClientAvatar
+                      clientId={linkedClient.id}
+                      clientName={linkedClient.name}
+                      hasPhoto={linkedClient.hasPhoto}
+                      size="xs"
+                    />
                       <EntityLink
                         type="client"
                         id={linkedClient.id}

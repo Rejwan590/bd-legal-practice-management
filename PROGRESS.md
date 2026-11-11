@@ -3,6 +3,12 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Eliminate Repeated `/clients/:id/photo` 404 Fetches in `ClientAvatar` & Linked Screens**:
+  - **Root Cause**: In `src/components/ClientAvatar.tsx`, `clientPhotoCache.has(clientId)` only returned early when cached value was non-null, and `useEffect` depended on the freshly-created `effectiveContext` object literal—re-fetching `/clients/:id/photo` (`404`) on re-renders whenever a client lacked a photo. Furthermore, `CasesScreen.tsx`, `CaseDetailsView.tsx`, and `AppointmentsScreen.tsx` omitted `hasPhoto` on `<ClientAvatar>`.
+  - **Fixes Applied**:
+    - `src/components/ClientAvatar.tsx`: Short-circuited on cached `null` (when `hasPhoto !== true`) as well as cached URLs, guarded missing `effectiveUserId`, and replaced the unstable `effectiveContext` dependency with `effectiveUserId`.
+    - `src/modules/cases/CasesScreen.tsx`, `src/modules/cases/CaseDetailsView.tsx`, and `src/modules/appointments/AppointmentsScreen.tsx`: Passed `hasPhoto` from the linked client record to `<ClientAvatar>`.
+
 - [x] **Fix Nullable `CaseFormModal` / `ClientFormModal` Input State & Cloudflare Cases Counsel/Nullable Parity**:
   - **Root Cause**: Cases fetched from Cloudflare D1 return `null` for optional SQLite columns (`description`, `plaintiffLawyer`, `defendantLawyer`, `fileSerial`, `plaintiff`, `defendant`, `partyARole`, `partyBRole`, `policeStation`, `sectionsOfLaw`, `responsibleLawyerId`, `caseDate`). In `src/modules/cases/CaseFormModal.tsx` (and `src/modules/clients/ClientFormModal.tsx`), `useEffect` assigned nullable `initialData` properties directly into React controlled `<input>`/`<textarea>` state without `|| ''`, triggering React's `value prop on input should not be null` and controlled-to-uncontrolled warnings, and `handleSubmit` threw `Cannot read properties of null (reading 'trim')` on save (e.g., when changing Case Status). Additionally, `server-cloudflare/src/routes/cases.ts` (`POST /` and `PATCH /:id`) omitted `plaintiffLawyer`/`defendantLawyer` and rejected `null` for `responsibleLawyerId`/`caseDate`.
   - **Fixes Applied**:

@@ -508,7 +508,12 @@ export const CaseDetailsView: React.FC<CaseDetailsViewProps> = ({
                 </span>
                 {client && (
                   <span className="inline-flex items-center gap-1.5">
-                    <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
+                    <ClientAvatar
+                      clientId={client.id}
+                      clientName={client.name}
+                      hasPhoto={client.hasPhoto}
+                      size="xs"
+                    />
                     <EntityLink
                       type="client"
                       id={client.id}
