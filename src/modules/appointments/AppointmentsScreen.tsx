@@ -472,7 +472,12 @@ export const AppointmentsScreen: React.FC = () => {
                     {/* Client Name (Primary, prominent and readable) */}
                     {client ? (
                       <div className="flex items-center gap-1.5">
-                        <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
+                        <ClientAvatar
+                          clientId={client.id}
+                          clientName={client.name}
+                          hasPhoto={client.hasPhoto}
+                          size="xs"
+                        />
                         <EntityLink
                           type="client"
                           id={client.id}
@@ -629,7 +634,12 @@ export const AppointmentsScreen: React.FC = () => {
                 <div className="space-y-1.5 pt-2 border-t border-slate-100 text-xs">
                   {client && (
                     <div className="flex items-center gap-1.5">
-                      <ClientAvatar clientId={client.id} clientName={client.name} size="xs" />
+                      <ClientAvatar
+                        clientId={client.id}
+                        clientName={client.name}
+                        hasPhoto={client.hasPhoto}
+                        size="xs"
+                      />
                       <EntityLink type="client" id={client.id} label={client.name} className="font-bold text-slate-900" />
                     </div>
                   )}

@@ -141,38 +141,39 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
 
   useEffect(() => {
     if (initialData) {
-      setClientId(initialData.clientId);
+      setClientId(initialData.clientId || '');
       setResponsibleLawyerId(initialData.responsibleLawyerId || '');
-      setFileSerial(initialData.fileSerial);
-      setCaseNumber(initialData.caseNumber);
+      setFileSerial(initialData.fileSerial || '');
+      setCaseNumber(initialData.caseNumber || '');
       const cat = initialData.caseCategory || 'civil';
       setCaseCategory(cat);
       setCaseDate(toDateInputValue(initialData.caseDate || initialData.createdAt));
       setClosedOn(toDateInputValue(initialData.closedOn));
-      setCourt(initialData.court);
+      setCourt(initialData.court || '');
 
-      if (COMMON_MATTERS.includes(initialData.matterType)) {
-        setMatterType(initialData.matterType);
+      const incomingMatter = initialData.matterType || '';
+      if (COMMON_MATTERS.includes(incomingMatter)) {
+        setMatterType(incomingMatter);
         setCustomMatter('');
       } else {
         setMatterType('CUSTOM');
-        setCustomMatter(initialData.matterType);
+        setCustomMatter(incomingMatter);
       }
 
-      setDescription(initialData.description);
-      setPlaintiff(initialData.plaintiff);
-      setDefendant(initialData.defendant);
+      setDescription(initialData.description || '');
+      setPlaintiff(initialData.plaintiff || '');
+      setDefendant(initialData.defendant || '');
       setPartyARole(initialData.partyARole || CATEGORY_ROLES[cat].defaultPartyARole);
       setPartyBRole(initialData.partyBRole || CATEGORY_ROLES[cat].defaultPartyBRole);
-      setOurRole(initialData.ourRole);
+      setOurRole(initialData.ourRole || CATEGORY_ROLES[cat].ourRoleOptions[0]?.value || 'Plaintiff');
 
       setPoliceStation(initialData.policeStation || '');
       setSectionsOfLaw(initialData.sectionsOfLaw || '');
 
-      setPlaintiffLawyer(initialData.plaintiffLawyer);
-      setDefendantLawyer(initialData.defendantLawyer);
-      setStatus(initialData.status);
-      setRestricted(initialData.restricted);
+      setPlaintiffLawyer(initialData.plaintiffLawyer || '');
+      setDefendantLawyer(initialData.defendantLawyer || '');
+      setStatus(initialData.status || 'ongoing');
+      setRestricted(Boolean(initialData.restricted));
     } else {
       const year = new Date().getFullYear();
       const randomSeq = Math.floor(1000 + Math.random() * 9000);
@@ -206,7 +207,7 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
 
   // Check duplicate case number in same court
   useEffect(() => {
-    if (caseNumber.trim().length > 3 && court.trim().length > 3) {
+    if ((caseNumber || '').trim().length > 3 && (court || '').trim().length > 3) {
       const timer = setTimeout(async () => {
         try {
           const dup = await repos.case.checkDuplicate(
@@ -236,16 +237,16 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       setErrorMsg(t('cases.validationClientRequired', 'Please select a linked client'));
       return;
     }
-    if (!caseNumber.trim()) {
+    if (!(caseNumber || '').trim()) {
       setErrorMsg(t('cases.validationCaseNumberRequired', 'Case Number is required'));
       return;
     }
-    if (!court.trim()) {
+    if (!(court || '').trim()) {
       setErrorMsg(t('cases.validationCourtRequired', 'Court name is required'));
       return;
     }
 
-    const finalMatter = (matterType === 'CUSTOM' ? customMatter : matterType).trim();
+    const finalMatter = ((matterType === 'CUSTOM' ? customMatter : matterType) || '').trim();
     if (!finalMatter) {
       setErrorMsg(t('cases.validationMatterRequired', 'Matter type is required'));
       return;
@@ -265,23 +266,23 @@ export const CaseFormModal: React.FC<CaseFormModalProps> = ({
       await onSave({
         clientId,
         responsibleLawyerId: responsibleLawyerId || null,
-        fileSerial: fileSerial.trim(),
-        caseNumber: caseNumber.trim(),
-        court: court.trim(),
+        fileSerial: (fileSerial || '').trim(),
+        caseNumber: (caseNumber || '').trim(),
+        court: (court || '').trim(),
         matterType: finalMatter,
-        description: description.trim(),
+        description: (description || '').trim(),
         caseCategory,
         caseDate: toDateInputValue(caseDate) || null,
         closedOn: status === 'closed' ? (toDateInputValue(closedOn) || getDhakaDateString()) : null,
-        partyARole: partyARole.trim(),
-        partyBRole: partyBRole.trim(),
-        plaintiff: plaintiff.trim(),
-        defendant: defendant.trim(),
+        partyARole: (partyARole || '').trim(),
+        partyBRole: (partyBRole || '').trim(),
+        plaintiff: (plaintiff || '').trim(),
+        defendant: (defendant || '').trim(),
         ourRole,
-        policeStation: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? policeStation.trim() : null,
-        sectionsOfLaw: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? sectionsOfLaw.trim() : null,
-        plaintiffLawyer: plaintiffLawyer.trim(),
-        defendantLawyer: defendantLawyer.trim(),
+        policeStation: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? (policeStation || '').trim() : null,
+        sectionsOfLaw: (caseCategory === 'criminal_gr' || caseCategory === 'criminal_cr') ? (sectionsOfLaw || '').trim() : null,
+        plaintiffLawyer: (plaintiffLawyer || '').trim(),
+        defendantLawyer: (defendantLawyer || '').trim(),
         status,
         restricted,
       });

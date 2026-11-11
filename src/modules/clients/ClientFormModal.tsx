@@ -36,12 +36,12 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
   useEffect(() => {
     if (initialData) {
-      setName(initialData.name);
+      setName(initialData.name || '');
       setNameBn(initialData.nameBn || '');
-      setPhone(initialData.phone);
+      setPhone(initialData.phone || '');
       setEmail(initialData.email || '');
-      setAddress(initialData.address);
-      setNotes(initialData.notes);
+      setAddress(initialData.address || '');
+      setNotes(initialData.notes || '');
     } else {
       setName('');
       setNameBn('');

@@ -3,6 +3,14 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Null `.trim()` Crash on Case Edit & Repeated `/clients/:id/photo` 404 Spam (Completed & Verified)**:
+  - **1. `Cannot read properties of null (reading 'trim')` when editing case status**:
+    - Root cause: Nullable string columns stored as `null` in PostgreSQL (`fileSerial`, `description`, `plaintiff`, `defendant`, `plaintiffLawyer`, `defendantLawyer`, etc.) were loaded directly into React state in `src/modules/cases/CaseFormModal.tsx`, causing `.trim()` in `handleSubmit` to throw when saving a status change.
+    - Fixed `CaseFormModal.tsx` to normalize all nullable string fields with `|| ''` on load and guard all `.trim()` calls with `(val || '').trim()`. Hardened `ClientFormModal.tsx` (`|| ''`) and `CasesScreen.tsx` (`c.fileSerial || '—'`).
+  - **2. Repeated `GET /api/v1/clients/:id/photo` 404 Console Errors**:
+    - Root cause: In `src/components/ClientAvatar.tsx`, `clientPhotoCache.has(clientId)` only returned early when cached value was non-null, and `useEffect` depended on the freshly-created `effectiveContext` object literal—re-fetching `/clients/:id/photo` (`404`) on re-renders whenever a client lacked a photo. Furthermore, `CasesScreen.tsx`, `CaseDetailsView.tsx`, and `AppointmentsScreen.tsx` omitted `hasPhoto` on `<ClientAvatar>`.
+    - Fixed `ClientAvatar.tsx` to short-circuit on cached `null` (when `hasPhoto !== true`) as well as cached URLs, guard missing `effectiveUserId`, and depend on `effectiveUserId`. Passed `hasPhoto` in `CasesScreen.tsx`, `CaseDetailsView.tsx`, and `AppointmentsScreen.tsx`.
+
 - [x] **REST-Mode System Diagnostic & Health Check + Repository Gatekeeping Fix (Completed & Verified)**:
   - **1. Root Cause Analysis of 3 Failures in REST Mode (`/health`)**:
     - **Chamber & User Context Initialization (`ctx-init`)**: `src/modules/health/tests/index.ts` initialized `ownerUser`/`staffUser` from `INITIAL_USERS` (`firm-bd-001`) and `foundationTests.ts` compared `firm.id === INITIAL_FIRM.id` and `users.length >= 2`, which failed against any real chamber in REST mode (`VITE_DATA_SOURCE=rest`, e.g., `firm-0beab37b-f44d-4b99-88d9-cc3f58c2e5ff`).

@@ -389,9 +389,9 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
               accessor: (c) => (
                 <div className="flex items-center gap-2">
                   <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200">
-                    {c.fileSerial.slice(-4)}
+                    {(c.fileSerial || '—').slice(-4)}
                   </div>
-                  <span className="text-xs font-mono text-slate-500">{c.fileSerial}</span>
+                  <span className="text-xs font-mono text-slate-500">{c.fileSerial || '—'}</span>
                 </div>
               ),
             },
@@ -499,7 +499,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                 const linkedClient = clientsMap[c.clientId];
                 return linkedClient ? (
                   <div className="text-xs flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
+                    <ClientAvatar
+                      clientId={linkedClient.id}
+                      clientName={linkedClient.name}
+                      hasPhoto={linkedClient.hasPhoto}
+                      size="xs"
+                    />
                     <div className="min-w-0">
                       <EntityLink
                         type="client"
@@ -525,7 +530,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2.5">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200">
-                      {c.fileSerial.slice(-4)}
+                      {(c.fileSerial || '—').slice(-4)}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -543,7 +548,7 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] font-mono text-slate-400">{c.fileSerial}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{c.fileSerial || '—'}</span>
                     </div>
                   </div>
                   <span
@@ -608,7 +613,12 @@ export const CasesScreen: React.FC<CasesScreenProps> = ({ initialSelectedCaseId 
                       className="flex items-center gap-1.5 text-[11px] text-slate-500"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <ClientAvatar clientId={linkedClient.id} clientName={linkedClient.name} size="xs" />
+                      <ClientAvatar
+                      clientId={linkedClient.id}
+                      clientName={linkedClient.name}
+                      hasPhoto={linkedClient.hasPhoto}
+                      size="xs"
+                    />
                       <EntityLink
                         type="client"
                         id={linkedClient.id}

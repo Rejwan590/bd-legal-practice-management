@@ -90,6 +90,7 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
     // outside AuthProvider (e.g. tests)
   }
   const effectiveContext = context || (authUser ? { currentUser: authUser } : undefined);
+  const effectiveUserId = effectiveContext?.currentUser?.id || '';
 
   const [imgSrc, setImgSrc] = useState<string | null>(() => {
     if (photoUrl) return photoUrl;
@@ -128,15 +129,22 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
       return;
     }
 
-    // Check cached result first
+    // Check cached result first (short-circuit on cached URL, or on cached null unless server says hasPhoto === true)
     if (clientPhotoCache.has(clientId)) {
       const cached = clientPhotoCache.get(clientId);
-      setImgSrc(cached ?? null);
-      setLoadError(false);
-      if (cached !== null && cached !== undefined) return;
+      if (cached !== null && cached !== undefined) {
+        setImgSrc(cached);
+        setLoadError(false);
+        return;
+      }
+      if (hasPhoto !== true) {
+        setImgSrc(null);
+        setLoadError(false);
+        return;
+      }
     }
 
-    if (!effectiveContext) {
+    if (!effectiveContext || !effectiveUserId) {
       return;
     }
 
@@ -177,7 +185,7 @@ export const ClientAvatar: React.FC<ClientAvatarProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [clientId, photoUrl, hasPhoto, effectiveContext]);
+  }, [clientId, photoUrl, hasPhoto, effectiveUserId]);
 
   const initials = getInitials(effectiveName, nameBn);
   const colorClass = getColorForName(effectiveName || 'Client');
