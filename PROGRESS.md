@@ -3,6 +3,15 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Worker Live Deployment & Edge Smoke Tests (Completed on 'cloudflare' branch)**:
+  - **1. Live Edge Deployment**:
+    - Registered workers.dev subdomain: lawyers-e-chamber.workers.dev.
+    - Deployed bdlegal-api to https://bdlegal-api.lawyers-e-chamber.workers.dev (Version ID: 507e417f-9602-4cc5-9f80-b0113960db97).
+    - Verified live D1 database binding bdlegal-d1-prod (7d3f5e2b-53ab-4c98-84e7-b20e1803a9aa) and secrets JWT_SECRET, ADMIN_JWT_SECRET.
+  - **2. Live Edge Smoke Test Results (DAC Dhaka Edge Node)**:
+    - GET /api/v1/health: HTTP 200 OK (runtime: cloudflare-workers).
+    - OPTIONS /api/v1/auth/login: HTTP 204 No Content with exact Access-Control-Allow-Origin: https://bd-legal-practice-management.vercel.app and Access-Control-Allow-Credentials: true.
+    - POST /api/v1/auth/login (PBKDF2-HMAC-SHA-512 100k dummy hash): HTTP 401 Invalid email or password (executed cleanly on Cloudflare Workers hardware without CPU timeout).
 - [x] **Cloudflare Live Account Provisioning (D1, Secrets, Worker Upload Completed; Onboarding Subdomain & R2 Pending User Dashboard Activation)**:
   - **1. Provisioned Remote Resources**:
     - Verified Cloudflare Account ID (bee6614feb7b8982c5437d8d8d5a02de) via API Token.
