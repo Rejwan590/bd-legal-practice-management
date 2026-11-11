@@ -4,6 +4,18 @@ import { Env, authMiddleware, enforceSubscriptionReadOnly, requirePermission } f
 import { getDb } from '../db/client';
 import * as schema from '../db/schema';
 import { eq, and, isNull, sql, asc } from 'drizzle-orm';
+import {
+  base64ToUint8Array,
+  deleteFromSupabaseStorage,
+  detectImageMimeFromMagic,
+  downloadFromSupabaseStorage,
+  formatSupabaseStorageRef,
+  getPhotosBucketName,
+  isSupabaseStorageConfigured,
+  parseSupabaseStorageRef,
+  uint8ArrayToBase64,
+  uploadToSupabaseStorage,
+} from '../services/supabaseStorage';
 
 export const clientsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -168,55 +180,131 @@ clientsRouter.put('/:id/photo', enforceSubscriptionReadOnly, requirePermission('
   }
 
   const contentType = c.req.header('content-type') || 'application/json';
-  let bytes = '';
-  let mime = 'image/jpeg';
+  let rawBytes: Uint8Array | null = null;
 
   if (contentType.includes('application/json')) {
-    const body = await c.req.json().catch(() => ({}));
-    bytes = body.bytes || body.photo || '';
-    mime = body.mime || 'image/jpeg';
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const encoded = (body.data || body.bytes || body.photo || '') as string;
+    if (typeof encoded === 'string' && encoded.trim().length > 0) {
+      try {
+        rawBytes = base64ToUint8Array(encoded);
+      } catch {
+        return c.json({ error: 'Validation failed', message: 'Invalid base64 photo data' }, 400);
+      }
+    }
   } else {
     const arrayBuffer = await c.req.arrayBuffer();
-    if (arrayBuffer.byteLength > 300 * 1024) {
-      return c.json({ error: 'Payload too large', message: 'Photo exceeds 300 KB limit' }, 400);
-    }
-    const uint8 = new Uint8Array(arrayBuffer);
-    bytes = btoa(String.fromCharCode(...uint8));
-    mime = contentType;
+    rawBytes = new Uint8Array(arrayBuffer);
   }
 
-  if (!bytes) {
+  if (!rawBytes || rawBytes.byteLength === 0) {
     return c.json({ error: 'Validation failed', message: 'Photo data required' }, 400);
   }
 
-  const now = new Date().toISOString();
-
-  // If Cloudflare R2 is bound, stream directly to R2!
-  let r2Key: string | null = null;
-  if (c.env.PHOTOS_BUCKET) {
-    r2Key = `photos/${firmId}/${clientId}.jpg`;
-    await c.env.PHOTOS_BUCKET.put(r2Key, bytes);
+  if (rawBytes.byteLength > 300 * 1024) {
+    return c.json({ error: 'Payload too large', message: 'Photo exceeds 300 KB limit' }, 400);
   }
 
-  // SQLite upsert
-  await c.env.DB.prepare(`
-    INSERT INTO client_photos (client_id, firm_id, mime, bytes, r2_key, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (client_id)
-    DO UPDATE SET mime = ?, bytes = ?, r2_key = ?, updated_at = ?
-  `).bind(clientId, firmId, mime, bytes, r2Key, now, mime, bytes, r2Key, now).run();
+  const detected = detectImageMimeFromMagic(rawBytes);
+  if (!detected) {
+    return c.json({
+      error: 'Invalid image format',
+      message: 'Only JPEG, WebP, and PNG are allowed based on verified file signature',
+    }, 400);
+  }
+
+  const existingPhotoRows = await db
+    .select()
+    .from(schema.clientPhotos)
+    .where(and(eq(schema.clientPhotos.clientId, clientId), eq(schema.clientPhotos.firmId, firmId)))
+    .limit(1);
+  const existingPhoto = existingPhotoRows[0];
+
+  const now = new Date().toISOString();
+  const base64Bytes = uint8ArrayToBase64(rawBytes);
+  let r2Key: string | null = null;
+  let storedBytes = base64Bytes;
+  let storageProvider: 'supabase' | 'r2' | 'd1' = 'd1';
+
+  if (isSupabaseStorageConfigured(c.env)) {
+    const bucket = getPhotosBucketName(c.env);
+    const objectPath = `photos/${firmId}/${clientId}.${detected.ext}`;
+    await uploadToSupabaseStorage({
+      env: c.env,
+      bucket,
+      objectPath,
+      data: rawBytes,
+      contentType: detected.mime,
+    });
+
+    const oldRef = parseSupabaseStorageRef(existingPhoto?.r2Key);
+    if (oldRef && (oldRef.bucket !== bucket || oldRef.objectPath !== objectPath)) {
+      await deleteFromSupabaseStorage({ env: c.env, bucket: oldRef.bucket, objectPath: oldRef.objectPath }).catch(() => {});
+    }
+
+    r2Key = formatSupabaseStorageRef(bucket, objectPath);
+    storedBytes = '';
+    storageProvider = 'supabase';
+  } else if (c.env.PHOTOS_BUCKET) {
+    r2Key = `photos/${firmId}/${clientId}.${detected.ext}`;
+    await c.env.PHOTOS_BUCKET.put(r2Key, rawBytes, { httpMetadata: { contentType: detected.mime } });
+    storedBytes = '';
+    storageProvider = 'r2';
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      INSERT INTO client_photos (client_id, firm_id, mime, bytes, r2_key, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (client_id)
+      DO UPDATE SET mime = ?, bytes = ?, r2_key = ?, updated_at = ?
+    `).bind(clientId, firmId, detected.mime, storedBytes, r2Key, now, detected.mime, storedBytes, r2Key, now),
+    c.env.DB.prepare(`
+      INSERT INTO audit_log (id, firm_id, user_id, user_name, entity, entity_id, action, old_value, new_value, timestamp, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      firmId,
+      user.id,
+      user.name,
+      'ClientPhoto',
+      clientId,
+      existingPhoto ? 'UPDATE' : 'CREATE',
+      null,
+      JSON.stringify({ mime: detected.mime, size: rawBytes.byteLength, storage: storageProvider }),
+      now,
+      now,
+      now
+    ),
+  ]);
 
   return c.json({
-    message: 'Photo saved successfully',
-    dataUrl: `data:${mime};base64,${bytes}`,
+    success: true,
+    clientId,
+    firmId,
+    mime: detected.mime,
+    bytes: base64Bytes,
+    dataUrl: `data:${detected.mime};base64,${base64Bytes}`,
+    size: rawBytes.byteLength,
+    updatedAt: now,
   });
 });
 
 // GET /api/v1/clients/:id/photo
-clientsRouter.get('/:id/photo', async (c) => {
+clientsRouter.get('/:id/photo', requirePermission('clients.view'), async (c) => {
   const firmId = c.get('firmId') as string;
   const clientId = c.req.param('id') as string;
   const db = getDb(c.env.DB);
+
+  const clientRows = await db
+    .select({ id: schema.clients.id })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)))
+    .limit(1);
+
+  if (!clientRows[0]) {
+    return c.json({ error: 'Not found', message: 'Client not found' }, 404);
+  }
 
   const rows = await db
     .select()
@@ -229,15 +317,109 @@ clientsRouter.get('/:id/photo', async (c) => {
     return c.json({ error: 'Not found', message: 'Photo not found' }, 404);
   }
 
+  let binaryData: Uint8Array | null = null;
+  const supabaseRef = parseSupabaseStorageRef(photo.r2Key);
+  if (supabaseRef && isSupabaseStorageConfigured(c.env)) {
+    const obj = await downloadFromSupabaseStorage({
+      env: c.env,
+      bucket: supabaseRef.bucket,
+      objectPath: supabaseRef.objectPath,
+    });
+    if (obj) {
+      binaryData = new Uint8Array(obj.data);
+    }
+  } else if (photo.r2Key && c.env.PHOTOS_BUCKET && !supabaseRef) {
+    const obj = await c.env.PHOTOS_BUCKET.get(photo.r2Key);
+    if (obj) {
+      binaryData = new Uint8Array(await obj.arrayBuffer());
+    }
+  }
+
+  if (!binaryData && photo.bytes) {
+    binaryData = base64ToUint8Array(photo.bytes);
+  }
+
+  if (!binaryData || binaryData.byteLength === 0) {
+    return c.json({ error: 'Not found', message: 'Photo not found' }, 404);
+  }
+
+  const acceptsJson = c.req.header('accept')?.includes('application/json') || c.req.query('format') === 'json';
+  if (acceptsJson) {
+    const base64Bytes = uint8ArrayToBase64(binaryData);
+    return c.json({
+      clientId,
+      firmId,
+      mime: photo.mime,
+      bytes: base64Bytes,
+      dataUrl: `data:${photo.mime};base64,${base64Bytes}`,
+      updatedAt: photo.updatedAt,
+    });
+  }
+
   c.header('Content-Type', photo.mime);
   c.header('ETag', `"${new Date(photo.updatedAt).getTime()}"`);
-  c.header('Cache-Control', 'public, max-age=86400');
+  c.header('Cache-Control', 'private, no-cache, must-revalidate');
+  return c.body(binaryData.slice().buffer);
+});
 
-  // Binary response
-  const rawStr = atob(photo.bytes);
-  const uint8 = new Uint8Array(rawStr.length);
-  for (let i = 0; i < rawStr.length; i++) {
-    uint8[i] = rawStr.charCodeAt(i);
+// DELETE /api/v1/clients/:id/photo
+clientsRouter.delete('/:id/photo', enforceSubscriptionReadOnly, requirePermission('clients.edit'), async (c) => {
+  const firmId = c.get('firmId') as string;
+  const clientId = c.req.param('id') as string;
+  const user = c.get('user') as schema.User;
+  const db = getDb(c.env.DB);
+
+  const clientRows = await db
+    .select({ id: schema.clients.id })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.firmId, firmId), isNull(schema.clients.deletedAt)))
+    .limit(1);
+
+  if (!clientRows[0]) {
+    return c.json({ error: 'Not found', message: 'Client not found' }, 404);
   }
-  return c.body(uint8.buffer);
+
+  const existingPhotoRows = await db
+    .select()
+    .from(schema.clientPhotos)
+    .where(and(eq(schema.clientPhotos.clientId, clientId), eq(schema.clientPhotos.firmId, firmId)))
+    .limit(1);
+  const existingPhoto = existingPhotoRows[0];
+
+  if (existingPhoto?.r2Key) {
+    const supabaseRef = parseSupabaseStorageRef(existingPhoto.r2Key);
+    if (supabaseRef && isSupabaseStorageConfigured(c.env)) {
+      await deleteFromSupabaseStorage({
+        env: c.env,
+        bucket: supabaseRef.bucket,
+        objectPath: supabaseRef.objectPath,
+      });
+    } else if (!supabaseRef && c.env.PHOTOS_BUCKET) {
+      await c.env.PHOTOS_BUCKET.delete(existingPhoto.r2Key);
+    }
+  }
+
+  const now = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM client_photos WHERE client_id = ? AND firm_id = ?').bind(clientId, firmId),
+    c.env.DB.prepare(`
+      INSERT INTO audit_log (id, firm_id, user_id, user_name, entity, entity_id, action, old_value, new_value, timestamp, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      firmId,
+      user.id,
+      user.name,
+      'ClientPhoto',
+      clientId,
+      'DELETE',
+      null,
+      JSON.stringify({ deleted: true }),
+      now,
+      now,
+      now
+    ),
+  ]);
+
+  return c.json({ success: true });
 });

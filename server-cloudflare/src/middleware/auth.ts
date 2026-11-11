@@ -9,6 +9,11 @@ export interface Env {
   DB: D1Database;
   PHOTOS_BUCKET?: R2Bucket;
   BACKUPS_BUCKET?: R2Bucket;
+  SUPABASE_URL?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_PHOTOS_BUCKET?: string;
+  SUPABASE_BACKUPS_BUCKET?: string;
   JWT_SECRET: string;
   ADMIN_JWT_SECRET: string;
   CORS_ORIGIN?: string;

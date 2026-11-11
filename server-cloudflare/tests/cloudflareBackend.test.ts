@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import app from '../src/index';
 import { createInMemoryD1 } from './d1Mock';
 import { hashPassword } from '../src/utils/crypto';
@@ -350,5 +350,202 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     // Read endpoint (GET /clients) -> must still succeed with HTTP 200
     const readRes = await app.request('/api/v1/clients', { headers: { Cookie: ownerCookie } }, env);
     expect(readRes.status).toBe(200);
+
+    // Mutating photo upload on expired Firm A -> blocked with 403 SUBSCRIPTION_READ_ONLY
+    const blockedPhotoRes = await app.request(
+      `/api/v1/clients/${clientAId}/photo`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+        body: JSON.stringify({ mime: 'image/jpeg', data: '/9j/4AAQSkZJRg==' }),
+      },
+      env
+    );
+    expect(blockedPhotoRes.status).toBe(403);
+  });
+
+  // 12. Supabase Storage Client Photo Upload, Fetch & Delete (Replaces R2)
+  it('12. Supabase Storage handles PUT, GET (binary + ?format=json), and DELETE photo cleanly', async () => {
+    // Create Firm C for clean active-firm Supabase Storage photo lifecycle test
+    const firmCRes = await app.request(
+      '/api/admin/firms',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          name: 'Chamber Gamma & Co',
+          ownerName: 'Advocate Tahmina Haque',
+          ownerEmail: 'owner@chamber-c.com',
+          licenseType: 'trial',
+        }),
+      },
+      env
+    );
+    expect(firmCRes.status).toBe(201);
+    const firmCData = (await firmCRes.json() as any);
+    const loginCRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@chamber-c.com', password: firmCData.temporaryPassword }),
+      },
+      env
+    );
+    expect(loginCRes.status).toBe(200);
+    const ownerCCookie = loginCRes.headers.get('set-cookie')!.split(';')[0];
+
+    const createClientRes = await app.request(
+      '/api/v1/clients',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCCookie },
+        body: JSON.stringify({
+          name: 'Begum Rokeya',
+          phone: '+8801711999888',
+          address: 'Gulshan-2, Dhaka',
+        }),
+      },
+      env
+    );
+    expect(createClientRes.status).toBe(201);
+    const clientCId = ((await createClientRes.json()) as any).client.id;
+
+    // Stub global fetch for Supabase Storage REST API calls
+    const storedObjects = new Map<string, { bytes: Uint8Array; contentType: string }>();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method || 'GET').toUpperCase();
+      const headers = new Headers(init?.headers);
+
+      // Verify sb_secret_ key uses apikey header cleanly (not fake Bearer JWT)
+      expect(headers.get('apikey')).toBe('sb_secret_test_key_12345');
+      expect(headers.get('Authorization')).toBeNull();
+
+      if (method === 'POST' && url.includes('/storage/v1/object/bdlegal-photos/')) {
+        const key = url.split('/storage/v1/object/')[1];
+        const body = init?.body instanceof Uint8Array
+          ? init.body
+          : new Uint8Array(init?.body as ArrayBuffer);
+        storedObjects.set(key, {
+          bytes: body,
+          contentType: headers.get('Content-Type') || 'application/octet-stream',
+        });
+        return new Response(JSON.stringify({ Key: key }), { status: 200 });
+      }
+
+      if (method === 'GET' && url.includes('/storage/v1/object/authenticated/bdlegal-photos/')) {
+        const key = url.split('/storage/v1/object/authenticated/')[1];
+        const obj = storedObjects.get(key);
+        if (!obj) {
+          return new Response(JSON.stringify({ statusCode: '404', error: 'not_found' }), { status: 404 });
+        }
+        return new Response(obj.bytes.slice().buffer, {
+          status: 200,
+          headers: { 'Content-Type': obj.contentType },
+        });
+      }
+
+      if (method === 'DELETE' && url.includes('/storage/v1/object/bdlegal-photos/')) {
+        const key = url.split('/storage/v1/object/')[1];
+        storedObjects.delete(key);
+        return new Response(JSON.stringify({ message: 'Successfully deleted' }), { status: 200 });
+      }
+
+      return new Response('Unexpected fetch URL: ' + url, { status: 500 });
+    });
+
+    const supabaseEnv = {
+      ...env,
+      SUPABASE_URL: 'https://rmuontqsoxwnzevtnvkc.supabase.co',
+      SUPABASE_SECRET_KEY: 'sb_secret_test_key_12345',
+      SUPABASE_PHOTOS_BUCKET: 'bdlegal-photos',
+    };
+
+    try {
+      const sampleJpegBase64 =
+        '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+
+      // Reject non-image magic bytes with 400
+      const invalidRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Cookie: ownerCCookie },
+          body: JSON.stringify({ mime: 'image/jpeg', data: btoa('NOT_AN_IMAGE') }),
+        },
+        supabaseEnv
+      );
+      expect(invalidRes.status).toBe(400);
+
+      // Upload valid JPEG -> goes to Supabase Storage, NOT D1 bytes
+      const putRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Cookie: ownerCCookie },
+          body: JSON.stringify({ mime: 'image/jpeg', data: sampleJpegBase64 }),
+        },
+        supabaseEnv
+      );
+      expect(putRes.status).toBe(200);
+      const putData = (await putRes.json()) as any;
+      expect(putData.success).toBe(true);
+      expect(putData.mime).toBe('image/jpeg');
+      expect(putData.dataUrl).toContain('data:image/jpeg;base64,');
+
+      const expectedObjectPath = `photos/${firmCData.firm.id}/${clientCId}.jpg`;
+      const expectedStorageKey = `bdlegal-photos/${expectedObjectPath}`;
+      expect(storedObjects.has(expectedStorageKey)).toBe(true);
+
+      // Verify D1 stores pointer without raw base64 bloat, and audit_log has metadata only
+      const db = getDb(mockD1);
+      const photoRows = await db
+        .select()
+        .from(schema.clientPhotos)
+        .where(eq(schema.clientPhotos.clientId, clientCId));
+      expect(photoRows[0].bytes).toBe('');
+      expect(photoRows[0].r2Key).toBe(`supabase:bdlegal-photos:${expectedObjectPath}`);
+
+      // GET binary from Supabase Storage
+      const getBinRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo`,
+        { headers: { Cookie: ownerCCookie } },
+        supabaseEnv
+      );
+      expect(getBinRes.status).toBe(200);
+      expect(getBinRes.headers.get('content-type')).toBe('image/jpeg');
+      expect(getBinRes.headers.get('cache-control')).toContain('private');
+      const fetchedBytes = new Uint8Array(await getBinRes.arrayBuffer());
+      expect(fetchedBytes.byteLength).toBe(storedObjects.get(expectedStorageKey)!.bytes.byteLength);
+
+      // GET ?format=json from Supabase Storage
+      const getJsonRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo?format=json`,
+        { headers: { Cookie: ownerCCookie } },
+        supabaseEnv
+      );
+      expect(getJsonRes.status).toBe(200);
+      const getJsonData = (await getJsonRes.json()) as any;
+      expect(getJsonData.bytes).toBe(sampleJpegBase64);
+
+      // DELETE photo removes from both Supabase Storage and D1
+      const delRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo`,
+        { method: 'DELETE', headers: { Cookie: ownerCCookie } },
+        supabaseEnv
+      );
+      expect(delRes.status).toBe(200);
+      expect(storedObjects.has(expectedStorageKey)).toBe(false);
+
+      const getAfterDeleteRes = await app.request(
+        `/api/v1/clients/${clientCId}/photo`,
+        { headers: { Cookie: ownerCCookie } },
+        supabaseEnv
+      );
+      expect(getAfterDeleteRes.status).toBe(404);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
