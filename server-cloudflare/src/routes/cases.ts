@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { Env, authMiddleware, enforceSubscriptionReadOnly, requirePermission, requireOwner } from '../middleware/auth';
 import { getDb } from '../db/client';
 import * as schema from '../db/schema';
-import { eq, and, isNull, sql, asc, desc, inArray } from 'drizzle-orm';
+import { eq, and, isNull, ne, sql, asc, desc, inArray } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import { buildDismissRemindersBySourceIdsStmt } from '../utils/reminders';
 
 export const casesRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -331,11 +332,36 @@ casesRouter.delete('/:id', enforceSubscriptionReadOnly, requireOwner, async (c) 
   if (!existing) return c.json({ error: 'Not found', message: 'Case not found' }, 404);
 
   const now = new Date().toISOString();
+  const [caseHearings, caseTasks, caseFiles, caseAppointments] = await Promise.all([
+    db.select({ id: schema.hearings.id }).from(schema.hearings).where(and(eq(schema.hearings.firmId, firm.id), eq(schema.hearings.caseId, id), isNull(schema.hearings.deletedAt))),
+    db.select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.firmId, firm.id), eq(schema.tasks.caseId, id), isNull(schema.tasks.deletedAt))),
+    db.select({ id: schema.physicalFiles.id }).from(schema.physicalFiles).where(and(eq(schema.physicalFiles.firmId, firm.id), eq(schema.physicalFiles.caseId, id), isNull(schema.physicalFiles.deletedAt))),
+    db.select({ id: schema.appointments.id }).from(schema.appointments).where(and(eq(schema.appointments.firmId, firm.id), eq(schema.appointments.caseId, id), isNull(schema.appointments.deletedAt))),
+  ]);
+  const linkedSourceIds = [
+    id,
+    ...caseHearings.map((h) => h.id),
+    ...caseTasks.map((t) => t.id),
+    ...caseFiles.map((f) => f.id),
+    ...caseAppointments.map((a) => a.id),
+  ];
+
   await db.batch([
     db
       .update(schema.cases)
       .set({ deletedAt: now, updatedAt: now, updatedBy: user.id })
       .where(and(eq(schema.cases.id, id), eq(schema.cases.firmId, firm.id))),
+    db
+      .update(schema.hearings)
+      .set({ deletedAt: now, updatedAt: now, updatedBy: user.id })
+      .where(and(eq(schema.hearings.firmId, firm.id), eq(schema.hearings.caseId, id), isNull(schema.hearings.deletedAt))),
+    buildDismissRemindersBySourceIdsStmt(db, {
+      firmId: firm.id,
+      sourceIds: linkedSourceIds,
+      updatedBy: user.id,
+      nowIso: now,
+      softDelete: true,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -364,14 +390,35 @@ casesRouter.get('/:id/counts', requirePermission('cases.view'), async (c) => {
     return c.json({ error: 'Not found', message: 'Case not found' }, 404);
   }
 
-  const [hearingsRows, tasksRows, notesRows, filesRows, agreementsRows, paymentsRows] = await Promise.all([
+  const [hearingsRows, tasksRows, notesRows, filesRows, appointmentsRows, agreementsRows, paymentsRows] = await Promise.all([
     db.select({ id: schema.hearings.id }).from(schema.hearings).where(and(eq(schema.hearings.firmId, firm.id), eq(schema.hearings.caseId, id), isNull(schema.hearings.deletedAt))),
-    db.select({ status: schema.tasks.status }).from(schema.tasks).where(and(eq(schema.tasks.firmId, firm.id), eq(schema.tasks.caseId, id), isNull(schema.tasks.deletedAt))),
+    db.select({ id: schema.tasks.id, status: schema.tasks.status }).from(schema.tasks).where(and(eq(schema.tasks.firmId, firm.id), eq(schema.tasks.caseId, id), isNull(schema.tasks.deletedAt))),
     db.select({ id: schema.caseNotes.id }).from(schema.caseNotes).where(and(eq(schema.caseNotes.firmId, firm.id), eq(schema.caseNotes.caseId, id), isNull(schema.caseNotes.deletedAt))),
     db.select({ id: schema.physicalFiles.id }).from(schema.physicalFiles).where(and(eq(schema.physicalFiles.firmId, firm.id), eq(schema.physicalFiles.caseId, id), isNull(schema.physicalFiles.deletedAt))),
+    db.select({ id: schema.appointments.id }).from(schema.appointments).where(and(eq(schema.appointments.firmId, firm.id), eq(schema.appointments.caseId, id), isNull(schema.appointments.deletedAt))),
     db.select({ id: schema.feeAgreements.id }).from(schema.feeAgreements).where(and(eq(schema.feeAgreements.firmId, firm.id), eq(schema.feeAgreements.caseId, id), isNull(schema.feeAgreements.deletedAt))),
     db.select({ id: schema.feePayments.id }).from(schema.feePayments).where(and(eq(schema.feePayments.firmId, firm.id), eq(schema.feePayments.caseId, id), isNull(schema.feePayments.deletedAt))),
   ]);
+
+  const linkedSourceIds = [
+    id,
+    ...hearingsRows.map((h) => h.id),
+    ...tasksRows.map((t) => t.id),
+    ...filesRows.map((f) => f.id),
+    ...appointmentsRows.map((a) => a.id),
+  ];
+
+  const reminderRows = await db
+    .select({ id: schema.reminders.id })
+    .from(schema.reminders)
+    .where(
+      and(
+        eq(schema.reminders.firmId, firm.id),
+        inArray(schema.reminders.sourceId, linkedSourceIds),
+        isNull(schema.reminders.deletedAt),
+        ne(schema.reminders.status, 'dismissed')
+      )
+    );
 
   return c.json({
     hearingsCount: hearingsRows.length,
@@ -379,6 +426,7 @@ casesRouter.get('/:id/counts', requirePermission('cases.view'), async (c) => {
     activeTasksCount: tasksRows.filter((t) => t.status !== 'completed' && t.status !== 'cancelled').length,
     notesCount: notesRows.length,
     filesCount: filesRows.length,
+    remindersCount: reminderRows.length,
     agreementsCount: agreementsRows.length,
     paymentsCount: paymentsRows.length,
   });

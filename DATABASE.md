@@ -542,7 +542,7 @@ CREATE TABLE file_movements (
 CREATE INDEX idx_file_movements_file_id ON file_movements(file_id);
 ```
 
-#### `reminders` `[PLANNED]`
+#### `reminders` `[BUILT]`
 ```sql
 CREATE TABLE reminders (
     id TEXT PRIMARY KEY,
@@ -556,6 +556,7 @@ CREATE TABLE reminders (
     due_at TIMESTAMPTZ NOT NULL,
     channel TEXT NOT NULL DEFAULT 'in_app',
     status TEXT NOT NULL DEFAULT 'pending',     -- 'pending' | 'sent' | 'dismissed'
+    sent_at TIMESTAMPTZ,
     dismissed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -563,8 +564,11 @@ CREATE TABLE reminders (
     created_by TEXT,
     updated_by TEXT
 );
+CREATE INDEX idx_reminders_firm_id ON reminders(firm_id);
 CREATE INDEX idx_reminders_firm_user ON reminders(firm_id, user_id);
 CREATE INDEX idx_reminders_remind_at ON reminders(remind_at);
+CREATE INDEX idx_reminders_source ON reminders(firm_id, source_type, source_id);
+CREATE INDEX idx_reminders_status ON reminders(status);
 ```
 
 ---

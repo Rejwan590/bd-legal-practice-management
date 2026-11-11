@@ -6,6 +6,11 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import {
+  buildDismissRemindersStmt,
+  buildRescheduleRemindersStmt,
+  computeRemindAtIso,
+} from '../utils/reminders';
 
 export const tasksRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -191,7 +196,7 @@ tasksRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission('tasks.
     }
   }
 
-  await db.batch([
+  const patchStmts: any[] = [
     db.update(schema.tasks).set(updates).where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firm.id))),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
@@ -206,7 +211,39 @@ tasksRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission('tasks.
         now: nowIso,
       })
     ),
-  ] as any);
+  ];
+  if (updates.status === 'completed' || updates.status === 'cancelled') {
+    patchStmts.push(
+      buildDismissRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: id,
+        updatedBy: user.id,
+        nowIso,
+      })
+    );
+  } else {
+    if (updates.dueAt) {
+      patchStmts.push(
+        buildRescheduleRemindersStmt(db, {
+          firmId: firm.id,
+          sourceId: id,
+          newDueAt: updates.dueAt,
+          newRemindAt: computeRemindAtIso(updates.dueAt, 2 * 60 * 60 * 1000),
+          updatedBy: user.id,
+          nowIso,
+        })
+      );
+    }
+    if (updates.assignedTo) {
+      patchStmts.push(
+        db
+          .update(schema.reminders)
+          .set({ userId: updates.assignedTo, updatedAt: nowIso, updatedBy: user.id })
+          .where(and(eq(schema.reminders.firmId, firm.id), eq(schema.reminders.sourceId, id), isNull(schema.reminders.deletedAt)))
+      );
+    }
+  }
+  await db.batch(patchStmts as any);
 
   return c.json({ ...task, ...updates });
 });
@@ -237,6 +274,12 @@ tasksRouter.post('/:id/complete', enforceSubscriptionReadOnly, requirePermission
 
   await db.batch([
     db.update(schema.tasks).set(updates).where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firm.id))),
+    buildDismissRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      updatedBy: user.id,
+      nowIso,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -280,6 +323,10 @@ tasksRouter.post('/:id/reassign', enforceSubscriptionReadOnly, requirePermission
 
   await db.batch([
     db.update(schema.tasks).set(updates).where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firm.id))),
+    db
+      .update(schema.reminders)
+      .set({ userId: parse.data.newAssignedTo, updatedAt: nowIso, updatedBy: user.id })
+      .where(and(eq(schema.reminders.firmId, firm.id), eq(schema.reminders.sourceId, id), isNull(schema.reminders.deletedAt))),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -319,6 +366,13 @@ tasksRouter.delete('/:id', enforceSubscriptionReadOnly, requirePermission('tasks
       .update(schema.tasks)
       .set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id })
       .where(and(eq(schema.tasks.id, id), eq(schema.tasks.firmId, firm.id))),
+    buildDismissRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      updatedBy: user.id,
+      nowIso,
+      softDelete: true,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,

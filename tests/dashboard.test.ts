@@ -6,7 +6,10 @@ import { MockCalendarRepository } from '../src/data/repositories/calendar';
 import { MockSearchRepository } from '../src/data/repositories/search';
 import { RestDashboardRepository } from '../src/data/repositories/rest/restDashboard';
 import { RestCalendarRepository } from '../src/data/repositories/rest/restCalendar';
+import { RestReminderRepository } from '../src/data/repositories/rest/restReminder';
 import { RestSearchRepository } from '../src/data/repositories/rest/restSearch';
+import { MockReminderRepository } from '../src/data/repositories/reminder';
+import { MockAuditLogRepository } from '../src/data/repositories/audit';
 import { SecurityContext, UserRecord } from '../src/data/types';
 
 let passed = 0;
@@ -167,6 +170,77 @@ function startMockBackendServer(): Promise<MockServer> {
         return;
       }
 
+      if (url.pathname === '/api/v1/reminders') {
+        res.writeHead(200);
+        res.end(
+          JSON.stringify([
+            {
+              id: 'rem-1',
+              firmId: 'firm-1',
+              userId: 'user-1',
+              sourceType: 'hearing',
+              sourceId: 'hearing-1',
+              title: 'Upcoming Hearing: CR-101/2026',
+              remindAt: new Date(Date.now() - 3600000).toISOString(),
+              dueAt: new Date(Date.now() + 3600000).toISOString(),
+              channel: 'in_app',
+              status: 'pending',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+              deletedAt: null,
+            },
+          ])
+        );
+        return;
+      }
+
+      if (url.pathname === '/api/v1/calendar/cause-list') {
+        const todayDhaka = getDhakaDateString(new Date());
+        const targetDay = url.searchParams.get('date') || todayDhaka;
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            date: targetDay,
+            firmName: 'Test Chambers',
+            hearings: [
+              {
+                id: 'cal-hearing-hearing-1',
+                title: 'CR-101/2026 - Hearing on Bail Petition',
+                date: `${todayDhaka}T09:30:00.000Z`,
+                type: 'hearing',
+                sourceId: 'hearing-1',
+                caseId: 'case-1',
+                caseNumber: 'CR-101/2026',
+                court: 'High Court',
+                clientId: 'client-1',
+                clientName: 'Md. Rafiqul Islam',
+                status: 'scheduled',
+              },
+              {
+                id: 'cal-hearing-hearing-2',
+                title: 'CS-202/2026 - Framing of Issues',
+                date: `${todayDhaka}T11:00:00.000Z`,
+                type: 'hearing',
+                sourceId: 'hearing-2',
+                caseId: 'case-2',
+                caseNumber: 'CS-202/2026',
+                court: 'Joint District Judge',
+                clientId: 'client-2',
+                clientName: 'Anwara Begum',
+                status: 'scheduled',
+              },
+            ],
+          })
+        );
+        return;
+      }
+
+      if (url.pathname === '/api/v1/calendar') {
+        res.writeHead(200);
+        res.end(JSON.stringify([]));
+        return;
+      }
+
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not Found' }));
     });
@@ -215,6 +289,18 @@ async function runTests() {
   const restSearch = new RestSearchRepository();
   assert(typeof mockSearch.search === 'function' && typeof restSearch.search === 'function', 'Both implement search');
 
+  const mockRem = new MockReminderRepository(new MockAuditLogRepository());
+  const restRem = new RestReminderRepository();
+  assert(
+    typeof mockRem.list === 'function' &&
+      typeof restRem.list === 'function' &&
+      typeof mockRem.syncReminders === 'function' &&
+      typeof restRem.syncReminders === 'function' &&
+      typeof mockRem.dismiss === 'function' &&
+      typeof restRem.dismiss === 'function',
+    'Both implement IReminderRepository methods'
+  );
+
   // 3. RestDashboardRepository live data-driven calculations
   console.log('\n3. RestDashboardRepository Live Integration');
   const mockServer = await startMockBackendServer();
@@ -249,6 +335,7 @@ async function runTests() {
     assert(metrics.pendingTasksCount === 2, `Pending tasks count (pending + in_progress) is 2: got ${metrics.pendingTasksCount}`);
     assert(metrics.overdueTasksCount === 1, `Overdue tasks count is 1: got ${metrics.overdueTasksCount}`);
     assert(metrics.todayAppointmentsCount === 1, `Today's appointments count is 1: got ${metrics.todayAppointmentsCount}`);
+    assert(metrics.pendingRemindersCount === 1, `Pending reminders count is 1: got ${metrics.pendingRemindersCount}`);
 
     // Urgent items
     const urgent = await restDash.getUrgentItems(context);

@@ -6,6 +6,11 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, asc, inArray } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import {
+  buildDismissRemindersStmt,
+  buildRescheduleRemindersStmt,
+  computeRemindAtIso,
+} from '../utils/reminders';
 
 export const appointmentsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -186,6 +191,29 @@ appointmentsRouter.post('/', enforceSubscriptionReadOnly, requirePermission('app
       })
     );
   }
+  if (newAppt.reminderMinutesBefore > 0) {
+    stmts.push(
+      db.insert(schema.reminders).values({
+        id: crypto.randomUUID(),
+        firmId: firm.id,
+        userId: user.id,
+        sourceType: 'appointment',
+        sourceId: id,
+        title: `Appointment: ${newAppt.title}`,
+        description: `${newAppt.mode}${newAppt.location ? ` · ${newAppt.location}` : ''}`,
+        dueAt: newAppt.startsAt,
+        remindAt: computeRemindAtIso(newAppt.startsAt, newAppt.reminderMinutesBefore * 60 * 1000),
+        channel: 'in_app',
+        status: 'pending',
+        dismissedAt: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdBy: user.id,
+        updatedBy: null,
+        deletedAt: null,
+      })
+    );
+  }
   stmts.push(
     db.insert(schema.auditLog).values(
       buildAuditEntry({
@@ -270,6 +298,66 @@ appointmentsRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission(
     }
   }
 
+  const nextStatus = updates.status ?? appt.status;
+  const nextStartsAt = updates.startsAt ?? appt.startsAt;
+  const nextMins = updates.reminderMinutesBefore ?? appt.reminderMinutesBefore;
+
+  if (nextStatus !== 'scheduled' || nextMins <= 0) {
+    stmts.push(
+      buildDismissRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: id,
+        updatedBy: user.id,
+        nowIso,
+      })
+    );
+  } else if (updates.startsAt !== undefined || updates.reminderMinutesBefore !== undefined || updates.status === 'scheduled') {
+    const existingReminder = await db
+      .select({ id: schema.reminders.id })
+      .from(schema.reminders)
+      .where(and(eq(schema.reminders.firmId, firm.id), eq(schema.reminders.sourceId, id), isNull(schema.reminders.deletedAt)))
+      .limit(1);
+
+    const newRemindAt = computeRemindAtIso(nextStartsAt, nextMins * 60 * 1000);
+    if (existingReminder.length > 0) {
+      stmts.push(
+        buildRescheduleRemindersStmt(db, {
+          firmId: firm.id,
+          sourceId: id,
+          newDueAt: nextStartsAt,
+          newRemindAt,
+          updatedBy: user.id,
+          nowIso,
+        })
+      );
+    } else {
+      const nextTitle = updates.title ?? appt.title;
+      const nextMode = updates.mode ?? appt.mode;
+      const nextLocation = updates.location !== undefined ? updates.location : appt.location;
+      stmts.push(
+        db.insert(schema.reminders).values({
+          id: crypto.randomUUID(),
+          firmId: firm.id,
+          userId: appt.organiserUserId || user.id,
+          sourceType: 'appointment',
+          sourceId: id,
+          title: `Appointment: ${nextTitle}`,
+          description: `${nextMode}${nextLocation ? ` · ${nextLocation}` : ''}`,
+          dueAt: nextStartsAt,
+          remindAt: newRemindAt,
+          channel: 'in_app',
+          status: 'pending',
+          dismissedAt: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          createdBy: user.id,
+          updatedBy: null,
+          deletedAt: null,
+        })
+      );
+    }
+  }
+
   stmts.push(
     db.insert(schema.auditLog).values(
       buildAuditEntry({
@@ -311,6 +399,13 @@ appointmentsRouter.delete('/:id', enforceSubscriptionReadOnly, requirePermission
       .update(schema.appointments)
       .set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id })
       .where(and(eq(schema.appointments.id, id), eq(schema.appointments.firmId, firm.id))),
+    buildDismissRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      updatedBy: user.id,
+      nowIso,
+      softDelete: true,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,

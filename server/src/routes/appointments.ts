@@ -133,7 +133,10 @@ appointmentsRouter.post(
         caseId: caseId || null,
         status,
         notes: notes?.trim() || null,
-        reminderMinutesBefore: Number(reminderMinutesBefore) || 30,
+        reminderMinutesBefore:
+          reminderMinutesBefore !== undefined && reminderMinutesBefore !== null
+            ? Number(reminderMinutesBefore)
+            : 30,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -142,6 +145,29 @@ appointmentsRouter.post(
       },
       Array.isArray(attendeeUserIds) ? attendeeUserIds : []
     );
+
+    if (created.status === 'scheduled' && created.reminderMinutesBefore > 0) {
+      const dueDate = new Date(created.startsAt);
+      const remindAt = new Date(dueDate.getTime() - created.reminderMinutesBefore * 60 * 1000);
+      await db.insertReminder({
+        id: crypto.randomUUID(),
+        firmId: req.user!.firmId,
+        userId: created.organiserUserId,
+        sourceType: 'appointment',
+        sourceId: created.id,
+        title: `Appointment: ${created.title}`,
+        description: created.location ? `Location: ${created.location}` : undefined,
+        remindAt,
+        dueAt: dueDate,
+        channel: 'in_app',
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdBy: req.user!.id,
+        updatedBy: req.user!.id,
+      });
+    }
 
     await recordAudit({
       firmId: req.user!.firmId,
@@ -250,6 +276,37 @@ appointmentsRouter.patch(
       Array.isArray(attendeeUserIds) ? attendeeUserIds : undefined
     );
 
+    if (updated.status !== 'scheduled' || updated.reminderMinutesBefore <= 0) {
+      await db.dismissRemindersBySource(req.user!.firmId, updated.id, req.user!.id);
+    } else if (isReschedule || reminderMinutesBefore !== undefined) {
+      const dueDate = new Date(updated.startsAt);
+      const remindAt = new Date(dueDate.getTime() - updated.reminderMinutesBefore * 60 * 1000);
+      const count = await db.rescheduleRemindersBySource(
+        req.user!.firmId,
+        updated.id,
+        dueDate,
+        remindAt,
+        req.user!.id
+      );
+      if (count === 0) {
+        await db.insertReminder({
+          id: crypto.randomUUID(),
+          firmId: req.user!.firmId,
+          userId: updated.organiserUserId,
+          sourceType: 'appointment',
+          sourceId: updated.id,
+          title: `Appointment: ${updated.title}`,
+          description: updated.location ? `Location: ${updated.location}` : undefined,
+          remindAt,
+          dueAt: dueDate,
+          channel: 'in_app',
+          status: 'pending',
+          createdBy: req.user!.id,
+          updatedBy: req.user!.id,
+        });
+      }
+    }
+
     // Audit log (reschedule tracks old/new time)
     await recordAudit({
       firmId: req.user!.firmId,
@@ -294,6 +351,7 @@ appointmentsRouter.delete(
     }
 
     await db.deleteAppointment(existing.id, req.user!.firmId, req.user!.id);
+    await db.dismissRemindersBySource(req.user!.firmId, existing.id, req.user!.id, true);
 
     await recordAudit({
       firmId: req.user!.firmId,

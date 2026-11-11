@@ -227,6 +227,25 @@ tasksRouter.patch(
 
     const updated = await db.updateTask(req.params.id, firmId, updates);
 
+    if (updates.status === 'completed' || updates.status === 'cancelled') {
+      await db.dismissRemindersBySource(firmId, existing.id, req.user!.id);
+    } else if (updates.dueAt) {
+      const dueDate = new Date(updates.dueAt as Date);
+      const remindAt = new Date(dueDate.getTime() - 2 * 60 * 60 * 1000);
+      await db.rescheduleRemindersBySource(firmId, existing.id, dueDate, remindAt, req.user!.id);
+    }
+    if (updates.assignedTo && updates.assignedTo !== existing.assignedTo) {
+      const existingRems = await db.listRemindersBySourceIds(firmId, [existing.id]);
+      for (const rem of existingRems) {
+        if (rem.sourceType === 'task') {
+          await db.updateReminder(rem.id, firmId, {
+            userId: String(updates.assignedTo),
+            updatedBy: req.user!.id,
+          });
+        }
+      }
+    }
+
     await recordAudit({
       firmId,
       userId: req.user!.id,
@@ -280,6 +299,8 @@ tasksRouter.post(
       updatedBy: req.user!.id,
     });
 
+    await db.dismissRemindersBySource(firmId, existing.id, req.user!.id);
+
     await recordAudit({
       firmId,
       userId: req.user!.id,
@@ -324,6 +345,16 @@ tasksRouter.post(
       updatedBy: req.user!.id,
     });
 
+    const existingRems = await db.listRemindersBySourceIds(firmId, [existing.id]);
+    for (const rem of existingRems) {
+      if (rem.sourceType === 'task') {
+        await db.updateReminder(rem.id, firmId, {
+          userId: parsed.data.newAssignedTo,
+          updatedBy: req.user!.id,
+        });
+      }
+    }
+
     await recordAudit({
       firmId,
       userId: req.user!.id,
@@ -357,6 +388,7 @@ tasksRouter.delete(
     }
 
     await db.deleteTask(req.params.id, firmId, req.user!.id);
+    await db.dismissRemindersBySource(firmId, existing.id, req.user!.id, true);
 
     await recordAudit({
       firmId,

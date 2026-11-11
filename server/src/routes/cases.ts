@@ -568,9 +568,19 @@ casesRouter.delete(
     }
 
     const now = new Date();
-    await db.updateCase(existing.id, req.user!.firmId, {
-      deletedAt: now,
-      updatedBy: req.user!.id,
+    const firmId = req.user!.firmId;
+    await db.transaction(async (txDb) => {
+      await txDb.updateCase(existing.id, firmId, {
+        deletedAt: now,
+        updatedBy: req.user!.id,
+      });
+
+      const caseHearings = await txDb.listHearings(firmId, { caseId: existing.id });
+      for (const h of caseHearings) {
+        await txDb.deleteHearing(h.id, firmId, req.user!.id);
+        await txDb.dismissRemindersBySource(firmId, h.id, req.user!.id, true);
+      }
+      await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id, true);
     });
 
     // Record immutable audit log

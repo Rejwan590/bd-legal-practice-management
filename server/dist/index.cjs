@@ -20087,14 +20087,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto21 = require("crypto");
+    var crypto23 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto21.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto23.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -21987,7 +21987,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router21 = require_router();
+    var Router24 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22052,7 +22052,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router21({
+        this._router = new Router24({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -23003,11 +23003,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto21 = require("crypto");
+    var crypto23 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if ("string" != typeof secret) throw new TypeError("Secret string must be provided.");
-      return val + "." + crypto21.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto23.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -23016,7 +23016,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto21.createHash("sha1").update(str).digest("hex");
+      return crypto23.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -23916,7 +23916,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router21 = require_router();
+    var Router24 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -23939,7 +23939,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router21;
+    exports2.Router = Router24;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -26259,7 +26259,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports2, module2) {
     "use strict";
-    var crypto21 = require_utils4();
+    var crypto23 = require_utils4();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -26277,7 +26277,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto21.randomBytes(18).toString("base64");
+      const clientNonce = crypto23.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -26319,20 +26319,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto21.hashByName(hashName, peerCert);
+        const certHash = await crypto23.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto21.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto21.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto21.sha256(clientKey);
-      const clientSignature = await crypto21.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto23.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto23.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto23.sha256(clientKey);
+      const clientSignature = await crypto23.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto21.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto21.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto23.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto23.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -28571,7 +28571,7 @@ var require_client = __commonJS({
     var Query2 = require_query2();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto21 = require_utils4();
+    var crypto23 = require_utils4();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -28826,7 +28826,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto21.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto23.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -40416,18 +40416,21 @@ __export(schema_exports, {
   feeAgreementChanges: () => feeAgreementChanges,
   feeAgreements: () => feeAgreements,
   feePayments: () => feePayments,
+  fileMovements: () => fileMovements,
   firms: () => firms,
   hearingDateHistory: () => hearingDateHistory,
   hearings: () => hearings,
   licenseEvents: () => licenseEvents,
   numberSequences: () => numberSequences,
   payments: () => payments,
+  physicalFiles: () => physicalFiles,
   plans: () => plans,
   platformAdmins: () => platformAdmins,
+  reminders: () => reminders,
   tasks: () => tasks,
   users: () => users
 });
-var plans, firms, users, clients, clientPhotos, clientNotes, cases, caseNotes, hearings, hearingDateHistory, caseShares, auditLog, payments, backupsLog, platformAdmins, adminAudit, licenseEvents, devices, appointments, appointmentAttendees, tasks, feeAgreements, feeAgreementChanges, numberSequences, feePayments, expenseCategories, expenses, chamberExpenseCategories, chamberAdvances, chamberExpenses, chamberAdvanceSettlements;
+var plans, firms, users, clients, clientPhotos, clientNotes, cases, caseNotes, hearings, hearingDateHistory, caseShares, auditLog, payments, backupsLog, platformAdmins, adminAudit, licenseEvents, devices, appointments, appointmentAttendees, tasks, feeAgreements, feeAgreementChanges, numberSequences, feePayments, expenseCategories, expenses, chamberExpenseCategories, chamberAdvances, chamberExpenses, chamberAdvanceSettlements, physicalFiles, fileMovements, reminders;
 var init_schema2 = __esm({
   "src/db/schema.ts"() {
     "use strict";
@@ -40470,6 +40473,7 @@ var init_schema2 = __esm({
       isTrial: boolean("is_trial").default(false).notNull(),
       trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
       trialDays: integer("trial_days"),
+      trialPriceBdt: integer("trial_price_bdt").default(0).notNull(),
       devicePolicy: text("device_policy").$type().default("auto-approve").notNull(),
       allowOwnerDeviceRemoval: boolean("allow_owner_device_removal").default(false).notNull(),
       visibilityMode: text("visibility_mode").$type().default("team").notNull(),
@@ -41041,6 +41045,71 @@ var init_schema2 = __esm({
       index("idx_chamber_advance_settlements_firm_id").on(table.firmId),
       index("idx_chamber_advance_settlements_advance_id").on(table.advanceId)
     ]);
+    physicalFiles = pgTable("physical_files", {
+      id: text("id").primaryKey(),
+      firmId: text("firm_id").references(() => firms.id).notNull(),
+      serial: text("serial").notNull(),
+      caseId: text("case_id").references(() => cases.id, { onDelete: "set null" }),
+      clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+      title: text("title").notNull(),
+      shelfLocation: text("shelf_location"),
+      status: text("status").$type().default("in_chamber").notNull(),
+      currentHolderId: text("holder_id").references(() => users.id, { onDelete: "set null" }),
+      checkedOutAt: timestamp("checked_out_at", { withTimezone: true }),
+      dueBackAt: timestamp("due_back_at", { withTimezone: true }),
+      notes: text("notes"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+      deletedAt: timestamp("deleted_at", { withTimezone: true }),
+      createdBy: text("created_by"),
+      updatedBy: text("updated_by")
+    }, (table) => [
+      uniqueIndex("uidx_physical_files_firm_serial").on(table.firmId, table.serial),
+      index("idx_physical_files_firm_id").on(table.firmId),
+      index("idx_physical_files_case_id").on(table.caseId),
+      index("idx_physical_files_client_id").on(table.clientId),
+      index("idx_physical_files_holder_id").on(table.currentHolderId),
+      index("idx_physical_files_status").on(table.status)
+    ]);
+    fileMovements = pgTable("file_movements", {
+      id: text("id").primaryKey(),
+      firmId: text("firm_id").references(() => firms.id).notNull(),
+      fileId: text("file_id").references(() => physicalFiles.id).notNull(),
+      action: text("action").$type().notNull(),
+      userId: text("user_id").references(() => users.id).notNull(),
+      at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+      dueBackAt: timestamp("due_back_at", { withTimezone: true }),
+      note: text("note")
+    }, (table) => [
+      index("idx_file_movements_firm_id").on(table.firmId),
+      index("idx_file_movements_file_id").on(table.fileId)
+    ]);
+    reminders = pgTable("reminders", {
+      id: text("id").primaryKey(),
+      firmId: text("firm_id").references(() => firms.id).notNull(),
+      userId: text("user_id").references(() => users.id).notNull(),
+      sourceType: text("source_type").$type().notNull(),
+      sourceId: text("source_id").notNull(),
+      title: text("title").notNull(),
+      description: text("description"),
+      remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
+      dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+      channel: text("channel").$type().default("in_app").notNull(),
+      status: text("status").$type().default("pending").notNull(),
+      sentAt: timestamp("sent_at", { withTimezone: true }),
+      dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+      deletedAt: timestamp("deleted_at", { withTimezone: true }),
+      createdBy: text("created_by"),
+      updatedBy: text("updated_by")
+    }, (table) => [
+      index("idx_reminders_firm_id").on(table.firmId),
+      index("idx_reminders_firm_user").on(table.firmId, table.userId),
+      index("idx_reminders_remind_at").on(table.remindAt),
+      index("idx_reminders_source").on(table.firmId, table.sourceType, table.sourceId),
+      index("idx_reminders_status").on(table.status)
+    ]);
   }
 });
 
@@ -41311,6 +41380,7 @@ var init_seed = __esm({
         isTrial: false,
         trialStartedAt: null,
         trialDays: null,
+        trialPriceBdt: 0,
         devicePolicy: "auto-approve",
         allowOwnerDeviceRemoval: false,
         visibilityMode: "open",
@@ -41750,6 +41820,9 @@ var init_client = __esm({
       chamberAdvances = [];
       chamberExpenses = [];
       chamberAdvanceSettlements = [];
+      physicalFiles = [];
+      fileMovements = [];
+      reminders = [];
       initialized = false;
       async init() {
         if (this.initialized) return;
@@ -41847,6 +41920,7 @@ var init_client = __esm({
           isTrial: firm.isTrial ?? false,
           trialStartedAt: firm.trialStartedAt ? new Date(firm.trialStartedAt) : null,
           trialDays: firm.trialDays ?? null,
+          trialPriceBdt: firm.trialPriceBdt ?? 0,
           devicePolicy: firm.devicePolicy ?? "auto-approve",
           allowOwnerDeviceRemoval: firm.allowOwnerDeviceRemoval ?? false,
           visibilityMode: firm.visibilityMode ?? "team",
@@ -42131,6 +42205,9 @@ var init_client = __esm({
         const clientTasks = this.tasks.filter(
           (t) => t.clientId === clientId && t.firmId === firmId && !t.deletedAt && (!t.caseId || visibleIds.has(t.caseId))
         );
+        const clientFiles = this.physicalFiles.filter(
+          (f) => f.clientId === clientId && f.firmId === firmId && !f.deletedAt && (!f.caseId || visibleIds.has(f.caseId))
+        );
         return {
           cases: clientCases.map((c) => ({
             id: c.id,
@@ -42146,7 +42223,16 @@ var init_client = __esm({
             status: t.status,
             dueAt: new Date(t.dueAt).toISOString()
           })),
-          files: []
+          files: clientFiles.map((f) => {
+            const holder = f.currentHolderId ? this.users.find((u) => u.id === f.currentHolderId) : null;
+            return {
+              id: f.id,
+              serial: f.serial,
+              title: f.title,
+              status: f.status,
+              holderName: holder ? holder.name : "Chamber Archive"
+            };
+          })
         };
       }
       // Client Photos Methods
@@ -42400,11 +42486,29 @@ var init_client = __esm({
         const tasksCount = this.tasks.filter(
           (t) => t.caseId === caseId && t.firmId === firmId && !t.deletedAt && t.status !== "cancelled"
         ).length;
+        const filesCount = this.physicalFiles.filter(
+          (f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt
+        ).length;
+        const hearingIds = new Set(
+          this.hearings.filter((h) => h.caseId === caseId && h.firmId === firmId && !h.deletedAt).map((h) => h.id)
+        );
+        const taskIds = new Set(
+          this.tasks.filter((t) => t.caseId === caseId && t.firmId === firmId && !t.deletedAt).map((t) => t.id)
+        );
+        const fileIds = new Set(
+          this.physicalFiles.filter((f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt).map((f) => f.id)
+        );
+        const apptIds = new Set(
+          this.appointments.filter((a) => a.caseId === caseId && a.firmId === firmId && !a.deletedAt).map((a) => a.id)
+        );
+        const remindersCount = this.reminders.filter(
+          (r) => r.firmId === firmId && !r.deletedAt && r.status === "pending" && (r.sourceId === caseId || r.sourceType === "hearing" && hearingIds.has(r.sourceId) || r.sourceType === "task" && taskIds.has(r.sourceId) || r.sourceType === "file_return" && fileIds.has(r.sourceId) || r.sourceType === "appointment" && apptIds.has(r.sourceId))
+        ).length;
         return {
           hearingsCount,
           tasksCount,
-          filesCount: 0,
-          remindersCount: 0
+          filesCount,
+          remindersCount
         };
       }
       async listCaseShares(caseId, firmId) {
@@ -42654,6 +42758,311 @@ var init_client = __esm({
         this.tasks[idx].updatedAt = /* @__PURE__ */ new Date();
         if (updatedBy) this.tasks[idx].updatedBy = updatedBy;
         return { success: true, softDeleted: true };
+      }
+      // Physical Files & Custody Methods (Phase 8)
+      enrichPhysicalFileForMemory(f) {
+        const holder = f.currentHolderId ? this.users.find((u) => u.id === f.currentHolderId) : null;
+        return {
+          ...f,
+          currentHolderName: holder ? holder.name : null
+        };
+      }
+      async getNextPhysicalFileSerial(firmId) {
+        await this.init();
+        const firmFiles = this.physicalFiles.filter((f) => f.firmId === firmId);
+        let maxNumber = 100;
+        for (const f of firmFiles) {
+          const match = f.serial.match(/^F-(\d+)$/i) || f.serial.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!Number.isNaN(num) && num > maxNumber) {
+              maxNumber = num;
+            }
+          }
+        }
+        return `F-${String(maxNumber + 1).padStart(6, "0")}`;
+      }
+      async listPhysicalFiles(firmId, filter, user) {
+        await this.init();
+        const includeRestricted = user ? user.role === "Owner" || Boolean(user.permissions?.includes("restricted.view")) : true;
+        const visibleIds = user ? this.getVisibleCaseSetForMemory(firmId, user, includeRestricted) : null;
+        let result = this.physicalFiles.filter((f) => {
+          if (f.firmId !== firmId || f.deletedAt) return false;
+          if (visibleIds && f.caseId && !visibleIds.has(f.caseId)) return false;
+          return true;
+        });
+        if (filter?.caseId) {
+          result = result.filter((f) => f.caseId === filter.caseId);
+        }
+        if (filter?.clientId) {
+          result = result.filter((f) => f.clientId === filter.clientId);
+        }
+        if (filter?.status && filter.status !== "all") {
+          result = result.filter((f) => f.status === filter.status);
+        }
+        if (filter?.holderId) {
+          result = result.filter((f) => f.currentHolderId === filter.holderId);
+        }
+        const enriched = result.map((f) => this.enrichPhysicalFileForMemory(f));
+        const finalFiltered = filter?.search ? enriched.filter((f) => {
+          const q = filter.search.trim().toLowerCase();
+          return f.serial.toLowerCase().includes(q) || f.title.toLowerCase().includes(q) || (f.shelfLocation || "").toLowerCase().includes(q) || (f.notes || "").toLowerCase().includes(q) || (f.currentHolderName || "").toLowerCase().includes(q);
+        }) : enriched;
+        return finalFiltered.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      }
+      async getPhysicalFileById(id, firmId) {
+        await this.init();
+        const row = this.physicalFiles.find((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+        return row ? this.enrichPhysicalFileForMemory(row) : null;
+      }
+      async getPhysicalFileBySerial(serial2, firmId) {
+        await this.init();
+        const clean = serial2.trim().toLowerCase();
+        const row = this.physicalFiles.find(
+          (f) => f.firmId === firmId && !f.deletedAt && f.serial.toLowerCase() === clean
+        );
+        return row ? this.enrichPhysicalFileForMemory(row) : null;
+      }
+      async getPhysicalFileByCaseId(caseId, firmId) {
+        await this.init();
+        const row = this.physicalFiles.find(
+          (f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt
+        );
+        return row ? this.enrichPhysicalFileForMemory(row) : null;
+      }
+      async insertPhysicalFile(file2) {
+        await this.init();
+        const duplicate = this.physicalFiles.find(
+          (f) => f.firmId === file2.firmId && f.serial.toLowerCase() === file2.serial.toLowerCase()
+        );
+        if (duplicate) {
+          throw new Error(`DUPLICATE_SERIAL: Serial ${file2.serial} already exists in firm`);
+        }
+        const now = /* @__PURE__ */ new Date();
+        const created = {
+          id: file2.id || `file-${import_crypto2.default.randomUUID()}`,
+          firmId: file2.firmId,
+          serial: file2.serial,
+          caseId: file2.caseId ?? null,
+          clientId: file2.clientId ?? null,
+          title: file2.title,
+          shelfLocation: file2.shelfLocation ?? "General File Rack",
+          status: file2.status ?? "in_chamber",
+          currentHolderId: file2.currentHolderId ?? null,
+          checkedOutAt: file2.checkedOutAt ?? null,
+          dueBackAt: file2.dueBackAt ?? null,
+          notes: file2.notes ?? null,
+          createdAt: file2.createdAt ?? now,
+          updatedAt: file2.updatedAt ?? now,
+          deletedAt: null,
+          createdBy: file2.createdBy ?? null,
+          updatedBy: file2.updatedBy ?? null
+        };
+        this.physicalFiles.push(created);
+        return this.enrichPhysicalFileForMemory(created);
+      }
+      async updatePhysicalFile(id, firmId, updates) {
+        await this.init();
+        const idx = this.physicalFiles.findIndex((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+        if (idx === -1) throw new Error(`Physical file not found: ${id}`);
+        const updated = {
+          ...this.physicalFiles[idx],
+          ...updates,
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        this.physicalFiles[idx] = updated;
+        return this.enrichPhysicalFileForMemory(updated);
+      }
+      async deletePhysicalFile(id, firmId, updatedBy) {
+        await this.init();
+        const idx = this.physicalFiles.findIndex((f) => f.id === id && f.firmId === firmId && !f.deletedAt);
+        if (idx === -1) throw new Error(`Physical file not found: ${id}`);
+        this.physicalFiles[idx].deletedAt = /* @__PURE__ */ new Date();
+        this.physicalFiles[idx].updatedAt = /* @__PURE__ */ new Date();
+        if (updatedBy) this.physicalFiles[idx].updatedBy = updatedBy;
+        return { success: true, softDeleted: true };
+      }
+      async listFileMovements(fileId, firmId) {
+        await this.init();
+        return this.fileMovements.filter((m) => m.fileId === fileId && m.firmId === firmId).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).map((m) => {
+          const u = this.users.find((usr) => usr.id === m.userId);
+          return {
+            ...m,
+            userName: u ? u.name : "Unknown User"
+          };
+        });
+      }
+      async insertFileMovement(movement) {
+        await this.init();
+        const created = {
+          id: movement.id || `mov-${import_crypto2.default.randomUUID()}`,
+          firmId: movement.firmId,
+          fileId: movement.fileId,
+          action: movement.action,
+          userId: movement.userId,
+          at: movement.at ?? /* @__PURE__ */ new Date(),
+          dueBackAt: movement.dueBackAt ?? null,
+          note: movement.note ?? null
+        };
+        this.fileMovements.push(created);
+        const u = this.users.find((usr) => usr.id === created.userId);
+        return {
+          ...created,
+          userName: u ? u.name : "Unknown User"
+        };
+      }
+      // Reminders Methods (Phase 9)
+      enrichReminderForMemory(r) {
+        const u = this.users.find((usr) => usr.id === r.userId);
+        return {
+          ...r,
+          userName: u ? u.name : void 0
+        };
+      }
+      async listReminders(firmId, filter, user) {
+        await this.init();
+        const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+        const hearingMap = new Map(this.hearings.filter((h) => h.firmId === firmId && !h.deletedAt).map((h) => [h.id, h]));
+        const taskMap = new Map(this.tasks.filter((t) => t.firmId === firmId && !t.deletedAt).map((t) => [t.id, t]));
+        const fileMap = new Map(this.physicalFiles.filter((f) => f.firmId === firmId && !f.deletedAt).map((f) => [f.id, f]));
+        const apptMap = new Map(this.appointments.filter((a) => a.firmId === firmId && !a.deletedAt).map((a) => [a.id, a]));
+        const nowMs = Date.now();
+        return this.reminders.filter((r) => {
+          if (r.firmId !== firmId || r.deletedAt) return false;
+          if (user?.role === "Staff") {
+            if (r.userId !== user.id) return false;
+          } else if (filter?.userId && r.userId !== filter.userId) {
+            return false;
+          }
+          if (user) {
+            if (r.sourceType === "hearing") {
+              const h = hearingMap.get(r.sourceId);
+              if (h && h.caseId && !visibleCaseIds.has(h.caseId)) return false;
+            } else if (r.sourceType === "task") {
+              const t = taskMap.get(r.sourceId);
+              if (t && t.caseId && !visibleCaseIds.has(t.caseId)) return false;
+            } else if (r.sourceType === "file_return") {
+              const f = fileMap.get(r.sourceId);
+              if (f && f.caseId && !visibleCaseIds.has(f.caseId)) return false;
+            } else if (r.sourceType === "appointment") {
+              const a = apptMap.get(r.sourceId);
+              if (a && a.caseId && !visibleCaseIds.has(a.caseId)) return false;
+            }
+          }
+          if (filter?.status) {
+            if (filter.status === "active") {
+              if (r.status === "dismissed") return false;
+            } else if (r.status !== filter.status) {
+              return false;
+            }
+          }
+          if (filter?.dueOnly && new Date(r.remindAt).getTime() > nowMs) {
+            return false;
+          }
+          if (filter?.sourceType && r.sourceType !== filter.sourceType) {
+            return false;
+          }
+          if (filter?.search) {
+            const q = filter.search.toLowerCase();
+            const hit = r.title.toLowerCase().includes(q) || r.description && r.description.toLowerCase().includes(q);
+            if (!hit) return false;
+          }
+          return true;
+        }).sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()).map((r) => this.enrichReminderForMemory({ ...r }));
+      }
+      async getReminderById(id, firmId) {
+        await this.init();
+        const found = this.reminders.find((r) => r.id === id && r.firmId === firmId && !r.deletedAt);
+        return found ? this.enrichReminderForMemory({ ...found }) : null;
+      }
+      async insertReminder(reminder) {
+        await this.init();
+        const now = /* @__PURE__ */ new Date();
+        const created = {
+          id: reminder.id || import_crypto2.default.randomUUID(),
+          firmId: reminder.firmId,
+          userId: reminder.userId,
+          sourceType: reminder.sourceType,
+          sourceId: reminder.sourceId,
+          title: reminder.title,
+          description: reminder.description ?? null,
+          remindAt: reminder.remindAt,
+          dueAt: reminder.dueAt,
+          channel: reminder.channel ?? "in_app",
+          status: reminder.status ?? "pending",
+          sentAt: reminder.sentAt ?? null,
+          dismissedAt: reminder.dismissedAt ?? null,
+          createdAt: reminder.createdAt ?? now,
+          updatedAt: reminder.updatedAt ?? now,
+          deletedAt: reminder.deletedAt ?? null,
+          createdBy: reminder.createdBy ?? null,
+          updatedBy: reminder.updatedBy ?? null
+        };
+        this.reminders.push(created);
+        return this.enrichReminderForMemory({ ...created });
+      }
+      async updateReminder(id, firmId, updates) {
+        await this.init();
+        const idx = this.reminders.findIndex((r) => r.id === id && r.firmId === firmId && !r.deletedAt);
+        if (idx === -1) throw new Error(`Reminder not found: ${id}`);
+        const updated = {
+          ...this.reminders[idx],
+          ...updates,
+          id: this.reminders[idx].id,
+          firmId: this.reminders[idx].firmId,
+          updatedAt: updates.updatedAt ?? /* @__PURE__ */ new Date()
+        };
+        this.reminders[idx] = updated;
+        return this.enrichReminderForMemory({ ...updated });
+      }
+      async dismissRemindersBySource(firmId, sourceId, updatedBy, softDelete = false, userIdRestrict) {
+        await this.init();
+        const now = /* @__PURE__ */ new Date();
+        let count = 0;
+        for (let i = 0; i < this.reminders.length; i++) {
+          const r = this.reminders[i];
+          if (r.firmId === firmId && r.sourceId === sourceId && !r.deletedAt && r.status !== "dismissed" && (!userIdRestrict || r.userId === userIdRestrict)) {
+            this.reminders[i] = {
+              ...r,
+              status: "dismissed",
+              dismissedAt: now,
+              deletedAt: softDelete ? now : r.deletedAt,
+              updatedAt: now,
+              updatedBy: updatedBy ?? r.updatedBy
+            };
+            count++;
+          }
+        }
+        return count;
+      }
+      async rescheduleRemindersBySource(firmId, sourceId, newDueAt, newRemindAt, updatedBy) {
+        await this.init();
+        const now = /* @__PURE__ */ new Date();
+        const targetRemindAt = newRemindAt ?? new Date(newDueAt.getTime() - 24 * 60 * 60 * 1e3);
+        let count = 0;
+        for (let i = 0; i < this.reminders.length; i++) {
+          const r = this.reminders[i];
+          if (r.firmId === firmId && r.sourceId === sourceId && !r.deletedAt) {
+            this.reminders[i] = {
+              ...r,
+              dueAt: newDueAt,
+              remindAt: targetRemindAt,
+              status: "pending",
+              dismissedAt: null,
+              updatedAt: now,
+              updatedBy: updatedBy ?? r.updatedBy
+            };
+            count++;
+          }
+        }
+        return count;
+      }
+      async listRemindersBySourceIds(firmId, sourceIds) {
+        await this.init();
+        const set2 = new Set(sourceIds);
+        return this.reminders.filter((r) => r.firmId === firmId && !r.deletedAt && set2.has(r.sourceId)).map((r) => ({ ...r }));
       }
       // Accounts Methods (Accounts Phase 1)
       async getAccountsSummary(firmId, filter, user) {
@@ -43887,7 +44296,10 @@ var init_client = __esm({
           chamberExpenseCategories: [...this.chamberExpenseCategories],
           chamberAdvances: [...this.chamberAdvances],
           chamberExpenses: [...this.chamberExpenses],
-          chamberAdvanceSettlements: [...this.chamberAdvanceSettlements]
+          chamberAdvanceSettlements: [...this.chamberAdvanceSettlements],
+          physicalFiles: [...this.physicalFiles],
+          fileMovements: [...this.fileMovements],
+          reminders: [...this.reminders]
         };
         try {
           return await callback(this);
@@ -43922,6 +44334,9 @@ var init_client = __esm({
           this.chamberAdvances = snapshot.chamberAdvances;
           this.chamberExpenses = snapshot.chamberExpenses;
           this.chamberAdvanceSettlements = snapshot.chamberAdvanceSettlements;
+          this.physicalFiles = snapshot.physicalFiles;
+          this.fileMovements = snapshot.fileMovements;
+          this.reminders = snapshot.reminders;
           throw err;
         }
       }
@@ -44266,6 +44681,16 @@ var init_client = __esm({
           sql`(${tasks.caseId} IS NULL OR ${tasks.caseId} IN (SELECT id FROM ${cases} WHERE ${visCond}))`
         ];
         const clientTasks = await this.db.select().from(tasks).where(and(...taskConditions));
+        const fileConditions = [
+          eq(physicalFiles.clientId, clientId),
+          eq(physicalFiles.firmId, firmId),
+          isNull(physicalFiles.deletedAt),
+          sql`(${physicalFiles.caseId} IS NULL OR ${physicalFiles.caseId} IN (SELECT id FROM ${cases} WHERE ${visCond}))`
+        ];
+        const clientFiles = await this.db.select({
+          file: physicalFiles,
+          holderName: users.name
+        }).from(physicalFiles).leftJoin(users, eq(physicalFiles.currentHolderId, users.id)).where(and(...fileConditions));
         return {
           cases: clientCases.map((c) => ({
             id: c.id,
@@ -44281,7 +44706,13 @@ var init_client = __esm({
             status: t.status,
             dueAt: new Date(t.dueAt).toISOString()
           })),
-          files: []
+          files: clientFiles.map((row) => ({
+            id: row.file.id,
+            serial: row.file.serial,
+            title: row.file.title,
+            status: row.file.status,
+            holderName: row.holderName || "Chamber Archive"
+          }))
         };
       }
       // Client Photos Methods
@@ -44516,11 +44947,40 @@ var init_client = __esm({
             ne(tasks.status, "cancelled")
           )
         );
+        const filesRows = await this.db.select({ id: physicalFiles.id }).from(physicalFiles).where(
+          and(
+            eq(physicalFiles.caseId, caseId),
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt)
+          )
+        );
+        const apptsRows = await this.db.select({ id: appointments.id }).from(appointments).where(
+          and(
+            eq(appointments.caseId, caseId),
+            eq(appointments.firmId, firmId),
+            isNull(appointments.deletedAt)
+          )
+        );
+        const sourceIds = [
+          caseId,
+          ...hearingsRows.map((r) => r.id),
+          ...tasksRows.map((r) => r.id),
+          ...filesRows.map((r) => r.id),
+          ...apptsRows.map((r) => r.id)
+        ];
+        const remindersRows = sourceIds.length > 0 ? await this.db.select({ id: reminders.id }).from(reminders).where(
+          and(
+            eq(reminders.firmId, firmId),
+            isNull(reminders.deletedAt),
+            eq(reminders.status, "pending"),
+            inArray(reminders.sourceId, sourceIds)
+          )
+        ) : [];
         return {
           hearingsCount: hearingsRows.length,
           tasksCount: tasksRows.length,
-          filesCount: 0,
-          remindersCount: 0
+          filesCount: filesRows.length,
+          remindersCount: remindersRows.length
         };
       }
       async listCaseShares(caseId, firmId) {
@@ -44720,7 +45180,327 @@ var init_client = __esm({
         }).where(and(eq(tasks.id, id), eq(tasks.firmId, firmId), isNull(tasks.deletedAt)));
         return { success: true, softDeleted: true };
       }
-      // Accounts Methods (Accounts Phase 1)
+      // Physical Files & Custody Methods (Phase 8 - PostgreSQL)
+      async resolveHolderNamePostgres(holderId) {
+        if (!holderId) return null;
+        const userRows = await this.db.select({ name: users.name }).from(users).where(eq(users.id, holderId)).limit(1);
+        return userRows[0]?.name || null;
+      }
+      async getNextPhysicalFileSerial(firmId) {
+        const rows = await this.db.select({ serial: physicalFiles.serial }).from(physicalFiles).where(eq(physicalFiles.firmId, firmId));
+        let maxNumber = 100;
+        for (const r of rows) {
+          const match = r.serial.match(/^F-(\d+)$/i) || r.serial.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!Number.isNaN(num) && num > maxNumber) {
+              maxNumber = num;
+            }
+          }
+        }
+        return `F-${String(maxNumber + 1).padStart(6, "0")}`;
+      }
+      async listPhysicalFiles(firmId, filter, user) {
+        const conditions = [
+          eq(physicalFiles.firmId, firmId),
+          isNull(physicalFiles.deletedAt)
+        ];
+        if (user) {
+          const includeRestricted = user.role === "Owner" || Boolean(user.permissions?.includes("restricted.view"));
+          const visCond = await this.buildPostgresCaseCondition(firmId, user, includeRestricted);
+          conditions.push(
+            sql`(${physicalFiles.caseId} IS NULL OR ${physicalFiles.caseId} IN (SELECT id FROM ${cases} WHERE ${visCond}))`
+          );
+        }
+        if (filter?.caseId) {
+          conditions.push(eq(physicalFiles.caseId, filter.caseId));
+        }
+        if (filter?.clientId) {
+          conditions.push(eq(physicalFiles.clientId, filter.clientId));
+        }
+        if (filter?.status && filter.status !== "all") {
+          conditions.push(eq(physicalFiles.status, filter.status));
+        }
+        if (filter?.holderId) {
+          conditions.push(eq(physicalFiles.currentHolderId, filter.holderId));
+        }
+        if (filter?.search) {
+          const q = `%${filter.search.trim()}%`;
+          conditions.push(
+            sql`(${physicalFiles.serial} ILIKE ${q} OR ${physicalFiles.title} ILIKE ${q} OR COALESCE(${physicalFiles.shelfLocation}, '') ILIKE ${q} OR COALESCE(${physicalFiles.notes}, '') ILIKE ${q} OR COALESCE(${users.name}, '') ILIKE ${q})`
+          );
+        }
+        const rows = await this.db.select({
+          file: physicalFiles,
+          currentHolderName: users.name
+        }).from(physicalFiles).leftJoin(users, eq(physicalFiles.currentHolderId, users.id)).where(and(...conditions)).orderBy(desc(physicalFiles.updatedAt));
+        return rows.map((r) => ({
+          ...r.file,
+          currentHolderName: r.currentHolderName || null
+        }));
+      }
+      async getPhysicalFileById(id, firmId) {
+        const rows = await this.db.select({
+          file: physicalFiles,
+          currentHolderName: users.name
+        }).from(physicalFiles).leftJoin(users, eq(physicalFiles.currentHolderId, users.id)).where(
+          and(
+            eq(physicalFiles.id, id),
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt)
+          )
+        ).limit(1);
+        if (!rows[0]) return null;
+        return {
+          ...rows[0].file,
+          currentHolderName: rows[0].currentHolderName || null
+        };
+      }
+      async getPhysicalFileBySerial(serial2, firmId) {
+        const clean = serial2.trim();
+        const rows = await this.db.select({
+          file: physicalFiles,
+          currentHolderName: users.name
+        }).from(physicalFiles).leftJoin(users, eq(physicalFiles.currentHolderId, users.id)).where(
+          and(
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt),
+            ilike(physicalFiles.serial, clean)
+          )
+        ).limit(1);
+        if (!rows[0]) return null;
+        return {
+          ...rows[0].file,
+          currentHolderName: rows[0].currentHolderName || null
+        };
+      }
+      async getPhysicalFileByCaseId(caseId, firmId) {
+        const rows = await this.db.select({
+          file: physicalFiles,
+          currentHolderName: users.name
+        }).from(physicalFiles).leftJoin(users, eq(physicalFiles.currentHolderId, users.id)).where(
+          and(
+            eq(physicalFiles.caseId, caseId),
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt)
+          )
+        ).limit(1);
+        if (!rows[0]) return null;
+        return {
+          ...rows[0].file,
+          currentHolderName: rows[0].currentHolderName || null
+        };
+      }
+      async insertPhysicalFile(file2) {
+        const id = file2.id || import_crypto2.default.randomUUID();
+        const rows = await this.db.insert(physicalFiles).values({ ...file2, id }).returning();
+        const created = rows[0];
+        const holderName = await this.resolveHolderNamePostgres(created.currentHolderId);
+        return {
+          ...created,
+          currentHolderName: holderName
+        };
+      }
+      async updatePhysicalFile(id, firmId, updates) {
+        const rows = await this.db.update(physicalFiles).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(
+          and(
+            eq(physicalFiles.id, id),
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt)
+          )
+        ).returning();
+        const updated = rows[0];
+        if (!updated) throw new Error(`Physical file not found: ${id}`);
+        const holderName = await this.resolveHolderNamePostgres(updated.currentHolderId);
+        return {
+          ...updated,
+          currentHolderName: holderName
+        };
+      }
+      async deletePhysicalFile(id, firmId, updatedBy) {
+        await this.db.update(physicalFiles).set({
+          deletedAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date(),
+          ...updatedBy ? { updatedBy } : {}
+        }).where(
+          and(
+            eq(physicalFiles.id, id),
+            eq(physicalFiles.firmId, firmId),
+            isNull(physicalFiles.deletedAt)
+          )
+        );
+        return { success: true, softDeleted: true };
+      }
+      async listFileMovements(fileId, firmId) {
+        const rows = await this.db.select({
+          movement: fileMovements,
+          userName: users.name
+        }).from(fileMovements).leftJoin(users, eq(fileMovements.userId, users.id)).where(
+          and(
+            eq(fileMovements.fileId, fileId),
+            eq(fileMovements.firmId, firmId)
+          )
+        ).orderBy(desc(fileMovements.at));
+        return rows.map((r) => ({
+          ...r.movement,
+          userName: r.userName || "Unknown User"
+        }));
+      }
+      async insertFileMovement(movement) {
+        const id = movement.id || import_crypto2.default.randomUUID();
+        const rows = await this.db.insert(fileMovements).values({ ...movement, id }).returning();
+        const created = rows[0];
+        const userName = await this.resolveHolderNamePostgres(created.userId) || "Unknown User";
+        return {
+          ...created,
+          userName
+        };
+      }
+      async listReminders(firmId, filter, user) {
+        const conditions = [
+          eq(reminders.firmId, firmId),
+          isNull(reminders.deletedAt)
+        ];
+        if (user?.role === "Staff") {
+          conditions.push(eq(reminders.userId, user.id));
+        } else if (filter?.userId) {
+          conditions.push(eq(reminders.userId, filter.userId));
+        }
+        if (filter?.status) {
+          if (filter.status === "active") {
+            conditions.push(ne(reminders.status, "dismissed"));
+          } else {
+            conditions.push(eq(reminders.status, filter.status));
+          }
+        }
+        if (filter?.sourceType) {
+          conditions.push(eq(reminders.sourceType, filter.sourceType));
+        }
+        if (filter?.dueOnly) {
+          conditions.push(lte(reminders.remindAt, /* @__PURE__ */ new Date()));
+        }
+        const rows = await this.db.select({
+          reminder: reminders,
+          userName: users.name
+        }).from(reminders).leftJoin(users, eq(reminders.userId, users.id)).where(and(...conditions)).orderBy(asc(reminders.remindAt));
+        let items = rows.map((r) => ({
+          ...r.reminder,
+          userName: r.userName || void 0
+        }));
+        if (user) {
+          const visibleCases = await this.listCases(firmId, { user, includeRestricted: true });
+          const visibleCaseIds = new Set(visibleCases.map((c) => c.id));
+          const hearingIds = items.filter((r) => r.sourceType === "hearing").map((r) => r.sourceId);
+          const taskIds = items.filter((r) => r.sourceType === "task").map((r) => r.sourceId);
+          const fileIds = items.filter((r) => r.sourceType === "file_return").map((r) => r.sourceId);
+          const apptIds = items.filter((r) => r.sourceType === "appointment").map((r) => r.sourceId);
+          const [hRows, tRows, fRows, aRows] = await Promise.all([
+            hearingIds.length ? this.db.select({ id: hearings.id, caseId: hearings.caseId }).from(hearings).where(and(eq(hearings.firmId, firmId), isNull(hearings.deletedAt), inArray(hearings.id, hearingIds))) : Promise.resolve([]),
+            taskIds.length ? this.db.select({ id: tasks.id, caseId: tasks.caseId }).from(tasks).where(and(eq(tasks.firmId, firmId), isNull(tasks.deletedAt), inArray(tasks.id, taskIds))) : Promise.resolve([]),
+            fileIds.length ? this.db.select({ id: physicalFiles.id, caseId: physicalFiles.caseId }).from(physicalFiles).where(and(eq(physicalFiles.firmId, firmId), isNull(physicalFiles.deletedAt), inArray(physicalFiles.id, fileIds))) : Promise.resolve([]),
+            apptIds.length ? this.db.select({ id: appointments.id, caseId: appointments.caseId }).from(appointments).where(and(eq(appointments.firmId, firmId), isNull(appointments.deletedAt), inArray(appointments.id, apptIds))) : Promise.resolve([])
+          ]);
+          const hCaseMap = new Map(hRows.map((x) => [x.id, x.caseId]));
+          const tCaseMap = new Map(tRows.map((x) => [x.id, x.caseId]));
+          const fCaseMap = new Map(fRows.map((x) => [x.id, x.caseId]));
+          const aCaseMap = new Map(aRows.map((x) => [x.id, x.caseId]));
+          items = items.filter((r) => {
+            let caseId;
+            if (r.sourceType === "hearing") caseId = hCaseMap.get(r.sourceId);
+            else if (r.sourceType === "task") caseId = tCaseMap.get(r.sourceId);
+            else if (r.sourceType === "file_return") caseId = fCaseMap.get(r.sourceId);
+            else if (r.sourceType === "appointment") caseId = aCaseMap.get(r.sourceId);
+            if (caseId && !visibleCaseIds.has(caseId)) return false;
+            return true;
+          });
+        }
+        if (filter?.search) {
+          const q = filter.search.toLowerCase();
+          items = items.filter(
+            (r) => r.title.toLowerCase().includes(q) || r.description && r.description.toLowerCase().includes(q)
+          );
+        }
+        return items;
+      }
+      async getReminderById(id, firmId) {
+        const rows = await this.db.select({
+          reminder: reminders,
+          userName: users.name
+        }).from(reminders).leftJoin(users, eq(reminders.userId, users.id)).where(and(eq(reminders.id, id), eq(reminders.firmId, firmId), isNull(reminders.deletedAt))).limit(1);
+        if (!rows[0]) return null;
+        return {
+          ...rows[0].reminder,
+          userName: rows[0].userName || void 0
+        };
+      }
+      async insertReminder(reminder) {
+        const id = reminder.id || import_crypto2.default.randomUUID();
+        const rows = await this.db.insert(reminders).values({ ...reminder, id }).returning();
+        const created = rows[0];
+        const userName = await this.resolveHolderNamePostgres(created.userId);
+        return {
+          ...created,
+          userName: userName || void 0
+        };
+      }
+      async updateReminder(id, firmId, updates) {
+        const rows = await this.db.update(reminders).set({ ...updates, updatedAt: updates.updatedAt ?? /* @__PURE__ */ new Date() }).where(and(eq(reminders.id, id), eq(reminders.firmId, firmId), isNull(reminders.deletedAt))).returning();
+        if (!rows[0]) throw new Error(`Reminder not found: ${id}`);
+        const userName = await this.resolveHolderNamePostgres(rows[0].userId);
+        return {
+          ...rows[0],
+          userName: userName || void 0
+        };
+      }
+      async dismissRemindersBySource(firmId, sourceId, updatedBy, softDelete = false, userIdRestrict) {
+        const now = /* @__PURE__ */ new Date();
+        const conditions = [
+          eq(reminders.firmId, firmId),
+          eq(reminders.sourceId, sourceId),
+          isNull(reminders.deletedAt),
+          ne(reminders.status, "dismissed")
+        ];
+        if (userIdRestrict) {
+          conditions.push(eq(reminders.userId, userIdRestrict));
+        }
+        const updated = await this.db.update(reminders).set({
+          status: "dismissed",
+          dismissedAt: now,
+          ...softDelete ? { deletedAt: now } : {},
+          updatedAt: now,
+          ...updatedBy ? { updatedBy } : {}
+        }).where(and(...conditions)).returning({ id: reminders.id });
+        return updated.length;
+      }
+      async rescheduleRemindersBySource(firmId, sourceId, newDueAt, newRemindAt, updatedBy) {
+        const now = /* @__PURE__ */ new Date();
+        const targetRemindAt = newRemindAt ?? new Date(newDueAt.getTime() - 24 * 60 * 60 * 1e3);
+        const updated = await this.db.update(reminders).set({
+          dueAt: newDueAt,
+          remindAt: targetRemindAt,
+          status: "pending",
+          dismissedAt: null,
+          updatedAt: now,
+          ...updatedBy ? { updatedBy } : {}
+        }).where(
+          and(
+            eq(reminders.firmId, firmId),
+            eq(reminders.sourceId, sourceId),
+            isNull(reminders.deletedAt)
+          )
+        ).returning({ id: reminders.id });
+        return updated.length;
+      }
+      async listRemindersBySourceIds(firmId, sourceIds) {
+        if (sourceIds.length === 0) return [];
+        return this.db.select().from(reminders).where(
+          and(
+            eq(reminders.firmId, firmId),
+            isNull(reminders.deletedAt),
+            inArray(reminders.sourceId, sourceIds)
+          )
+        );
+      }
       async getAccountsSummary(firmId, filter, user) {
         const visCond = await this.buildPostgresCaseCondition(firmId, user, true);
         const agConditions = [
@@ -46085,14 +46865,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer2 = require_safe_buffer().Buffer;
-    var crypto21 = require("crypto");
+    var crypto23 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto21.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto23.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -46182,17 +46962,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto21.createHmac("sha" + bits, secret);
+        var hmac = crypto23.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual = "timingSafeEqual" in crypto21 ? function timingSafeEqual2(a, b) {
+    var timingSafeEqual = "timingSafeEqual" in crypto23 ? function timingSafeEqual2(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto21.timingSafeEqual(a, b);
+      return crypto23.timingSafeEqual(a, b);
     } : function timingSafeEqual2(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -46209,7 +46989,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto21.createSign("RSA-SHA" + bits);
+        var signer = crypto23.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -46219,7 +46999,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto21.createVerify("RSA-SHA" + bits);
+        var verifier = crypto23.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -46228,11 +47008,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto21.createSign("RSA-SHA" + bits);
+        var signer = crypto23.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto21.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto21.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto23.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto23.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -46242,12 +47022,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto21.createVerify("RSA-SHA" + bits);
+        var verifier = crypto23.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto21.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto21.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto23.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto23.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -73146,9 +73926,18 @@ var init_cases = __esm({
           return res.status(404).json({ error: "Case not found" });
         }
         const now = /* @__PURE__ */ new Date();
-        await db.updateCase(existing.id, req.user.firmId, {
-          deletedAt: now,
-          updatedBy: req.user.id
+        const firmId = req.user.firmId;
+        await db.transaction(async (txDb) => {
+          await txDb.updateCase(existing.id, firmId, {
+            deletedAt: now,
+            updatedBy: req.user.id
+          });
+          const caseHearings = await txDb.listHearings(firmId, { caseId: existing.id });
+          for (const h of caseHearings) {
+            await txDb.deleteHearing(h.id, firmId, req.user.id);
+            await txDb.dismissRemindersBySource(firmId, h.id, req.user.id, true);
+          }
+          await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id, true);
         });
         await recordAudit({
           firmId: req.user.firmId,
@@ -73431,7 +74220,7 @@ var init_appointments = __esm({
             caseId: caseId || null,
             status,
             notes: notes?.trim() || null,
-            reminderMinutesBefore: Number(reminderMinutesBefore) || 30,
+            reminderMinutesBefore: reminderMinutesBefore !== void 0 && reminderMinutesBefore !== null ? Number(reminderMinutesBefore) : 30,
             createdAt: now,
             updatedAt: now,
             deletedAt: null,
@@ -73440,6 +74229,28 @@ var init_appointments = __esm({
           },
           Array.isArray(attendeeUserIds) ? attendeeUserIds : []
         );
+        if (created.status === "scheduled" && created.reminderMinutesBefore > 0) {
+          const dueDate = new Date(created.startsAt);
+          const remindAt = new Date(dueDate.getTime() - created.reminderMinutesBefore * 60 * 1e3);
+          await db.insertReminder({
+            id: import_crypto7.default.randomUUID(),
+            firmId: req.user.firmId,
+            userId: created.organiserUserId,
+            sourceType: "appointment",
+            sourceId: created.id,
+            title: `Appointment: ${created.title}`,
+            description: created.location ? `Location: ${created.location}` : void 0,
+            remindAt,
+            dueAt: dueDate,
+            channel: "in_app",
+            status: "pending",
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+            createdBy: req.user.id,
+            updatedBy: req.user.id
+          });
+        }
         await recordAudit({
           firmId: req.user.firmId,
           userId: req.user.id,
@@ -73533,6 +74344,36 @@ var init_appointments = __esm({
           updates,
           Array.isArray(attendeeUserIds) ? attendeeUserIds : void 0
         );
+        if (updated.status !== "scheduled" || updated.reminderMinutesBefore <= 0) {
+          await db.dismissRemindersBySource(req.user.firmId, updated.id, req.user.id);
+        } else if (isReschedule || reminderMinutesBefore !== void 0) {
+          const dueDate = new Date(updated.startsAt);
+          const remindAt = new Date(dueDate.getTime() - updated.reminderMinutesBefore * 60 * 1e3);
+          const count = await db.rescheduleRemindersBySource(
+            req.user.firmId,
+            updated.id,
+            dueDate,
+            remindAt,
+            req.user.id
+          );
+          if (count === 0) {
+            await db.insertReminder({
+              id: import_crypto7.default.randomUUID(),
+              firmId: req.user.firmId,
+              userId: updated.organiserUserId,
+              sourceType: "appointment",
+              sourceId: updated.id,
+              title: `Appointment: ${updated.title}`,
+              description: updated.location ? `Location: ${updated.location}` : void 0,
+              remindAt,
+              dueAt: dueDate,
+              channel: "in_app",
+              status: "pending",
+              createdBy: req.user.id,
+              updatedBy: req.user.id
+            });
+          }
+        }
         await recordAudit({
           firmId: req.user.firmId,
           userId: req.user.id,
@@ -73571,6 +74412,7 @@ var init_appointments = __esm({
           return res.status(404).json({ error: "Appointment not found" });
         }
         await db.deleteAppointment(existing.id, req.user.firmId, req.user.id);
+        await db.dismissRemindersBySource(req.user.firmId, existing.id, req.user.id, true);
         await recordAudit({
           firmId: req.user.firmId,
           userId: req.user.id,
@@ -73799,6 +74641,9 @@ var init_hearings = __esm({
             }
             const updated = await txDb.updateHearing(hearing.id, firmId, updates);
             affectedCaseIds.add(hearing.caseId);
+            if (status === "cancelled") {
+              await txDb.dismissRemindersBySource(firmId, hearing.id, req.user.id);
+            }
             await recordAudit({
               firmId,
               userId: req.user.id,
@@ -73868,6 +74713,7 @@ var init_hearings = __esm({
               outcomeNote: outcomeNote !== void 0 ? outcomeNote : hearing.outcomeNote,
               updatedBy: req.user.id
             });
+            await txDb.rescheduleRemindersBySource(firmId, hearing.id, new Date(nextDate), void 0, req.user.id);
             await txDb.insertHearing({
               id: import_crypto8.default.randomUUID(),
               firmId,
@@ -73964,6 +74810,7 @@ var init_hearings = __esm({
               fixedForNote: fixedForNote !== void 0 ? fixedForNote : hearing.fixedForNote,
               updatedBy: req.user.id
             });
+            await txDb.rescheduleRemindersBySource(firmId, hearing.id, new Date(newDate), void 0, req.user.id);
             affectedCaseIds.add(hearing.caseId);
             await recordAudit({
               firmId,
@@ -74100,6 +74947,17 @@ var init_hearings = __esm({
         const result = await db.transaction(async (txDb) => {
           const updated = await txDb.updateHearing(req.params.id, firmId, updates);
           await syncCaseNextHearing(txDb, firmId, existing.caseId);
+          if (updates.status === "cancelled") {
+            await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id);
+          } else if (updates.scheduledAt) {
+            await txDb.rescheduleRemindersBySource(
+              firmId,
+              existing.id,
+              new Date(updates.scheduledAt),
+              void 0,
+              req.user.id
+            );
+          }
           await recordAudit({
             firmId,
             userId: req.user.id,
@@ -74161,6 +75019,7 @@ var init_hearings = __esm({
             updatedBy: req.user.id
           });
           await syncCaseNextHearing(txDb, firmId, existing.caseId);
+          await txDb.rescheduleRemindersBySource(firmId, existing.id, new Date(scheduledAt), void 0, req.user.id);
           await recordAudit({
             firmId,
             userId: req.user.id,
@@ -74241,6 +75100,7 @@ var init_hearings = __esm({
             changedBy: req.user.id
           });
           await syncCaseNextHearing(txDb, firmId, existing.caseId);
+          await txDb.rescheduleRemindersBySource(firmId, existing.id, new Date(nextDate), void 0, req.user.id);
           await recordAudit({
             firmId,
             userId: req.user.id,
@@ -74293,6 +75153,7 @@ var init_hearings = __esm({
         }
         await db.transaction(async (txDb) => {
           await txDb.deleteHearing(existing.id, firmId, req.user.id);
+          await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id, true);
           await syncCaseNextHearing(txDb, firmId, existing.caseId);
           await recordAudit({
             firmId,
@@ -74498,6 +75359,24 @@ var init_tasks = __esm({
           updates.completedAt = parsed.data.completedAt ? new Date(parsed.data.completedAt) : null;
         }
         const updated = await db.updateTask(req.params.id, firmId, updates);
+        if (updates.status === "completed" || updates.status === "cancelled") {
+          await db.dismissRemindersBySource(firmId, existing.id, req.user.id);
+        } else if (updates.dueAt) {
+          const dueDate = new Date(updates.dueAt);
+          const remindAt = new Date(dueDate.getTime() - 2 * 60 * 60 * 1e3);
+          await db.rescheduleRemindersBySource(firmId, existing.id, dueDate, remindAt, req.user.id);
+        }
+        if (updates.assignedTo && updates.assignedTo !== existing.assignedTo) {
+          const existingRems = await db.listRemindersBySourceIds(firmId, [existing.id]);
+          for (const rem of existingRems) {
+            if (rem.sourceType === "task") {
+              await db.updateReminder(rem.id, firmId, {
+                userId: String(updates.assignedTo),
+                updatedBy: req.user.id
+              });
+            }
+          }
+        }
         await recordAudit({
           firmId,
           userId: req.user.id,
@@ -74539,6 +75418,7 @@ var init_tasks = __esm({
           description: newDescription,
           updatedBy: req.user.id
         });
+        await db.dismissRemindersBySource(firmId, existing.id, req.user.id);
         await recordAudit({
           firmId,
           userId: req.user.id,
@@ -74575,6 +75455,15 @@ var init_tasks = __esm({
           assignedTo: parsed.data.newAssignedTo,
           updatedBy: req.user.id
         });
+        const existingRems = await db.listRemindersBySourceIds(firmId, [existing.id]);
+        for (const rem of existingRems) {
+          if (rem.sourceType === "task") {
+            await db.updateReminder(rem.id, firmId, {
+              userId: parsed.data.newAssignedTo,
+              updatedBy: req.user.id
+            });
+          }
+        }
         await recordAudit({
           firmId,
           userId: req.user.id,
@@ -74603,6 +75492,7 @@ var init_tasks = __esm({
           return res.status(404).json({ error: "Task not found" });
         }
         await db.deleteTask(req.params.id, firmId, req.user.id);
+        await db.dismissRemindersBySource(firmId, existing.id, req.user.id, true);
         await recordAudit({
           firmId,
           userId: req.user.id,
@@ -74619,10 +75509,93 @@ var init_tasks = __esm({
   }
 });
 
-// src/routes/feeAgreements.ts
-var import_crypto10, import_express11, feeAgreementsRouter, createFeeAgreementSchema, reviseFeeAgreementSchema, voidFeeAgreementSchema;
-var init_feeAgreements = __esm({
-  "src/routes/feeAgreements.ts"() {
+// src/routes/physicalFiles.ts
+function canAccessRestricted3(req) {
+  if (!req.user) return false;
+  if (req.user.role === "Owner") return true;
+  return Boolean(req.user.permissions?.includes("restricted.view"));
+}
+async function insertAuditTx(txDb, params) {
+  const now = /* @__PURE__ */ new Date();
+  await txDb.insertAudit({
+    id: import_crypto10.default.randomUUID(),
+    firmId: params.firmId,
+    userId: params.userId,
+    userName: params.userName,
+    entity: "PhysicalFile",
+    entityId: params.entityId,
+    action: params.action,
+    oldValue: params.oldValue || null,
+    newValue: params.newValue || null,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    createdBy: params.userId,
+    updatedBy: params.userId
+  });
+}
+async function upsertFileReturnReminderTx(txDb, params) {
+  const remindAt = new Date(params.dueDate.getTime() - 4 * 60 * 60 * 1e3);
+  const rescheduled = await txDb.rescheduleRemindersBySource(
+    params.firmId,
+    params.fileId,
+    params.dueDate,
+    remindAt,
+    params.actorId
+  );
+  if (rescheduled === 0) {
+    await txDb.insertReminder({
+      id: import_crypto10.default.randomUUID(),
+      firmId: params.firmId,
+      userId: params.holderId,
+      sourceType: "file_return",
+      sourceId: params.fileId,
+      title: `File Return Due: ${params.serial} (${params.title})`,
+      description: `Location: ${params.shelfLocation || "Chamber Rack"}. Current holder: ${params.holderName}`,
+      remindAt,
+      dueAt: params.dueDate,
+      channel: "in_app",
+      status: "pending",
+      createdBy: params.actorId,
+      updatedBy: params.actorId
+    });
+  } else {
+    const rems = await txDb.listRemindersBySourceIds(params.firmId, [params.fileId]);
+    for (const r of rems) {
+      if (r.sourceType === "file_return" && r.userId !== params.holderId) {
+        await txDb.updateReminder(r.id, params.firmId, {
+          userId: params.holderId,
+          updatedBy: params.actorId
+        });
+      }
+    }
+  }
+}
+async function checkFileAccess(db, req, file2) {
+  const firmId = req.user.firmId;
+  if (!file2 || file2.firmId !== firmId) {
+    return { ok: false, status: 404, error: "NotFound", message: "Physical file not found" };
+  }
+  if (file2.caseId) {
+    const caseRec = await db.getCaseById(file2.caseId, firmId, req.user);
+    if (!caseRec || caseRec.firmId !== firmId) {
+      return { ok: false, status: 404, error: "NotFound", message: "Physical file not found" };
+    }
+    if (caseRec.restricted && !canAccessRestricted3(req)) {
+      return {
+        ok: false,
+        status: 403,
+        error: "PermissionDenied",
+        message: "Permission denied: restricted case physical file"
+      };
+    }
+  }
+  return { ok: true, file: file2 };
+}
+var import_crypto10, import_express11, physicalFilesRouter, createPhysicalFileSchema, updatePhysicalFileSchema, checkOutSchema, checkInSchema, dispatchCourtSchema;
+var init_physicalFiles = __esm({
+  "src/routes/physicalFiles.ts"() {
     "use strict";
     import_crypto10 = __toESM(require("crypto"), 1);
     import_express11 = __toESM(require_express2(), 1);
@@ -74632,8 +75605,1275 @@ var init_feeAgreements = __esm({
     init_firmIsolation();
     init_subscription();
     init_client();
+    physicalFilesRouter = (0, import_express11.Router)();
+    physicalFilesRouter.use(authMiddleware);
+    physicalFilesRouter.use(enforceFirmIsolation);
+    createPhysicalFileSchema = external_exports.object({
+      title: external_exports.string().trim().min(1, "Title is required").max(300, "Title too long"),
+      serial: external_exports.string().trim().min(1).max(60).optional(),
+      caseId: external_exports.string().trim().optional().nullable(),
+      clientId: external_exports.string().trim().optional().nullable(),
+      shelfLocation: external_exports.string().trim().max(200).optional().nullable(),
+      notes: external_exports.string().trim().max(2e3).optional().nullable()
+    });
+    updatePhysicalFileSchema = external_exports.object({
+      title: external_exports.string().trim().min(1).max(300).optional(),
+      caseId: external_exports.string().trim().optional().nullable(),
+      clientId: external_exports.string().trim().optional().nullable(),
+      shelfLocation: external_exports.string().trim().max(200).optional().nullable(),
+      status: external_exports.enum(["in_chamber", "checked_out", "in_court", "archived"]).optional(),
+      currentHolderId: external_exports.string().trim().optional().nullable(),
+      checkedOutAt: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid checkedOutAt ISO string" }).optional().nullable(),
+      dueBackAt: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid dueBackAt ISO string" }).optional().nullable(),
+      notes: external_exports.string().trim().max(2e3).optional().nullable()
+    });
+    checkOutSchema = external_exports.object({
+      holderId: external_exports.string().trim().min(1, "holderId is required"),
+      dueBackAt: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid dueBackAt ISO string" }),
+      note: external_exports.string().trim().max(1e3).optional().nullable()
+    });
+    checkInSchema = external_exports.object({
+      shelfLocation: external_exports.string().trim().max(200).optional().nullable(),
+      note: external_exports.string().trim().max(1e3).optional().nullable()
+    });
+    dispatchCourtSchema = external_exports.object({
+      courtName: external_exports.string().trim().min(1, "courtName is required").max(300),
+      holderId: external_exports.string().trim().min(1, "holderId is required"),
+      dueBackAt: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid dueBackAt ISO string" }),
+      note: external_exports.string().trim().max(1e3).optional().nullable()
+    });
+    physicalFilesRouter.get(
+      "/",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const { caseId, clientId, status, holderId, search } = req.query;
+        const files = await db.listPhysicalFiles(
+          req.user.firmId,
+          {
+            caseId,
+            clientId,
+            status,
+            holderId,
+            search
+          },
+          req.user
+        );
+        res.json(files);
+      }
+    );
+    physicalFilesRouter.get(
+      "/next-serial",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const serial2 = await db.getNextPhysicalFileSerial(req.user.firmId);
+        res.json({ serial: serial2 });
+      }
+    );
+    physicalFilesRouter.get(
+      "/by-serial/:serial",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const raw = await db.getPhysicalFileBySerial(req.params.serial, req.user.firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        res.json(access.file);
+      }
+    );
+    physicalFilesRouter.get(
+      "/by-case/:caseId",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const caseRec = await db.getCaseById(req.params.caseId, firmId, req.user);
+        if (!caseRec || caseRec.firmId !== firmId) {
+          return res.status(404).json({ error: "NotFound", message: "Case not found" });
+        }
+        if (caseRec.restricted && !canAccessRestricted3(req)) {
+          return res.status(403).json({
+            error: "PermissionDenied",
+            message: "Permission denied: restricted case"
+          });
+        }
+        const file2 = await db.getPhysicalFileByCaseId(req.params.caseId, firmId);
+        if (!file2) {
+          return res.status(404).json({ error: "NotFound", message: "Physical file not found for case" });
+        }
+        res.json(file2);
+      }
+    );
+    physicalFilesRouter.get(
+      "/:id",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const raw = await db.getPhysicalFileById(req.params.id, req.user.firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        res.json(access.file);
+      }
+    );
+    physicalFilesRouter.get(
+      "/:id/movements",
+      requirePermission("files.view"),
+      async (req, res) => {
+        const db = getDatabase();
+        const raw = await db.getPhysicalFileById(req.params.id, req.user.firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const movements = await db.listFileMovements(access.file.id, req.user.firmId);
+        res.json(movements);
+      }
+    );
+    physicalFilesRouter.post(
+      "/",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = createPhysicalFileSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const cleanCaseId = parsed.data.caseId || null;
+        let cleanClientId = parsed.data.clientId || null;
+        if (cleanCaseId) {
+          const caseRec = await db.getCaseById(cleanCaseId, firmId, req.user);
+          if (!caseRec || caseRec.firmId !== firmId) {
+            return res.status(404).json({ error: "NotFound", message: "Linked case not found or access denied" });
+          }
+          if (caseRec.restricted && !canAccessRestricted3(req)) {
+            return res.status(403).json({
+              error: "PermissionDenied",
+              message: "Permission denied: cannot link physical file to restricted case"
+            });
+          }
+          if (!cleanClientId) {
+            cleanClientId = caseRec.clientId;
+          }
+        }
+        if (cleanClientId) {
+          const clientRec = await db.getClientById(cleanClientId, firmId, req.user);
+          if (!clientRec || clientRec.firmId !== firmId) {
+            return res.status(404).json({ error: "NotFound", message: "Linked client not found or access denied" });
+          }
+        }
+        try {
+          const created = await db.transaction(async (txDb) => {
+            const serial2 = parsed.data.serial?.trim() || await txDb.getNextPhysicalFileSerial(firmId);
+            const inserted = await txDb.insertPhysicalFile({
+              id: import_crypto10.default.randomUUID(),
+              firmId,
+              serial: serial2,
+              caseId: cleanCaseId,
+              clientId: cleanClientId,
+              title: parsed.data.title,
+              shelfLocation: parsed.data.shelfLocation?.trim() || "General File Rack",
+              status: "in_chamber",
+              currentHolderId: null,
+              checkedOutAt: null,
+              dueBackAt: null,
+              notes: parsed.data.notes || null,
+              createdBy: req.user.id,
+              updatedBy: req.user.id
+            });
+            await insertAuditTx(txDb, {
+              firmId,
+              userId: req.user.id,
+              userName: req.user.name,
+              entityId: inserted.id,
+              action: "CREATE",
+              newValue: inserted
+            });
+            return inserted;
+          });
+          return res.status(201).json(created);
+        } catch (err) {
+          if (err?.code === "23505" || String(err?.message || "").includes("DUPLICATE_SERIAL") || String(err?.message || "").includes("uidx_physical_files_firm_serial")) {
+            return res.status(409).json({
+              error: "Conflict",
+              message: "Physical file serial already exists in this firm"
+            });
+          }
+          throw err;
+        }
+      }
+    );
+    physicalFilesRouter.patch(
+      "/:id",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = updatePhysicalFileSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const raw = await db.getPhysicalFileById(req.params.id, firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const existing = access.file;
+        if (parsed.data.caseId !== void 0 && parsed.data.caseId !== null && parsed.data.caseId !== existing.caseId) {
+          const caseRec = await db.getCaseById(parsed.data.caseId, firmId, req.user);
+          if (!caseRec || caseRec.firmId !== firmId) {
+            return res.status(404).json({ error: "NotFound", message: "Linked case not found or access denied" });
+          }
+          if (caseRec.restricted && !canAccessRestricted3(req)) {
+            return res.status(403).json({
+              error: "PermissionDenied",
+              message: "Permission denied: cannot link to restricted case"
+            });
+          }
+        }
+        if (parsed.data.clientId !== void 0 && parsed.data.clientId !== null && parsed.data.clientId !== existing.clientId) {
+          const clientRec = await db.getClientById(parsed.data.clientId, firmId, req.user);
+          if (!clientRec || clientRec.firmId !== firmId) {
+            return res.status(404).json({ error: "NotFound", message: "Linked client not found or access denied" });
+          }
+        }
+        if (parsed.data.currentHolderId) {
+          const holder = await db.getUserById(parsed.data.currentHolderId);
+          if (!holder || holder.firmId !== firmId || !holder.active) {
+            return res.status(400).json({ error: "ValidationError", message: "Holder user not found or inactive in this firm" });
+          }
+        }
+        const updates = {
+          updatedBy: req.user.id
+        };
+        if (parsed.data.title !== void 0) updates.title = parsed.data.title;
+        if (parsed.data.caseId !== void 0) updates.caseId = parsed.data.caseId || null;
+        if (parsed.data.clientId !== void 0) updates.clientId = parsed.data.clientId || null;
+        if (parsed.data.shelfLocation !== void 0) updates.shelfLocation = parsed.data.shelfLocation || null;
+        if (parsed.data.status !== void 0) updates.status = parsed.data.status;
+        if (parsed.data.currentHolderId !== void 0) updates.currentHolderId = parsed.data.currentHolderId || null;
+        if (parsed.data.checkedOutAt !== void 0) {
+          updates.checkedOutAt = parsed.data.checkedOutAt ? new Date(parsed.data.checkedOutAt) : null;
+        }
+        if (parsed.data.dueBackAt !== void 0) {
+          updates.dueBackAt = parsed.data.dueBackAt ? new Date(parsed.data.dueBackAt) : null;
+        }
+        if (parsed.data.notes !== void 0) updates.notes = parsed.data.notes || null;
+        const updated = await db.transaction(async (txDb) => {
+          const resFile = await txDb.updatePhysicalFile(existing.id, firmId, updates);
+          if (parsed.data.status === "archived" || parsed.data.status === "in_chamber") {
+            await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id);
+          }
+          if (parsed.data.status === "archived" && existing.status !== "archived") {
+            await txDb.insertFileMovement({
+              id: import_crypto10.default.randomUUID(),
+              firmId,
+              fileId: existing.id,
+              action: "ARCHIVE",
+              userId: req.user.id,
+              at: /* @__PURE__ */ new Date(),
+              dueBackAt: null,
+              note: `Archived by ${req.user.name}`
+            });
+          }
+          await insertAuditTx(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "UPDATE",
+            oldValue: existing,
+            newValue: resFile
+          });
+          return resFile;
+        });
+        res.json(updated);
+      }
+    );
+    physicalFilesRouter.post(
+      "/:id/check-out",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = checkOutSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const raw = await db.getPhysicalFileById(req.params.id, firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const existing = access.file;
+        if (existing.status === "archived") {
+          return res.status(400).json({ error: "InvalidState", message: "Cannot check out an archived physical file" });
+        }
+        const holder = await db.getUserById(parsed.data.holderId);
+        if (!holder || holder.firmId !== firmId || !holder.active) {
+          return res.status(400).json({ error: "ValidationError", message: "Recipient holder must be an active member of this firm" });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const dueDate = new Date(parsed.data.dueBackAt);
+        const result = await db.transaction(async (txDb) => {
+          const updatedFile = await txDb.updatePhysicalFile(existing.id, firmId, {
+            status: "checked_out",
+            currentHolderId: holder.id,
+            checkedOutAt: now,
+            dueBackAt: dueDate,
+            updatedBy: req.user.id
+          });
+          const movement = await txDb.insertFileMovement({
+            id: import_crypto10.default.randomUUID(),
+            firmId,
+            fileId: existing.id,
+            action: "CHECKOUT",
+            userId: holder.id,
+            at: now,
+            dueBackAt: dueDate,
+            note: parsed.data.note?.trim() || `Checked out by ${req.user.name}`
+          });
+          await upsertFileReturnReminderTx(txDb, {
+            firmId,
+            fileId: existing.id,
+            serial: updatedFile.serial,
+            title: updatedFile.title,
+            shelfLocation: updatedFile.shelfLocation,
+            holderId: holder.id,
+            holderName: holder.name,
+            dueDate,
+            actorId: req.user.id
+          });
+          await insertAuditTx(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "PHYSICAL_FILE_CHECKED_OUT",
+            oldValue: {
+              status: existing.status,
+              currentHolderId: existing.currentHolderId
+            },
+            newValue: {
+              status: updatedFile.status,
+              currentHolderId: holder.id,
+              currentHolderName: holder.name,
+              dueBackAt: dueDate.toISOString(),
+              note: movement.note
+            }
+          });
+          return { file: updatedFile, movement };
+        });
+        res.json(result);
+      }
+    );
+    physicalFilesRouter.post(
+      "/:id/check-in",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = checkInSchema.safeParse(req.body || {});
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const raw = await db.getPhysicalFileById(req.params.id, firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const existing = access.file;
+        if (existing.status === "archived") {
+          return res.status(400).json({ error: "InvalidState", message: "Cannot check in an archived physical file" });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const nextShelf = parsed.data.shelfLocation?.trim() || existing.shelfLocation || "General File Rack";
+        const result = await db.transaction(async (txDb) => {
+          const updatedFile = await txDb.updatePhysicalFile(existing.id, firmId, {
+            status: "in_chamber",
+            currentHolderId: null,
+            checkedOutAt: null,
+            dueBackAt: null,
+            shelfLocation: nextShelf,
+            updatedBy: req.user.id
+          });
+          const movement = await txDb.insertFileMovement({
+            id: import_crypto10.default.randomUUID(),
+            firmId,
+            fileId: existing.id,
+            action: "CHECKIN",
+            userId: req.user.id,
+            at: now,
+            dueBackAt: null,
+            note: parsed.data.note?.trim() || `Returned to ${nextShelf}`
+          });
+          await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id);
+          await insertAuditTx(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "PHYSICAL_FILE_CHECKED_IN",
+            oldValue: {
+              status: existing.status,
+              currentHolderId: existing.currentHolderId
+            },
+            newValue: {
+              status: updatedFile.status,
+              shelfLocation: nextShelf,
+              note: movement.note
+            }
+          });
+          return { file: updatedFile, movement };
+        });
+        res.json(result);
+      }
+    );
+    physicalFilesRouter.post(
+      "/:id/dispatch-court",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = dispatchCourtSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const raw = await db.getPhysicalFileById(req.params.id, firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const existing = access.file;
+        if (existing.status === "archived") {
+          return res.status(400).json({ error: "InvalidState", message: "Cannot dispatch an archived physical file" });
+        }
+        const holder = await db.getUserById(parsed.data.holderId);
+        if (!holder || holder.firmId !== firmId || !holder.active) {
+          return res.status(400).json({ error: "ValidationError", message: "Taking custodian must be an active member of this firm" });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const dueDate = new Date(parsed.data.dueBackAt);
+        const movementNote = parsed.data.note?.trim() ? `[Court: ${parsed.data.courtName}] ${parsed.data.note.trim()}` : `Dispatched to ${parsed.data.courtName}`;
+        const result = await db.transaction(async (txDb) => {
+          const updatedFile = await txDb.updatePhysicalFile(existing.id, firmId, {
+            status: "in_court",
+            currentHolderId: holder.id,
+            checkedOutAt: now,
+            dueBackAt: dueDate,
+            updatedBy: req.user.id
+          });
+          const movement = await txDb.insertFileMovement({
+            id: import_crypto10.default.randomUUID(),
+            firmId,
+            fileId: existing.id,
+            action: "COURT_DISPATCH",
+            userId: holder.id,
+            at: now,
+            dueBackAt: dueDate,
+            note: movementNote
+          });
+          await upsertFileReturnReminderTx(txDb, {
+            firmId,
+            fileId: existing.id,
+            serial: updatedFile.serial,
+            title: updatedFile.title,
+            shelfLocation: updatedFile.shelfLocation,
+            holderId: holder.id,
+            holderName: holder.name,
+            dueDate,
+            actorId: req.user.id
+          });
+          await insertAuditTx(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "PHYSICAL_FILE_COURT_DISPATCH",
+            oldValue: {
+              status: existing.status,
+              currentHolderId: existing.currentHolderId
+            },
+            newValue: {
+              status: updatedFile.status,
+              courtName: parsed.data.courtName,
+              currentHolderId: holder.id,
+              currentHolderName: holder.name,
+              dueBackAt: dueDate.toISOString(),
+              note: movementNote
+            }
+          });
+          return { file: updatedFile, movement };
+        });
+        res.json(result);
+      }
+    );
+    physicalFilesRouter.delete(
+      "/:id",
+      requirePermission("files.manage"),
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const raw = await db.getPhysicalFileById(req.params.id, firmId);
+        const access = await checkFileAccess(db, req, raw);
+        if (!access.ok) {
+          return res.status(access.status).json({ error: access.error, message: access.message });
+        }
+        const existing = access.file;
+        await db.transaction(async (txDb) => {
+          await txDb.deletePhysicalFile(existing.id, firmId, req.user.id);
+          await txDb.dismissRemindersBySource(firmId, existing.id, req.user.id, true);
+          await insertAuditTx(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "DELETE",
+            oldValue: existing,
+            newValue: { deletedAt: (/* @__PURE__ */ new Date()).toISOString(), softDeleted: true }
+          });
+        });
+        res.json({ success: true, softDeleted: true });
+      }
+    );
+  }
+});
+
+// src/routes/reminders.ts
+async function insertReminderAudit(txDb, params) {
+  const now = /* @__PURE__ */ new Date();
+  await txDb.insertAudit({
+    id: import_crypto11.default.randomUUID(),
+    firmId: params.firmId,
+    userId: params.userId,
+    userName: params.userName,
+    entity: "Reminder",
+    entityId: params.entityId,
+    action: params.action,
+    oldValue: params.oldValue || null,
+    newValue: params.newValue || null,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    createdBy: params.userId,
+    updatedBy: params.userId
+  });
+}
+function toReminderResponse(r) {
+  return {
+    id: r.id,
+    firmId: r.firmId,
+    userId: r.userId,
+    userName: r.userName,
+    sourceType: r.sourceType,
+    sourceId: r.sourceId,
+    title: r.title,
+    description: r.description ?? void 0,
+    remindAt: r.remindAt instanceof Date ? r.remindAt.toISOString() : r.remindAt,
+    dueAt: r.dueAt instanceof Date ? r.dueAt.toISOString() : r.dueAt,
+    channel: r.channel,
+    status: r.status,
+    sentAt: r.sentAt instanceof Date ? r.sentAt.toISOString() : r.sentAt ?? null,
+    dismissedAt: r.dismissedAt instanceof Date ? r.dismissedAt.toISOString() : r.dismissedAt ?? null,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+    updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
+    deletedAt: r.deletedAt instanceof Date ? r.deletedAt.toISOString() : r.deletedAt ?? null,
+    createdBy: r.createdBy ?? "",
+    updatedBy: r.updatedBy ?? ""
+  };
+}
+function canViewRestricted(user) {
+  if (!user) return false;
+  if (user.role === "Owner") return true;
+  return Boolean(user.permissions?.includes("restricted.view"));
+}
+async function isReminderSourceVisible(db, firmId, user, sourceType, sourceId) {
+  let caseId = null;
+  if (sourceType === "hearing") {
+    const h = await db.getHearingById(sourceId, firmId, user);
+    if (!h) return false;
+    caseId = h.caseId;
+  } else if (sourceType === "task") {
+    const t = await db.getTaskById(sourceId, firmId, user);
+    if (!t) return false;
+    caseId = t.caseId;
+  } else if (sourceType === "file_return") {
+    const f = await db.getPhysicalFileById(sourceId, firmId);
+    if (!f) return false;
+    caseId = f.caseId;
+  } else if (sourceType === "appointment") {
+    const a = await db.getAppointmentById(sourceId, firmId, user);
+    if (!a) return false;
+    caseId = a.caseId;
+  }
+  if (caseId) {
+    const c = await db.getCaseById(caseId, firmId, user);
+    if (!c) return false;
+    if (c.restricted && !canViewRestricted(user)) return false;
+  }
+  return true;
+}
+var import_crypto11, import_express12, remindersRouter, SOURCE_TYPES, CHANNELS, STATUS_FILTERS, isoDateString, listQuerySchema, createReminderSchema, clearSourceSchema, rescheduleSourceSchema;
+var init_reminders = __esm({
+  "src/routes/reminders.ts"() {
+    "use strict";
+    import_crypto11 = __toESM(require("crypto"), 1);
+    import_express12 = __toESM(require_express2(), 1);
+    init_zod();
+    init_auth();
+    init_firmIsolation();
+    init_subscription();
+    init_client();
+    remindersRouter = (0, import_express12.Router)();
+    remindersRouter.use(authMiddleware);
+    remindersRouter.use(enforceFirmIsolation);
+    SOURCE_TYPES = ["hearing", "task", "file_return", "appointment"];
+    CHANNELS = ["in_app", "email_stub", "sms_stub"];
+    STATUS_FILTERS = ["pending", "sent", "dismissed", "active"];
+    isoDateString = external_exports.string().refine((val) => !isNaN(Date.parse(val)), {
+      message: "Invalid ISO 8601 date string"
+    });
+    listQuerySchema = external_exports.object({
+      status: external_exports.enum(STATUS_FILTERS).optional(),
+      sourceType: external_exports.enum(SOURCE_TYPES).optional(),
+      userId: external_exports.string().min(1).optional(),
+      search: external_exports.string().max(200).optional(),
+      dueOnly: external_exports.enum(["true", "false"]).optional()
+    });
+    createReminderSchema = external_exports.object({
+      userId: external_exports.string().trim().min(1, "userId is required"),
+      sourceType: external_exports.enum(SOURCE_TYPES),
+      sourceId: external_exports.string().trim().min(1, "sourceId is required"),
+      title: external_exports.string().trim().min(1, "title is required").max(300, "title too long"),
+      description: external_exports.string().trim().max(2e3).optional().nullable(),
+      remindAt: isoDateString,
+      dueAt: isoDateString,
+      channel: external_exports.enum(CHANNELS).optional().default("in_app")
+    });
+    clearSourceSchema = external_exports.object({
+      sourceId: external_exports.string().trim().min(1, "sourceId is required")
+    });
+    rescheduleSourceSchema = external_exports.object({
+      sourceId: external_exports.string().trim().min(1, "sourceId is required"),
+      newDueAt: isoDateString,
+      newRemindAt: isoDateString.optional()
+    });
+    remindersRouter.get("/", async (req, res) => {
+      const parsed = listQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+      }
+      const db = getDatabase();
+      const firmId = req.user.firmId;
+      const rows = await db.listReminders(
+        firmId,
+        {
+          status: parsed.data.status,
+          sourceType: parsed.data.sourceType,
+          userId: parsed.data.userId,
+          search: parsed.data.search,
+          dueOnly: parsed.data.dueOnly === "true"
+        },
+        req.user
+      );
+      return res.json(rows.map(toReminderResponse));
+    });
+    remindersRouter.get("/due", async (req, res) => {
+      const db = getDatabase();
+      const firmId = req.user.firmId;
+      const rows = await db.listReminders(firmId, { status: "active", dueOnly: true }, req.user);
+      return res.json(rows.map(toReminderResponse));
+    });
+    remindersRouter.post(
+      "/",
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = createReminderSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const data = parsed.data;
+        const targetUser = await db.getUserById(data.userId);
+        if (!targetUser || targetUser.firmId !== firmId || targetUser.deletedAt) {
+          return res.status(400).json({
+            error: "ValidationError",
+            message: "Target user does not exist in this chamber"
+          });
+        }
+        if (req.user.role === "Staff" && targetUser.id !== req.user.id) {
+          return res.status(403).json({
+            error: "PermissionDenied",
+            message: "Staff users cannot create reminders assigned to other chamber members"
+          });
+        }
+        const visible = await isReminderSourceVisible(db, firmId, req.user, data.sourceType, data.sourceId);
+        if (!visible) {
+          return res.status(404).json({
+            error: "NotFound",
+            message: "Linked source record not found or access denied"
+          });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const id = import_crypto11.default.randomUUID();
+        const created = await db.transaction(async (txDb) => {
+          const rec = await txDb.insertReminder({
+            id,
+            firmId,
+            userId: data.userId,
+            sourceType: data.sourceType,
+            sourceId: data.sourceId,
+            title: data.title,
+            description: data.description ?? null,
+            remindAt: new Date(data.remindAt),
+            dueAt: new Date(data.dueAt),
+            channel: data.channel,
+            status: "pending",
+            sentAt: null,
+            dismissedAt: null,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+            createdBy: req.user.id,
+            updatedBy: req.user.id
+          });
+          await insertReminderAudit(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: id,
+            action: "REMINDER_CREATE",
+            oldValue: null,
+            newValue: {
+              id,
+              userId: rec.userId,
+              sourceType: rec.sourceType,
+              sourceId: rec.sourceId,
+              title: rec.title,
+              remindAt: rec.remindAt,
+              dueAt: rec.dueAt
+            }
+          });
+          return rec;
+        });
+        return res.status(201).json(toReminderResponse(created));
+      }
+    );
+    remindersRouter.post(
+      "/sync",
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const actor = req.user;
+        const [hearings2, taskRes, files, apptRes, cases2, existingReminders] = await Promise.all([
+          db.listHearings(firmId, { status: "scheduled" }),
+          db.listTasks(firmId, { limit: 1e4 }),
+          db.listPhysicalFiles(firmId, {}),
+          db.listAppointments(firmId, { status: "scheduled", limit: 1e4 }),
+          db.listCases(firmId, { user: req.user, includeRestricted: true }),
+          db.listReminders(firmId, {})
+        ]);
+        const tasks2 = taskRes.tasks;
+        const appointments2 = apptRes.appointments;
+        const caseMap = new Map(cases2.map((c) => [c.id, c]));
+        const now = /* @__PURE__ */ new Date();
+        let createdCount = 0;
+        let updatedCount = 0;
+        await db.transaction(async (txDb) => {
+          for (const h of hearings2) {
+            if (h.deletedAt || h.status !== "scheduled") continue;
+            const caseRec = caseMap.get(h.caseId);
+            if (!caseRec) continue;
+            const existing = existingReminders.find(
+              (r) => r.sourceType === "hearing" && r.sourceId === h.id && !r.deletedAt
+            );
+            const dueDate = new Date(h.scheduledAt);
+            const remindDate = new Date(dueDate.getTime() - 24 * 60 * 60 * 1e3);
+            if (!existing) {
+              const recipientId = h.appearingLawyerId || caseRec.responsibleLawyerId || actor.id;
+              const fixedPurpose = h.fixedFor ? h.fixedForNote ? `${h.fixedFor} (${h.fixedForNote})` : h.fixedFor : h.purpose;
+              const id = import_crypto11.default.randomUUID();
+              await txDb.insertReminder({
+                id,
+                firmId,
+                userId: recipientId,
+                sourceType: "hearing",
+                sourceId: h.id,
+                title: `Court Hearing: ${caseRec.caseNumber} [${fixedPurpose}]`,
+                description: `${caseRec.court} - Fixed for: ${fixedPurpose}`,
+                remindAt: remindDate,
+                dueAt: dueDate,
+                channel: "in_app",
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                createdBy: actor.id,
+                updatedBy: actor.id
+              });
+              createdCount++;
+            } else if (new Date(existing.dueAt).getTime() !== dueDate.getTime()) {
+              await txDb.rescheduleRemindersBySource(firmId, h.id, dueDate, remindDate, actor.id);
+              updatedCount++;
+            }
+          }
+          for (const t of tasks2) {
+            if (t.deletedAt || t.status === "completed" || t.status === "cancelled") continue;
+            const existing = existingReminders.find(
+              (r) => r.sourceType === "task" && r.sourceId === t.id && !r.deletedAt
+            );
+            const dueDate = new Date(t.dueAt);
+            const remindDate = new Date(dueDate.getTime() - 2 * 60 * 60 * 1e3);
+            if (!existing) {
+              const id = import_crypto11.default.randomUUID();
+              await txDb.insertReminder({
+                id,
+                firmId,
+                userId: t.assignedTo,
+                sourceType: "task",
+                sourceId: t.id,
+                title: `Task Deadline: ${t.title}`,
+                description: t.description || `Priority: ${t.priority}`,
+                remindAt: remindDate,
+                dueAt: dueDate,
+                channel: "in_app",
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                createdBy: actor.id,
+                updatedBy: actor.id
+              });
+              createdCount++;
+            }
+          }
+          for (const f of files) {
+            if (f.deletedAt || f.status !== "checked_out" && f.status !== "in_court" || !f.dueBackAt || !f.currentHolderId) {
+              continue;
+            }
+            const existing = existingReminders.find(
+              (r) => r.sourceType === "file_return" && r.sourceId === f.id && !r.deletedAt
+            );
+            const dueDate = new Date(f.dueBackAt);
+            const remindDate = new Date(dueDate.getTime() - 4 * 60 * 60 * 1e3);
+            if (!existing) {
+              const id = import_crypto11.default.randomUUID();
+              await txDb.insertReminder({
+                id,
+                firmId,
+                userId: f.currentHolderId,
+                sourceType: "file_return",
+                sourceId: f.id,
+                title: `File Return Due: ${f.serial} (${f.title})`,
+                description: `Location: ${f.shelfLocation || "Chamber Rack"}. Current holder: ${f.currentHolderName || f.currentHolderId}`,
+                remindAt: remindDate,
+                dueAt: dueDate,
+                channel: "in_app",
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                createdBy: actor.id,
+                updatedBy: actor.id
+              });
+              createdCount++;
+            }
+          }
+          for (const a of appointments2) {
+            if (a.deletedAt || a.status !== "scheduled" || !(a.reminderMinutesBefore > 0)) continue;
+            const existing = existingReminders.find(
+              (r) => r.sourceType === "appointment" && r.sourceId === a.id && !r.deletedAt
+            );
+            if (!existing) {
+              const dueDate = new Date(a.startsAt);
+              const remindDate = new Date(dueDate.getTime() - a.reminderMinutesBefore * 60 * 1e3);
+              const id = import_crypto11.default.randomUUID();
+              await txDb.insertReminder({
+                id,
+                firmId,
+                userId: a.organiserUserId,
+                sourceType: "appointment",
+                sourceId: a.id,
+                title: `Appointment: ${a.title}`,
+                description: a.location ? `Location: ${a.location}` : void 0,
+                remindAt: remindDate,
+                dueAt: dueDate,
+                channel: "in_app",
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                createdBy: actor.id,
+                updatedBy: actor.id
+              });
+              createdCount++;
+            }
+          }
+        });
+        const activeReminders = await db.listReminders(firmId, { status: "active" }, actor);
+        return res.json({
+          createdCount,
+          updatedCount,
+          activeReminders: activeReminders.map(toReminderResponse)
+        });
+      }
+    );
+    remindersRouter.post(
+      "/clear-source",
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = clearSourceSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const dismissedCount = await db.dismissRemindersBySource(
+          firmId,
+          parsed.data.sourceId,
+          req.user.id,
+          false,
+          req.user.role === "Staff" ? req.user.id : void 0
+        );
+        return res.json({ dismissedCount });
+      }
+    );
+    remindersRouter.post(
+      "/reschedule-source",
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const parsed = rescheduleSourceSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+        }
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const updatedCount = await db.rescheduleRemindersBySource(
+          firmId,
+          parsed.data.sourceId,
+          new Date(parsed.data.newDueAt),
+          parsed.data.newRemindAt ? new Date(parsed.data.newRemindAt) : void 0,
+          req.user.id
+        );
+        return res.json({ updatedCount });
+      }
+    );
+    remindersRouter.post(
+      "/:id/dismiss",
+      enforceSubscriptionReadOnly,
+      async (req, res) => {
+        const db = getDatabase();
+        const firmId = req.user.firmId;
+        const existing = await db.getReminderById(req.params.id, firmId);
+        if (!existing) {
+          return res.status(404).json({ error: "NotFound", message: "Reminder not found" });
+        }
+        if (req.user.role === "Staff" && existing.userId !== req.user.id) {
+          return res.status(403).json({
+            error: "PermissionDenied",
+            message: "Permission denied: you cannot dismiss reminders of other advocates"
+          });
+        }
+        const visible = await isReminderSourceVisible(db, firmId, req.user, existing.sourceType, existing.sourceId);
+        if (!visible) {
+          return res.status(404).json({ error: "NotFound", message: "Reminder not found" });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const updated = await db.transaction(async (txDb) => {
+          const rec = await txDb.updateReminder(existing.id, firmId, {
+            status: "dismissed",
+            dismissedAt: now,
+            updatedAt: now,
+            updatedBy: req.user.id
+          });
+          await insertReminderAudit(txDb, {
+            firmId,
+            userId: req.user.id,
+            userName: req.user.name,
+            entityId: existing.id,
+            action: "REMINDER_DISMISS",
+            oldValue: { status: existing.status, dismissedAt: existing.dismissedAt },
+            newValue: { status: rec.status, dismissedAt: rec.dismissedAt }
+          });
+          return rec;
+        });
+        return res.json(toReminderResponse(updated));
+      }
+    );
+  }
+});
+
+// src/routes/calendar.ts
+function getDhakaDateString(input2 = /* @__PURE__ */ new Date()) {
+  const d = typeof input2 === "string" ? new Date(input2) : input2;
+  if (isNaN(d.getTime())) return "";
+  return new Date(d.getTime() + DHAKA_OFFSET_MS).toISOString().slice(0, 10);
+}
+function hasPerm(user, key) {
+  if (user.role === "Owner") return true;
+  return Boolean(user.permissions?.includes("*") || user.permissions?.includes(key));
+}
+var import_express13, calendarRouter, DHAKA_OFFSET_MS, calendarQuerySchema, causeListQuerySchema;
+var init_calendar = __esm({
+  "src/routes/calendar.ts"() {
+    "use strict";
+    import_express13 = __toESM(require_express2(), 1);
+    init_zod();
+    init_auth();
+    init_firmIsolation();
+    init_client();
+    calendarRouter = (0, import_express13.Router)();
+    calendarRouter.use(authMiddleware);
+    calendarRouter.use(enforceFirmIsolation);
+    DHAKA_OFFSET_MS = 6 * 60 * 60 * 1e3;
+    calendarQuerySchema = external_exports.object({
+      startIso: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid startIso" }).optional(),
+      endIso: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid endIso" }).optional(),
+      fromDate: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid fromDate" }).optional(),
+      toDate: external_exports.string().refine((v) => !isNaN(Date.parse(v)), { message: "Invalid toDate" }).optional(),
+      type: external_exports.enum(["all", "hearing", "task", "file_return", "appointment"]).optional()
+    });
+    causeListQuerySchema = external_exports.object({
+      date: external_exports.string().optional()
+    });
+    calendarRouter.get("/", async (req, res) => {
+      const parsed = calendarQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+      }
+      const db = getDatabase();
+      const user = req.user;
+      const firmId = user.firmId;
+      const type = parsed.data.type || "all";
+      const startIso = parsed.data.startIso || parsed.data.fromDate;
+      const endIso = parsed.data.endIso || parsed.data.toDate;
+      const canCases = hasPerm(user, "cases.view");
+      const canClients = hasPerm(user, "clients.view");
+      const canTasks = hasPerm(user, "tasks.view");
+      const canFiles = hasPerm(user, "files.view");
+      const canAppts = hasPerm(user, "appointments.view");
+      const canUsers = true;
+      const [visibleCases, clients2, hearings2, taskRes, files, apptRes, users2] = await Promise.all([
+        db.listCases(firmId, { user: req.user, includeRestricted: true }),
+        canClients ? db.listClients(firmId) : Promise.resolve([]),
+        canCases && (type === "all" || type === "hearing") ? db.listHearings(firmId, {}, user) : Promise.resolve([]),
+        canTasks && (type === "all" || type === "task") ? db.listTasks(firmId, { limit: 1e4 }, user) : Promise.resolve({ tasks: [], total: 0 }),
+        canFiles && (type === "all" || type === "file_return") ? db.listPhysicalFiles(firmId, {}, user) : Promise.resolve([]),
+        canAppts && (type === "all" || type === "appointment") ? db.listAppointments(firmId, { limit: 1e4, user }) : Promise.resolve({ appointments: [], total: 0 }),
+        canUsers ? db.listUsers(firmId) : Promise.resolve([])
+      ]);
+      const tasks2 = taskRes.tasks;
+      const appointments2 = apptRes.appointments;
+      const visibleCaseIds = new Set(visibleCases.map((c) => c.id));
+      const caseMap = new Map(visibleCases.map((c) => [c.id, c]));
+      const clientMap = new Map(clients2.map((cl) => [cl.id, cl]));
+      const userMap = new Map(users2.map((u) => [u.id, u]));
+      const events = [];
+      const nowMs = Date.now();
+      for (const h of hearings2) {
+        if (h.deletedAt || !visibleCaseIds.has(h.caseId)) continue;
+        const caseRec = caseMap.get(h.caseId);
+        const clientRec = caseRec ? clientMap.get(caseRec.clientId) : void 0;
+        const dateStr = h.scheduledAt instanceof Date ? h.scheduledAt.toISOString() : String(h.scheduledAt);
+        const label = h.purpose || h.fixedFor || "Hearing";
+        events.push({
+          id: `cal-hearing-${h.id}`,
+          title: caseRec ? `${caseRec.caseNumber} - ${label}` : label,
+          date: dateStr,
+          type: "hearing",
+          sourceId: h.id,
+          caseId: h.caseId,
+          caseNumber: caseRec?.caseNumber,
+          court: caseRec?.court,
+          clientId: caseRec?.clientId ?? null,
+          clientName: clientRec?.name,
+          status: h.status,
+          restricted: Boolean(caseRec?.restricted),
+          fixedFor: h.fixedFor || void 0,
+          fixedForNote: h.fixedForNote || void 0
+        });
+      }
+      const hasTasksAssign = hasPerm(user, "tasks.assign");
+      for (const t of tasks2) {
+        if (t.deletedAt) continue;
+        if (user.role === "Staff" && !hasTasksAssign && t.assignedTo !== user.id) continue;
+        if (t.caseId && !visibleCaseIds.has(t.caseId)) continue;
+        const caseRec = t.caseId ? caseMap.get(t.caseId) : void 0;
+        const clientRec = t.clientId ? clientMap.get(t.clientId) : void 0;
+        const assignee = userMap.get(t.assignedTo);
+        const dateStr = t.dueAt instanceof Date ? t.dueAt.toISOString() : String(t.dueAt);
+        const isOverdue = t.status !== "completed" && t.status !== "cancelled" && new Date(dateStr).getTime() < nowMs;
+        events.push({
+          id: `cal-task-${t.id}`,
+          title: t.title,
+          date: dateStr,
+          type: "task",
+          sourceId: t.id,
+          caseId: t.caseId,
+          caseNumber: caseRec?.caseNumber,
+          clientId: t.clientId,
+          clientName: clientRec?.name,
+          assigneeId: t.assignedTo,
+          assigneeName: assignee?.name,
+          status: t.status,
+          priority: t.priority,
+          isOverdue,
+          restricted: caseRec?.restricted
+        });
+      }
+      for (const f of files) {
+        if (f.deletedAt || f.status !== "checked_out" && f.status !== "in_court" || !f.dueBackAt) continue;
+        if (f.caseId && !visibleCaseIds.has(f.caseId)) continue;
+        const caseRec = f.caseId ? caseMap.get(f.caseId) : void 0;
+        const clientRec = f.clientId ? clientMap.get(f.clientId) : void 0;
+        const dateStr = f.dueBackAt instanceof Date ? f.dueBackAt.toISOString() : String(f.dueBackAt);
+        events.push({
+          id: `cal-file-${f.id}`,
+          title: `Return: ${f.serial} (${f.title})`,
+          date: dateStr,
+          type: "file_return",
+          sourceId: f.id,
+          caseId: f.caseId,
+          caseNumber: caseRec?.caseNumber,
+          clientId: f.clientId,
+          clientName: clientRec?.name,
+          assigneeId: f.currentHolderId,
+          assigneeName: f.currentHolderName || (f.currentHolderId ? userMap.get(f.currentHolderId)?.name : void 0),
+          status: f.status,
+          shelfLocation: f.shelfLocation || void 0,
+          isOverdue: new Date(dateStr).getTime() < nowMs,
+          restricted: caseRec?.restricted
+        });
+      }
+      for (const a of appointments2) {
+        if (a.deletedAt) continue;
+        if (a.caseId && !visibleCaseIds.has(a.caseId)) continue;
+        const caseRec = a.caseId ? caseMap.get(a.caseId) : void 0;
+        const clientRec = a.clientId ? clientMap.get(a.clientId) : void 0;
+        const organiser = userMap.get(a.organiserUserId);
+        const dateStr = a.startsAt instanceof Date ? a.startsAt.toISOString() : String(a.startsAt);
+        events.push({
+          id: `cal-appt-${a.id}`,
+          title: a.title,
+          date: dateStr,
+          type: "appointment",
+          sourceId: a.id,
+          caseId: a.caseId,
+          caseNumber: caseRec?.caseNumber,
+          clientId: a.clientId,
+          clientName: clientRec?.name,
+          assigneeId: a.organiserUserId,
+          assigneeName: organiser?.name,
+          status: a.status,
+          restricted: caseRec?.restricted
+        });
+      }
+      let result = events;
+      if (startIso) {
+        const startMs = new Date(startIso).getTime();
+        result = result.filter((e) => new Date(e.date).getTime() >= startMs);
+      }
+      if (endIso) {
+        const endMs = new Date(endIso).getTime();
+        result = result.filter((e) => new Date(e.date).getTime() <= endMs);
+      }
+      result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return res.json(result);
+    });
+    calendarRouter.get("/cause-list", async (req, res) => {
+      const parsed = causeListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "ValidationError", details: parsed.error.issues });
+      }
+      const rawDate = parsed.data.date;
+      let targetDay = getDhakaDateString(/* @__PURE__ */ new Date());
+      if (rawDate) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+          targetDay = rawDate;
+        } else if (!isNaN(Date.parse(rawDate))) {
+          targetDay = getDhakaDateString(rawDate);
+        } else {
+          return res.status(400).json({ error: "ValidationError", message: "Invalid date parameter" });
+        }
+      }
+      const db = getDatabase();
+      const user = req.user;
+      const firmId = user.firmId;
+      const canCases = hasPerm(user, "cases.view");
+      const canClients = hasPerm(user, "clients.view");
+      const [firm, visibleCases, clients2, hearings2] = await Promise.all([
+        db.getFirm(firmId),
+        db.listCases(firmId, { user: req.user, includeRestricted: true }),
+        canClients ? db.listClients(firmId) : Promise.resolve([]),
+        canCases ? db.listHearings(firmId, {}, user) : Promise.resolve([])
+      ]);
+      const visibleCaseIds = new Set(visibleCases.map((c) => c.id));
+      const caseMap = new Map(visibleCases.map((c) => [c.id, c]));
+      const clientMap = new Map(clients2.map((cl) => [cl.id, cl]));
+      const dayHearings = hearings2.filter((h) => {
+        if (h.deletedAt || !visibleCaseIds.has(h.caseId)) return false;
+        const iso = h.scheduledAt instanceof Date ? h.scheduledAt.toISOString() : String(h.scheduledAt);
+        return getDhakaDateString(iso) === targetDay;
+      }).map((h) => {
+        const caseRec = caseMap.get(h.caseId);
+        const clientRec = caseRec ? clientMap.get(caseRec.clientId) : void 0;
+        const iso = h.scheduledAt instanceof Date ? h.scheduledAt.toISOString() : String(h.scheduledAt);
+        const label = h.purpose || h.fixedFor || "Hearing";
+        return {
+          id: `cal-hearing-${h.id}`,
+          title: caseRec ? `${caseRec.caseNumber} - ${label}` : label,
+          date: iso,
+          type: "hearing",
+          sourceId: h.id,
+          caseId: h.caseId,
+          caseNumber: caseRec?.caseNumber,
+          court: caseRec?.court,
+          clientId: caseRec?.clientId ?? null,
+          clientName: clientRec?.name,
+          status: h.status,
+          restricted: Boolean(caseRec?.restricted),
+          fixedFor: h.fixedFor || void 0,
+          fixedForNote: h.fixedForNote || void 0
+        };
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return res.json({
+        date: targetDay,
+        hearings: dayHearings,
+        firmName: firm?.name || "Rahman & Associates Chambers"
+      });
+    });
+  }
+});
+
+// src/routes/feeAgreements.ts
+var import_crypto12, import_express14, feeAgreementsRouter, createFeeAgreementSchema, reviseFeeAgreementSchema, voidFeeAgreementSchema;
+var init_feeAgreements = __esm({
+  "src/routes/feeAgreements.ts"() {
+    "use strict";
+    import_crypto12 = __toESM(require("crypto"), 1);
+    import_express14 = __toESM(require_express2(), 1);
+    init_zod();
+    init_auth();
+    init_permission();
+    init_firmIsolation();
+    init_subscription();
+    init_client();
     init_auditService();
-    feeAgreementsRouter = (0, import_express11.Router)();
+    feeAgreementsRouter = (0, import_express14.Router)();
     feeAgreementsRouter.use(authMiddleware);
     feeAgreementsRouter.use(enforceFirmIsolation);
     createFeeAgreementSchema = external_exports.object({
@@ -74720,7 +76960,7 @@ var init_feeAgreements = __esm({
           return res.status(400).json({ error: "BadRequest", message: "Case does not belong to the agreement client" });
         }
         const created = await db.insertFeeAgreement({
-          id: import_crypto10.default.randomUUID(),
+          id: import_crypto12.default.randomUUID(),
           firmId,
           clientId: parsed.data.clientId,
           caseId: parsed.data.caseId,
@@ -74767,7 +77007,7 @@ var init_feeAgreements = __esm({
         const newAmountPaisa = parsed.data.newAmountPaisa;
         const updated = await db.transaction(async (txDb) => {
           await txDb.insertFeeAgreementChange({
-            id: import_crypto10.default.randomUUID(),
+            id: import_crypto12.default.randomUUID(),
             firmId,
             feeAgreementId: existing.id,
             oldAmountPaisa,
@@ -74860,12 +77100,12 @@ var init_feeAgreements = __esm({
 });
 
 // src/routes/feePayments.ts
-var import_crypto11, import_express12, feePaymentsRouter, recordPaymentSchema, voidPaymentSchema, attachAgreementSchema;
+var import_crypto13, import_express15, feePaymentsRouter, recordPaymentSchema, voidPaymentSchema, attachAgreementSchema;
 var init_feePayments = __esm({
   "src/routes/feePayments.ts"() {
     "use strict";
-    import_crypto11 = __toESM(require("crypto"), 1);
-    import_express12 = __toESM(require_express2(), 1);
+    import_crypto13 = __toESM(require("crypto"), 1);
+    import_express15 = __toESM(require_express2(), 1);
     init_zod();
     init_auth();
     init_permission();
@@ -74873,7 +77113,7 @@ var init_feePayments = __esm({
     init_subscription();
     init_client();
     init_auditService();
-    feePaymentsRouter = (0, import_express12.Router)();
+    feePaymentsRouter = (0, import_express15.Router)();
     feePaymentsRouter.use(authMiddleware);
     feePaymentsRouter.use(enforceFirmIsolation);
     recordPaymentSchema = external_exports.object({
@@ -74988,7 +77228,7 @@ var init_feePayments = __esm({
             if (duplicate) return duplicate;
             const { sequenceNumber } = await txDb.getNextSequenceNumber(firmId, "receipt", "R-");
             return await txDb.insertFeePayment({
-              id: import_crypto11.default.randomUUID(),
+              id: import_crypto13.default.randomUUID(),
               firmId,
               clientId: derivedClientId,
               caseId: derivedCaseId,
@@ -75136,12 +77376,12 @@ var init_feePayments = __esm({
 });
 
 // src/routes/expenses.ts
-var import_crypto12, import_express13, expensesRouter, recordExpenseSchema, voidExpenseSchema;
+var import_crypto14, import_express16, expensesRouter, recordExpenseSchema, voidExpenseSchema;
 var init_expenses = __esm({
   "src/routes/expenses.ts"() {
     "use strict";
-    import_crypto12 = __toESM(require("crypto"), 1);
-    import_express13 = __toESM(require_express2(), 1);
+    import_crypto14 = __toESM(require("crypto"), 1);
+    import_express16 = __toESM(require_express2(), 1);
     init_zod();
     init_auth();
     init_permission();
@@ -75149,7 +77389,7 @@ var init_expenses = __esm({
     init_subscription();
     init_client();
     init_auditService();
-    expensesRouter = (0, import_express13.Router)();
+    expensesRouter = (0, import_express16.Router)();
     expensesRouter.use(authMiddleware);
     expensesRouter.use(enforceFirmIsolation);
     recordExpenseSchema = external_exports.object({
@@ -75167,8 +77407,8 @@ var init_expenses = __esm({
     expensesRouter.get(
       "/categories",
       async (req, res) => {
-        const hasPerm = req.user?.role === "Owner" || req.user?.permissions && (req.user.permissions.includes("accounts.view") || req.user.permissions.includes("expenses.record") || req.user.permissions.includes("accounts.manage"));
-        if (!hasPerm) {
+        const hasPerm2 = req.user?.role === "Owner" || req.user?.permissions && (req.user.permissions.includes("accounts.view") || req.user.permissions.includes("expenses.record") || req.user.permissions.includes("accounts.manage"));
+        if (!hasPerm2) {
           return res.status(403).json({ error: "Forbidden", message: "Permission denied" });
         }
         const db = getDatabase();
@@ -75233,7 +77473,7 @@ var init_expenses = __esm({
           }
         }
         const created = await db.insertExpense({
-          id: import_crypto12.default.randomUUID(),
+          id: import_crypto14.default.randomUUID(),
           firmId,
           clientId: parsed.data.clientId || null,
           caseId: parsed.data.caseId || null,
@@ -75301,12 +77541,12 @@ var init_expenses = __esm({
 });
 
 // src/routes/chamberExpenses.ts
-var import_crypto13, import_express14, chamberExpensesRouter, createCategorySchema, createExpenseSchema, voidExpenseSchema2, createAdvanceSchema, settleAdvanceSchema;
+var import_crypto15, import_express17, chamberExpensesRouter, createCategorySchema, createExpenseSchema, voidExpenseSchema2, createAdvanceSchema, settleAdvanceSchema;
 var init_chamberExpenses = __esm({
   "src/routes/chamberExpenses.ts"() {
     "use strict";
-    import_crypto13 = __toESM(require("crypto"), 1);
-    import_express14 = __toESM(require_express2(), 1);
+    import_crypto15 = __toESM(require("crypto"), 1);
+    import_express17 = __toESM(require_express2(), 1);
     init_zod();
     init_auth();
     init_permission();
@@ -75314,7 +77554,7 @@ var init_chamberExpenses = __esm({
     init_subscription();
     init_client();
     init_auditService();
-    chamberExpensesRouter = (0, import_express14.Router)();
+    chamberExpensesRouter = (0, import_express17.Router)();
     chamberExpensesRouter.use(authMiddleware);
     chamberExpensesRouter.use(enforceFirmIsolation);
     createCategorySchema = external_exports.object({
@@ -75372,7 +77612,7 @@ var init_chamberExpenses = __esm({
         const db = getDatabase();
         const firmId = req.user.firmId;
         const created = await db.createChamberExpenseCategory(firmId, {
-          id: `ch-cat-${import_crypto13.default.randomUUID()}`,
+          id: `ch-cat-${import_crypto15.default.randomUUID()}`,
           firmId,
           name: parsed.data.name,
           nameBn: parsed.data.nameBn ?? null,
@@ -75444,7 +77684,7 @@ var init_chamberExpenses = __esm({
         const db = getDatabase();
         const firmId = req.user.firmId;
         const created = await db.createChamberAdvance(firmId, {
-          id: `ch-adv-${import_crypto13.default.randomUUID()}`,
+          id: `ch-adv-${import_crypto15.default.randomUUID()}`,
           firmId,
           givenTo: parsed.data.givenTo,
           givenToUserId: parsed.data.givenToUserId || null,
@@ -75481,7 +77721,7 @@ var init_chamberExpenses = __esm({
         const firmId = req.user.firmId;
         try {
           const created = await db.createChamberAdvanceSettlement(firmId, req.params.id, {
-            id: `ch-set-${import_crypto13.default.randomUUID()}`,
+            id: `ch-set-${import_crypto15.default.randomUUID()}`,
             firmId,
             advanceId: req.params.id,
             type: parsed.data.type,
@@ -75586,7 +77826,7 @@ var init_chamberExpenses = __esm({
         const firmId = req.user.firmId;
         try {
           const created = await db.createChamberExpense(firmId, {
-            id: `ch-exp-${import_crypto13.default.randomUUID()}`,
+            id: `ch-exp-${import_crypto15.default.randomUUID()}`,
             firmId,
             categoryId: parsed.data.categoryId,
             description: parsed.data.description,
@@ -75653,16 +77893,16 @@ var init_chamberExpenses = __esm({
 });
 
 // src/routes/accounts.ts
-var import_express15, accountsRouter;
+var import_express18, accountsRouter;
 var init_accounts = __esm({
   "src/routes/accounts.ts"() {
     "use strict";
-    import_express15 = __toESM(require_express2(), 1);
+    import_express18 = __toESM(require_express2(), 1);
     init_auth();
     init_permission();
     init_firmIsolation();
     init_client();
-    accountsRouter = (0, import_express15.Router)();
+    accountsRouter = (0, import_express18.Router)();
     accountsRouter.use(authMiddleware);
     accountsRouter.use(enforceFirmIsolation);
     accountsRouter.get(
@@ -75890,7 +78130,7 @@ var init_adminAuthService = __esm({
 async function recordAdminAudit(params) {
   const db = getDatabase();
   return db.insertAdminAudit({
-    id: import_crypto14.default.randomUUID(),
+    id: import_crypto16.default.randomUUID(),
     adminId: params.adminId,
     action: params.action,
     targetFirmId: params.targetFirmId ?? null,
@@ -75900,28 +78140,28 @@ async function recordAdminAudit(params) {
     at: params.at ?? /* @__PURE__ */ new Date()
   });
 }
-var import_crypto14;
+var import_crypto16;
 var init_adminAuditService = __esm({
   "src/services/adminAuditService.ts"() {
     "use strict";
-    import_crypto14 = __toESM(require("crypto"), 1);
+    import_crypto16 = __toESM(require("crypto"), 1);
     init_client();
   }
 });
 
 // src/routes/adminAuth.ts
-var import_express16, import_jsonwebtoken4, adminAuthRouter;
+var import_express19, import_jsonwebtoken4, adminAuthRouter;
 var init_adminAuth2 = __esm({
   "src/routes/adminAuth.ts"() {
     "use strict";
-    import_express16 = __toESM(require_express2(), 1);
+    import_express19 = __toESM(require_express2(), 1);
     import_jsonwebtoken4 = __toESM(require_jsonwebtoken(), 1);
     init_adminAuth();
     init_auth();
     init_adminAuthService();
     init_adminAuditService();
     init_config();
-    adminAuthRouter = (0, import_express16.Router)();
+    adminAuthRouter = (0, import_express19.Router)();
     adminAuthRouter.post("/login", async (req, res) => {
       const { email: email3, password } = req.body || {};
       const result = await loginPlatformAdmin(email3, password);
@@ -76028,11 +78268,11 @@ function generateTemporaryPassword() {
   const sym = symbols[import_node_crypto4.default.randomInt(symbols.length)];
   return `BdTemp${upper}${lower}${digit}${sym}${randomPart}`;
 }
-var import_express17, import_node_crypto4, adminFirmsRouter, createFirmSchema, extendTrialSchema, convertToPaidSchema, listFirmsQuerySchema, updateFirmSchema, softDeleteFirmSchema, updateLicenseSchema, renewFirmSchema, recordPaymentSchema2;
+var import_express20, import_node_crypto4, adminFirmsRouter, createFirmSchema, extendTrialSchema, convertToPaidSchema, listFirmsQuerySchema, updateFirmSchema, softDeleteFirmSchema, updateLicenseSchema, renewFirmSchema, recordPaymentSchema2;
 var init_adminFirms = __esm({
   "src/routes/adminFirms.ts"() {
     "use strict";
-    import_express17 = __toESM(require_express2(), 1);
+    import_express20 = __toESM(require_express2(), 1);
     import_node_crypto4 = __toESM(require("node:crypto"), 1);
     init_bcryptjs();
     init_zod();
@@ -76044,12 +78284,13 @@ var init_adminFirms = __esm({
     init_seed();
     init_auth();
     init_authService();
-    adminFirmsRouter = (0, import_express17.Router)();
+    adminFirmsRouter = (0, import_express20.Router)();
     adminFirmsRouter.use(adminAuthMiddleware);
     createFirmSchema = external_exports.object({
       name: external_exports.string().trim().min(2, "Firm name must be at least 2 characters").max(255),
       licenseType: external_exports.enum(["trial", "paid"]).default("paid"),
       trialDays: external_exports.number().int({ message: "trialDays must be an integer" }).min(1, "trialDays must be between 1 and 365").max(365, "trialDays must be between 1 and 365").optional(),
+      trialPriceBdt: external_exports.number().int({ message: "trialPriceBdt must be an integer" }).min(0, "trialPriceBdt must be non-negative").max(1e7).optional().default(0),
       planId: external_exports.string().optional(),
       months: external_exports.number().int().min(1).max(120).optional().default(12),
       maxUsers: external_exports.number().int().min(1).max(100).optional().default(10),
@@ -76106,6 +78347,7 @@ var init_adminFirms = __esm({
       customExtraDevicePriceBdt: external_exports.number().int().min(0).nullable().optional(),
       priceLockedUntil: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).nullable().optional(),
       pricingNote: external_exports.string().max(500).nullable().optional(),
+      trialPriceBdt: external_exports.number().int().min(0).max(1e7).optional(),
       startDate: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
       expiryDate: external_exports.string().datetime({ offset: true }).or(external_exports.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional()
     });
@@ -76170,6 +78412,7 @@ var init_adminFirms = __esm({
           isTrial,
           trialStartedAt: isTrial ? now : null,
           trialDays: isTrial ? data.trialDays : null,
+          trialPriceBdt: isTrial ? data.trialPriceBdt ?? 0 : 0,
           licenseStartsAt: startsAt,
           licenseExpiresAt: expiresAt,
           status: "active",
@@ -76262,9 +78505,11 @@ var init_adminFirms = __esm({
           if (plan) {
             pricingBreakdown = calculateMonthlyPriceBdt(plan, f);
             if (f.isTrial) {
+              const trialFee = f.trialPriceBdt ?? 0;
               pricingBreakdown.isTrial = true;
               pricingBreakdown.note = "after trial";
-              monthlyPriceBdt = 0;
+              pricingBreakdown.trialPriceBdt = trialFee;
+              monthlyPriceBdt = trialFee;
             } else {
               monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
             }
@@ -76303,6 +78548,7 @@ var init_adminFirms = __esm({
         isTrial: firm.isTrial,
         trialStartedAt: firm.trialStartedAt,
         trialDays: firm.trialDays,
+        trialPriceBdt: firm.trialPriceBdt ?? 0,
         billingCycle: firm.billingCycle,
         customBasePriceBdt: firm.customBasePriceBdt,
         customAnnualPriceBdt: firm.customAnnualPriceBdt,
@@ -76320,9 +78566,11 @@ var init_adminFirms = __esm({
       if (plan) {
         pricingBreakdown = calculateMonthlyPriceBdt(plan, firm);
         if (firm.isTrial) {
+          const trialFee = firm.trialPriceBdt ?? 0;
           pricingBreakdown.isTrial = true;
           pricingBreakdown.note = "after trial";
-          monthlyPriceBdt = 0;
+          pricingBreakdown.trialPriceBdt = trialFee;
+          monthlyPriceBdt = trialFee;
         } else {
           monthlyPriceBdt = pricingBreakdown.monthlyPriceBdt;
         }
@@ -76561,6 +78809,7 @@ var init_adminFirms = __esm({
         customExtraDevicePriceBdt: firm.customExtraDevicePriceBdt,
         priceLockedUntil: firm.priceLockedUntil,
         pricingNote: firm.pricingNote,
+        trialPriceBdt: firm.trialPriceBdt ?? 0,
         licenseStartsAt: firm.licenseStartsAt,
         licenseExpiresAt: firm.licenseExpiresAt
       };
@@ -76573,6 +78822,7 @@ var init_adminFirms = __esm({
       if (data.customExtraDevicePriceBdt !== void 0) updates.customExtraDevicePriceBdt = data.customExtraDevicePriceBdt;
       if (data.priceLockedUntil !== void 0) updates.priceLockedUntil = data.priceLockedUntil ? new Date(data.priceLockedUntil) : null;
       if (data.pricingNote !== void 0) updates.pricingNote = data.pricingNote;
+      if (data.trialPriceBdt !== void 0) updates.trialPriceBdt = data.trialPriceBdt;
       if (data.maxUsers) updates.maxUsers = data.maxUsers;
       if (data.maxDevices) updates.maxDevices = data.maxDevices;
       if (data.startDate) updates.licenseStartsAt = new Date(data.startDate);
@@ -76986,17 +79236,17 @@ var init_adminFirms = __esm({
 });
 
 // src/routes/adminPlans.ts
-var import_express18, import_node_crypto5, adminPlansRouter, createPlanSchema, updatePlanSchema;
+var import_express21, import_node_crypto5, adminPlansRouter, createPlanSchema, updatePlanSchema;
 var init_adminPlans = __esm({
   "src/routes/adminPlans.ts"() {
     "use strict";
-    import_express18 = __toESM(require_express2(), 1);
+    import_express21 = __toESM(require_express2(), 1);
     import_node_crypto5 = __toESM(require("node:crypto"), 1);
     init_zod();
     init_adminAuth();
     init_client();
     init_adminAuditService();
-    adminPlansRouter = (0, import_express18.Router)();
+    adminPlansRouter = (0, import_express21.Router)();
     adminPlansRouter.use(adminAuthMiddleware);
     createPlanSchema = external_exports.object({
       id: external_exports.string().trim().min(1).max(64).regex(/^[a-z0-9_-]+$/i, "Plan ID must be alphanumeric with hyphens or underscores").optional(),
@@ -77129,14 +79379,14 @@ var init_adminPlans = __esm({
 });
 
 // src/routes/adminDevices.ts
-var import_express19, adminDevicesRouter;
+var import_express22, adminDevicesRouter;
 var init_adminDevices = __esm({
   "src/routes/adminDevices.ts"() {
     "use strict";
-    import_express19 = __toESM(require_express2(), 1);
+    import_express22 = __toESM(require_express2(), 1);
     init_adminAuth();
     init_client();
-    adminDevicesRouter = (0, import_express19.Router)();
+    adminDevicesRouter = (0, import_express22.Router)();
     adminDevicesRouter.use(adminAuthMiddleware);
     adminDevicesRouter.get("/firms/:id/devices", async (req, res) => {
       const db = getDatabase();
@@ -77260,16 +79510,16 @@ var init_adminDevices = __esm({
 });
 
 // src/routes/devices.ts
-var import_express20, devicesRouter;
+var import_express23, devicesRouter;
 var init_devices = __esm({
   "src/routes/devices.ts"() {
     "use strict";
-    import_express20 = __toESM(require_express2(), 1);
+    import_express23 = __toESM(require_express2(), 1);
     init_auth();
     init_subscription();
     init_client();
     init_auditService();
-    devicesRouter = (0, import_express20.Router)();
+    devicesRouter = (0, import_express23.Router)();
     devicesRouter.use(firmAuthMiddleware);
     devicesRouter.get("/my", async (req, res) => {
       if (req.user?.role !== "Owner") {
@@ -77422,7 +79672,7 @@ __export(app_exports, {
 });
 function createApp() {
   validateStartupConfig();
-  const app2 = (0, import_express21.default)();
+  const app2 = (0, import_express24.default)();
   const trustProxyHops = parseInt(process.env.TRUST_PROXY_HOPS || "0", 10);
   app2.set("trust proxy", isNaN(trustProxyHops) ? 0 : trustProxyHops);
   const isProduction = process.env.NODE_ENV === "production";
@@ -77454,8 +79704,8 @@ function createApp() {
   app2.use((0, import_cors.default)(corsOptions));
   app2.options("*", (0, import_cors.default)(corsOptions));
   app2.use((0, import_cookie_parser.default)());
-  app2.use(import_express21.default.json({ limit: "2mb" }));
-  app2.use(import_express21.default.urlencoded({ extended: true, limit: "2mb" }));
+  app2.use(import_express24.default.json({ limit: "2mb" }));
+  app2.use(import_express24.default.urlencoded({ extended: true, limit: "2mb" }));
   app2.use("/api/v1", healthRouter);
   app2.use("/", healthRouter);
   app2.use(["/api/v1", "/auth", "/api/admin"], originCheckMiddleware);
@@ -77484,6 +79734,9 @@ function createApp() {
   app2.use("/api/v1/appointments", appointmentsRouter);
   app2.use("/api/v1/hearings", hearingsRouter);
   app2.use("/api/v1/tasks", tasksRouter);
+  app2.use("/api/v1/physical-files", physicalFilesRouter);
+  app2.use("/api/v1/reminders", remindersRouter);
+  app2.use("/api/v1/calendar", calendarRouter);
   app2.use("/api/v1/fee-agreements", feeAgreementsRouter);
   app2.use("/api/v1/fee-payments", feePaymentsRouter);
   app2.use("/api/v1/expenses", expensesRouter);
@@ -77500,11 +79753,11 @@ function createApp() {
   });
   return app2;
 }
-var import_express21, import_cors, import_cookie_parser;
+var import_express24, import_cors, import_cookie_parser;
 var init_app = __esm({
   "src/app.ts"() {
     "use strict";
-    import_express21 = __toESM(require_express2(), 1);
+    import_express24 = __toESM(require_express2(), 1);
     import_cors = __toESM(require_lib3(), 1);
     init_helmet();
     import_cookie_parser = __toESM(require_cookie_parser(), 1);
@@ -77518,6 +79771,9 @@ var init_app = __esm({
     init_appointments();
     init_hearings();
     init_tasks();
+    init_physicalFiles();
+    init_reminders();
+    init_calendar();
     init_feeAgreements();
     init_feePayments();
     init_expenses();
@@ -77607,7 +79863,7 @@ var require_main = __commonJS({
     var fs2 = require("fs");
     var path2 = require("path");
     var os = require("os");
-    var crypto21 = require("crypto");
+    var crypto23 = require("crypto");
     var packageJson = require_package();
     var version3 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -77826,7 +80082,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto21.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto23.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error62) {
@@ -78060,10 +80316,10 @@ __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_express22 = __toESM(require_express2(), 1);
+var import_express25 = __toESM(require_express2(), 1);
 init_app();
 var PORT = process.env.PORT || 4e3;
-var app = (0, import_express22.default)();
+var app = (0, import_express25.default)();
 var initializedApp = null;
 app.use((req, res, next) => {
   try {

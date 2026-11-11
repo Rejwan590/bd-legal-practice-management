@@ -1776,4 +1776,314 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     );
     expect(bvWriteRes.status).toBe(403);
   });
+
+  it('24. Phase 9 Calendar Aggregation, Cause List (Asia/Dhaka) & Automated Reminders lifecycle on Cloudflare Workers + D1', async () => {
+    // 1) Create a normal case assigned to juniorUserId and a restricted case visible only to Owner
+    const normalCaseRes = await app.request(
+      '/api/v1/cases',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          fileSerial: 'F-P9-001',
+          caseNumber: 'Phase9 Civil 101/2026',
+          court: 'Dhaka District Judge Court',
+          matterType: 'Civil Suit',
+          responsibleLawyerId: juniorUserId,
+          restricted: false,
+        }),
+      },
+      env
+    );
+    expect(normalCaseRes.status).toBe(201);
+    const p9NormalCase = (await normalCaseRes.json()) as any;
+
+    const secretCaseRes = await app.request(
+      '/api/v1/cases',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          fileSerial: 'F-P9-SEC-001',
+          caseNumber: 'Phase9 Secret Writ 77/2026',
+          court: 'High Court Division',
+          matterType: 'Writ',
+          restricted: true,
+        }),
+      },
+      env
+    );
+    expect(secretCaseRes.status).toBe(201);
+    const p9SecretCase = (await secretCaseRes.json()) as any;
+
+    // 2) Create hearing (<24h so due), Dhaka-midnight hearing (18:30Z -> next Dhaka day), restricted hearing, task (<2h), file checkout (<4h), appointment
+    const in12hIso = new Date(Date.now() + 12 * 3600 * 1000).toISOString();
+    const h1 = (await (
+      await app.request(
+        '/api/v1/hearings',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+          body: JSON.stringify({
+            caseId: p9NormalCase.id,
+            scheduledAt: in12hIso,
+            purpose: 'Injunction Argument',
+            appearingLawyerId: juniorUserId,
+          }),
+        },
+        env
+      )
+    ).json()) as any;
+
+    const hMidnightRes = await app.request(
+      '/api/v1/hearings',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          caseId: p9NormalCase.id,
+          scheduledAt: '2026-12-20T18:30:00.000Z',
+          purpose: 'Midnight Dhaka Cause List Check',
+          appearingLawyerId: juniorUserId,
+        }),
+      },
+      env
+    );
+    expect(hMidnightRes.status).toBe(201);
+
+    const hSecret = (await (
+      await app.request(
+        '/api/v1/hearings',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+          body: JSON.stringify({
+            caseId: p9SecretCase.id,
+            scheduledAt: in12hIso,
+            purpose: 'Restricted Chamber Motion',
+          }),
+        },
+        env
+      )
+    ).json()) as any;
+
+    const t1 = (await (
+      await app.request(
+        '/api/v1/tasks',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+          body: JSON.stringify({
+            title: 'Compile Paperbook Phase 9',
+            caseId: p9NormalCase.id,
+            clientId: firmDClientId,
+            assignedTo: juniorUserId,
+            dueAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
+            priority: 'high',
+          }),
+        },
+        env
+      )
+    ).json()) as any;
+
+    const f1 = (await (
+      await app.request(
+        '/api/v1/physical-files',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+          body: JSON.stringify({
+            title: 'Phase 9 Original Brief',
+            caseId: p9NormalCase.id,
+            clientId: firmDClientId,
+            shelfLocation: 'Rack-D9',
+          }),
+        },
+        env
+      )
+    ).json()) as any;
+
+    const checkoutRes = await app.request(
+      `/api/v1/physical-files/${f1.id}/check-out`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          holderId: juniorUserId,
+          dueBackAt: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
+        }),
+      },
+      env
+    );
+    expect(checkoutRes.status).toBe(200);
+
+    const apptRes = await app.request(
+      '/api/v1/appointments',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          title: 'Phase 9 Client Consultation',
+          startsAt: new Date(Date.now() + 3 * 3600 * 1000).toISOString(),
+          endsAt: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
+          caseId: p9NormalCase.id,
+          clientId: firmDClientId,
+          reminderMinutesBefore: 30,
+        }),
+      },
+      env
+    );
+    expect(apptRes.status).toBe(201);
+    const appt1 = (await apptRes.json()) as any;
+
+    // 3) Sync reminders and verify due alerts + counts
+    const syncRes = await app.request('/api/v1/reminders/sync', { method: 'POST', headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(syncRes.status).toBe(200);
+    const syncJson = (await syncRes.json()) as any;
+    expect(syncJson.createdCount).toBeGreaterThanOrEqual(3);
+
+    const ownerDue = (await (
+      await app.request('/api/v1/reminders/due', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(ownerDue.some((r) => r.sourceId === h1.id)).toBe(true);
+    expect(ownerDue.some((r) => r.sourceId === t1.id)).toBe(true);
+    expect(ownerDue.some((r) => r.sourceId === f1.id)).toBe(true);
+    expect(ownerDue.some((r) => r.sourceId === hSecret.id)).toBe(true);
+
+    // 4) Staff partitioning + restricted visibility check + cross-staff dismiss 403
+    const juniorList = (await (
+      await app.request('/api/v1/reminders?status=active', { headers: { Cookie: juniorCookie } }, env)
+    ).json()) as any[];
+    expect(juniorList.every((r) => r.userId === juniorUserId)).toBe(true);
+    expect(juniorList.some((r) => r.sourceId === hSecret.id)).toBe(false);
+
+    const ownerOnlyRem = ownerDue.find((r) => r.sourceId === hSecret.id || r.sourceId === appt1.id)!;
+    const crossStaffDismiss = await app.request(
+      `/api/v1/reminders/${ownerOnlyRem.id}/dismiss`,
+      { method: 'POST', headers: { Cookie: juniorCookie } },
+      env
+    );
+    expect(crossStaffDismiss.status).toBe(403);
+
+    // Case linked counts include remindersCount
+    const countsBefore = (await (
+      await app.request(`/api/v1/cases/${p9NormalCase.id}/counts`, { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any;
+    expect(countsBefore.remindersCount).toBeGreaterThanOrEqual(4);
+
+    // 5) Calendar aggregation + cause list + Dhaka timezone + restricted isolation
+    const calAll = (await (
+      await app.request('/api/v1/calendar', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(calAll.some((e) => e.type === 'hearing' && e.sourceId === h1.id)).toBe(true);
+    expect(calAll.some((e) => e.type === 'task' && e.sourceId === t1.id)).toBe(true);
+    expect(calAll.some((e) => e.type === 'file_return' && e.sourceId === f1.id)).toBe(true);
+    expect(calAll.some((e) => e.type === 'appointment' && e.sourceId === appt1.id)).toBe(true);
+    expect(calAll.some((e) => e.sourceId === hSecret.id)).toBe(true);
+
+    const juniorCal = (await (
+      await app.request('/api/v1/calendar', { headers: { Cookie: juniorCookie } }, env)
+    ).json()) as any[];
+    expect(juniorCal.some((e) => e.sourceId === hSecret.id)).toBe(false);
+
+    const causeListRes = await app.request(
+      '/api/v1/calendar/cause-list?date=2026-12-21',
+      { headers: { Cookie: firmDOwnerCookie } },
+      env
+    );
+    expect(causeListRes.status).toBe(200);
+    const causeList = (await causeListRes.json()) as any;
+    expect(causeList.date).toBe('2026-12-21');
+    expect(causeList.firmName).toBe('Delta Legal Chambers');
+    expect(causeList.hearings.some((e: any) => String(e.title).includes('Midnight Dhaka Cause List Check'))).toBe(true);
+
+    // 6) Lifecycle cascades: adjourn -> reschedule reminder, task complete -> dismiss, file check-in -> dismiss, appt cancel -> dismiss
+    const nextDateIso = new Date(Date.now() + 7 * 86400000).toISOString();
+    expect(
+      (
+        await app.request(
+          `/api/v1/hearings/${h1.id}/adjourn`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+            body: JSON.stringify({ nextDate: nextDateIso, reason: 'Adjourned for argument' }),
+          },
+          env
+        )
+      ).status
+    ).toBe(200);
+
+    const hearingRemsAfter = (await (
+      await app.request('/api/v1/reminders?sourceType=hearing', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    const h1Rem = hearingRemsAfter.find((r) => r.sourceId === h1.id);
+    expect(h1Rem?.dueAt).toBe(nextDateIso);
+
+    expect(
+      (await app.request(`/api/v1/tasks/${t1.id}/complete`, { method: 'POST', headers: { Cookie: juniorCookie } }, env)).status
+    ).toBe(200);
+    const activeTaskRems = (await (
+      await app.request('/api/v1/reminders?status=active&sourceType=task', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(activeTaskRems.some((r) => r.sourceId === t1.id)).toBe(false);
+
+    expect(
+      (
+        await app.request(
+          `/api/v1/physical-files/${f1.id}/check-in`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+            body: JSON.stringify({ shelfLocation: 'Rack-D9' }),
+          },
+          env
+        )
+      ).status
+    ).toBe(200);
+    const activeFileRems = (await (
+      await app.request('/api/v1/reminders?status=active&sourceType=file_return', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(activeFileRems.some((r) => r.sourceId === f1.id)).toBe(false);
+
+    expect(
+      (
+        await app.request(
+          `/api/v1/appointments/${appt1.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+            body: JSON.stringify({ status: 'cancelled' }),
+          },
+          env
+        )
+      ).status
+    ).toBe(200);
+    const activeApptRems = (await (
+      await app.request('/api/v1/reminders?status=active&sourceType=appointment', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(activeApptRems.some((r) => r.sourceId === appt1.id)).toBe(false);
+
+    // 7) Firm isolation & Subscription Read-Only (Firm A ownerCookie is expired from test 11)
+    const firmARemList = (await (
+      await app.request('/api/v1/reminders', { headers: { Cookie: ownerCookie } }, env)
+    ).json()) as any[];
+    expect(firmARemList.some((r) => r.sourceId === h1.id)).toBe(false);
+    expect(
+      (await app.request(`/api/v1/reminders/${h1Rem.id}/dismiss`, { method: 'POST', headers: { Cookie: ownerCookie } }, env)).status
+    ).toBe(403); // read-only blocked first for Firm A expired subscription
+
+    // Reads still work under read-only mode
+    expect((await app.request('/api/v1/calendar', { headers: { Cookie: ownerCookie } }, env)).status).toBe(200);
+
+    // 8) Case delete cascades to reminders
+    expect(
+      (await app.request(`/api/v1/cases/${p9NormalCase.id}`, { method: 'DELETE', headers: { Cookie: firmDOwnerCookie } }, env)).status
+    ).toBe(200);
+    const remAfterCaseDelete = (await (
+      await app.request('/api/v1/reminders?status=active', { headers: { Cookie: firmDOwnerCookie } }, env)
+    ).json()) as any[];
+    expect(remAfterCaseDelete.some((r) => r.sourceId === h1.id)).toBe(false);
+  });
 });

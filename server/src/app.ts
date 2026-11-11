@@ -13,6 +13,8 @@ import { appointmentsRouter } from './routes/appointments.js';
 import { hearingsRouter } from './routes/hearings.js';
 import { tasksRouter } from './routes/tasks.js';
 import { physicalFilesRouter } from './routes/physicalFiles.js';
+import { remindersRouter } from './routes/reminders.js';
+import { calendarRouter } from './routes/calendar.js';
 import { feeAgreementsRouter } from './routes/feeAgreements.js';
 import { feePaymentsRouter } from './routes/feePayments.js';
 import { expensesRouter } from './routes/expenses.js';
@@ -109,6 +111,8 @@ export function createApp() {
   app.use('/api/v1/hearings', hearingsRouter);
   app.use('/api/v1/tasks', tasksRouter);
   app.use('/api/v1/physical-files', physicalFilesRouter);
+  app.use('/api/v1/reminders', remindersRouter);
+  app.use('/api/v1/calendar', calendarRouter);
   app.use('/api/v1/fee-agreements', feeAgreementsRouter);
   app.use('/api/v1/fee-payments', feePaymentsRouter);
   app.use('/api/v1/expenses', expensesRouter);

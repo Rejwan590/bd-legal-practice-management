@@ -78,12 +78,12 @@ This document provides the authoritative, ordered 14-phase roadmap for completin
 - [x] Firm-scoped serial generator (`F-000001`).
 - [x] Check-out / check-in custody workflows with holder assignment and return deadlines.
 
-### Phase 9: Calendar & Automated Reminders Backend `[RECOMMENDED NEXT TASK]`
-- [ ] PostgreSQL `reminders` table and aggregation service.
-- [ ] Chronological calendar feed joining hearings, appointments, tasks, and file due dates.
-- [ ] In-app notification center and reminder dismissal.
+### Phase 9: Calendar & Automated Reminders Backend `[COMPLETED]`
+- [x] PostgreSQL `reminders` table (`server/drizzle/0016_reminders.sql`) and D1 migration (`server-cloudflare/migrations/0004_reminders.sql`) + aggregation service.
+- [x] Chronological calendar feed (`/api/v1/calendar`) joining hearings, appointments, tasks, and file due dates, plus Asia/Dhaka cause list (`/api/v1/calendar/cause-list`).
+- [x] In-app notification center (`/api/v1/reminders`, `/due`, `/sync`, `/dismiss`, `/clear-source`, `/reschedule-source`) and automatic lifecycle cascades.
 
-### Phase 10: Global Search & Executive Dashboard Backend `[PLANNED]`
+### Phase 10: Global Search & Executive Dashboard Backend `[RECOMMENDED NEXT TASK]`
 - [ ] Cross-entity unified search endpoint respecting tenant isolation and confidentiality rules.
 - [ ] Executive dashboard metrics endpoint calculating active cases, urgent hearings, overdue tasks, and files out.
 

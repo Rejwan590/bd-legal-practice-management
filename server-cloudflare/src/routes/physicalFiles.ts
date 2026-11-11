@@ -11,6 +11,12 @@ import { getDb } from '../db/client';
 import * as schema from '../db/schema';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import {
+  appendFileReturnReminderStmts,
+  buildDismissRemindersStmt,
+  buildRescheduleRemindersStmt,
+  computeRemindAtIso,
+} from '../utils/reminders';
 
 export const physicalFilesRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -491,6 +497,28 @@ physicalFilesRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission
     );
   }
 
+  if (parse.data.status === 'archived' || parse.data.status === 'in_chamber') {
+    stmts.push(
+      buildDismissRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: id,
+        updatedBy: user.id,
+        nowIso,
+      })
+    );
+  } else if (parse.data.dueBackAt) {
+    stmts.push(
+      buildRescheduleRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: id,
+        newDueAt: parse.data.dueBackAt,
+        newRemindAt: computeRemindAtIso(parse.data.dueBackAt, 4 * 60 * 60 * 1000),
+        updatedBy: user.id,
+        nowIso,
+      })
+    );
+  }
+
   await db.batch(stmts as any);
 
   return c.json({ ...existing, ...updates, currentHolderName });
@@ -564,7 +592,7 @@ physicalFilesRouter.post('/:id/check-out', enforceSubscriptionReadOnly, requireP
     note,
   };
 
-  await db.batch([
+  const stmts: any[] = [
     db.update(schema.physicalFiles).set(updates).where(and(eq(schema.physicalFiles.id, id), eq(schema.physicalFiles.firmId, firm.id))),
     db.insert(schema.fileMovements).values(movement),
     db.insert(schema.auditLog).values(
@@ -580,7 +608,24 @@ physicalFilesRouter.post('/:id/check-out', enforceSubscriptionReadOnly, requireP
         now: nowIso,
       })
     ),
-  ] as any);
+  ];
+  await appendFileReturnReminderStmts(
+    db,
+    {
+      firmId: firm.id,
+      fileId: id,
+      serial: existing.serial,
+      title: existing.title,
+      shelfLocation: existing.shelfLocation,
+      holderId: holder.id,
+      holderName: holder.name,
+      dueIso,
+      actorId: user.id,
+      nowIso,
+    },
+    stmts
+  );
+  await db.batch(stmts as any);
 
   return c.json({
     file: { ...existing, ...updates, currentHolderName: holder.name },
@@ -649,6 +694,12 @@ physicalFilesRouter.post('/:id/check-in', enforceSubscriptionReadOnly, requirePe
   await db.batch([
     db.update(schema.physicalFiles).set(updates).where(and(eq(schema.physicalFiles.id, id), eq(schema.physicalFiles.firmId, firm.id))),
     db.insert(schema.fileMovements).values(movement),
+    buildDismissRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      updatedBy: user.id,
+      nowIso,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -742,7 +793,7 @@ physicalFilesRouter.post('/:id/dispatch-court', enforceSubscriptionReadOnly, req
     note,
   };
 
-  await db.batch([
+  const stmts: any[] = [
     db.update(schema.physicalFiles).set(updates).where(and(eq(schema.physicalFiles.id, id), eq(schema.physicalFiles.firmId, firm.id))),
     db.insert(schema.fileMovements).values(movement),
     db.insert(schema.auditLog).values(
@@ -765,7 +816,24 @@ physicalFilesRouter.post('/:id/dispatch-court', enforceSubscriptionReadOnly, req
         now: nowIso,
       })
     ),
-  ] as any);
+  ];
+  await appendFileReturnReminderStmts(
+    db,
+    {
+      firmId: firm.id,
+      fileId: id,
+      serial: existing.serial,
+      title: existing.title,
+      shelfLocation: existing.shelfLocation,
+      holderId: holder.id,
+      holderName: holder.name,
+      dueIso,
+      actorId: user.id,
+      nowIso,
+    },
+    stmts
+  );
+  await db.batch(stmts as any);
 
   return c.json({
     file: { ...existing, ...updates, currentHolderName: holder.name },
@@ -799,6 +867,13 @@ physicalFilesRouter.delete('/:id', enforceSubscriptionReadOnly, requirePermissio
       .update(schema.physicalFiles)
       .set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id })
       .where(and(eq(schema.physicalFiles.id, id), eq(schema.physicalFiles.firmId, firm.id))),
+    buildDismissRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      updatedBy: user.id,
+      nowIso,
+      softDelete: true,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,

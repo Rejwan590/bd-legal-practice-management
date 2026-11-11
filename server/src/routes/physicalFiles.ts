@@ -51,6 +51,57 @@ async function insertAuditTx(
   });
 }
 
+async function upsertFileReturnReminderTx(
+  txDb: IDatabase,
+  params: {
+    firmId: string;
+    fileId: string;
+    serial: string;
+    title: string;
+    shelfLocation?: string | null;
+    holderId: string;
+    holderName: string;
+    dueDate: Date;
+    actorId: string;
+  }
+) {
+  const remindAt = new Date(params.dueDate.getTime() - 4 * 60 * 60 * 1000);
+  const rescheduled = await txDb.rescheduleRemindersBySource(
+    params.firmId,
+    params.fileId,
+    params.dueDate,
+    remindAt,
+    params.actorId
+  );
+  if (rescheduled === 0) {
+    await txDb.insertReminder({
+      id: crypto.randomUUID(),
+      firmId: params.firmId,
+      userId: params.holderId,
+      sourceType: 'file_return',
+      sourceId: params.fileId,
+      title: `File Return Due: ${params.serial} (${params.title})`,
+      description: `Location: ${params.shelfLocation || 'Chamber Rack'}. Current holder: ${params.holderName}`,
+      remindAt,
+      dueAt: params.dueDate,
+      channel: 'in_app',
+      status: 'pending',
+      createdBy: params.actorId,
+      updatedBy: params.actorId,
+    });
+  } else {
+    const rems = await txDb.listRemindersBySourceIds(params.firmId, [params.fileId]);
+    for (const r of rems) {
+      if (r.sourceType === 'file_return' && r.userId !== params.holderId) {
+        await txDb.updateReminder(r.id, params.firmId, {
+          userId: params.holderId,
+          updatedBy: params.actorId,
+        });
+      }
+    }
+  }
+}
+
 async function checkFileAccess(
   db: IDatabase,
   req: AuthenticatedRequest,
@@ -390,6 +441,10 @@ physicalFilesRouter.patch(
 
     const updated = await db.transaction(async (txDb) => {
       const resFile = await txDb.updatePhysicalFile(existing.id, firmId, updates);
+      if (parsed.data.status === 'archived' || parsed.data.status === 'in_chamber') {
+        await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id);
+      }
+
       if (parsed.data.status === 'archived' && existing.status !== 'archived') {
         await txDb.insertFileMovement({
           id: crypto.randomUUID(),
@@ -472,6 +527,18 @@ physicalFilesRouter.post(
         note: parsed.data.note?.trim() || `Checked out by ${req.user!.name}`,
       });
 
+      await upsertFileReturnReminderTx(txDb, {
+        firmId,
+        fileId: existing.id,
+        serial: updatedFile.serial,
+        title: updatedFile.title,
+        shelfLocation: updatedFile.shelfLocation,
+        holderId: holder.id,
+        holderName: holder.name,
+        dueDate,
+        actorId: req.user!.id,
+      });
+
       await insertAuditTx(txDb, {
         firmId,
         userId: req.user!.id,
@@ -545,6 +612,8 @@ physicalFilesRouter.post(
         dueBackAt: null,
         note: parsed.data.note?.trim() || `Returned to ${nextShelf}`,
       });
+
+      await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id);
 
       await insertAuditTx(txDb, {
         firmId,
@@ -625,6 +694,18 @@ physicalFilesRouter.post(
         note: movementNote,
       });
 
+      await upsertFileReturnReminderTx(txDb, {
+        firmId,
+        fileId: existing.id,
+        serial: updatedFile.serial,
+        title: updatedFile.title,
+        shelfLocation: updatedFile.shelfLocation,
+        holderId: holder.id,
+        holderName: holder.name,
+        dueDate,
+        actorId: req.user!.id,
+      });
+
       await insertAuditTx(txDb, {
         firmId,
         userId: req.user!.id,
@@ -669,6 +750,7 @@ physicalFilesRouter.delete(
 
     await db.transaction(async (txDb) => {
       await txDb.deletePhysicalFile(existing.id, firmId, req.user!.id);
+      await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id, true);
       await insertAuditTx(txDb, {
         firmId,
         userId: req.user!.id,

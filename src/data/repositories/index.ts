@@ -47,6 +47,7 @@ import {
   RestChamberExpenseRepository,
   RestDashboardRepository,
   RestCalendarRepository,
+  RestReminderRepository,
   RestSearchRepository,
 } from './rest';
 
@@ -136,7 +137,9 @@ const appointmentRepo: IAppointmentRepository = isRestMode
   ? new RestAppointmentRepository()
   : new MockAppointmentRepository(mockAuditLogRepo);
 
-const reminderRepo = new MockReminderRepository(mockAuditLogRepo);
+const reminderRepo: IReminderRepository = isRestMode
+  ? new RestReminderRepository()
+  : new MockReminderRepository(mockAuditLogRepo);
 const hearingRepo: IHearingRepository = isRestMode
   ? new RestHearingRepository()
   : new MockHearingRepository(mockAuditLogRepo, reminderRepo);

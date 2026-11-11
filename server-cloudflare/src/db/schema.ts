@@ -789,3 +789,34 @@ export type PhysicalFile = typeof physicalFiles.$inferSelect;
 export type NewPhysicalFile = typeof physicalFiles.$inferInsert;
 export type FileMovement = typeof fileMovements.$inferSelect;
 export type NewFileMovement = typeof fileMovements.$inferInsert;
+
+// 34. Reminders Table (Phase 9 - Calendar & Automated Reminders Backend)
+export const reminders = sqliteTable('reminders', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  sourceType: text('source_type').$type<'hearing' | 'task' | 'file_return' | 'appointment'>().notNull(),
+  sourceId: text('source_id').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  remindAt: text('remind_at').notNull(),
+  dueAt: text('due_at').notNull(),
+  channel: text('channel').$type<'in_app' | 'email_stub' | 'sms_stub'>().default('in_app').notNull(),
+  status: text('status').$type<'pending' | 'sent' | 'dismissed'>().default('pending').notNull(),
+  sentAt: text('sent_at'),
+  dismissedAt: text('dismissed_at'),
+  createdAt: text('created_at').default(sql`(CURRENT_TIMESTAMP)`).notNull(),
+  updatedAt: text('updated_at').default(sql`(CURRENT_TIMESTAMP)`).notNull(),
+  deletedAt: text('deleted_at'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_reminders_firm_id').on(table.firmId),
+  index('idx_reminders_firm_user').on(table.firmId, table.userId),
+  index('idx_reminders_remind_at').on(table.remindAt),
+  index('idx_reminders_source').on(table.firmId, table.sourceType, table.sourceId),
+  index('idx_reminders_status').on(table.status),
+]);
+
+export type Reminder = typeof reminders.$inferSelect;
+export type NewReminder = typeof reminders.$inferInsert;

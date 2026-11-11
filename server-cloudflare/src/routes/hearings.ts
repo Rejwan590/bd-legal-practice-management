@@ -6,6 +6,11 @@ import * as schema from '../db/schema';
 import { eq, and, isNull, sql, asc, desc, inArray } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
+import {
+  buildDismissRemindersStmt,
+  buildRescheduleRemindersStmt,
+  computeRemindAtIso,
+} from '../utils/reminders';
 
 export const hearingsRouter = new Hono<{ Bindings: Env; Variables: any }>();
 
@@ -212,7 +217,7 @@ hearingsRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission('cas
     updatedBy: user.id,
   };
 
-  await db.batch([
+  const patchStmts: any[] = [
     db.update(schema.hearings).set(updates).where(and(eq(schema.hearings.id, id), eq(schema.hearings.firmId, firm.id))),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
@@ -227,7 +232,18 @@ hearingsRouter.patch('/:id', enforceSubscriptionReadOnly, requirePermission('cas
         now,
       })
     ),
-  ] as any);
+  ];
+  if (resolvedStatus === 'cancelled' || resolvedStatus === 'held') {
+    patchStmts.push(
+      buildDismissRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: id,
+        updatedBy: user.id,
+        nowIso: now,
+      })
+    );
+  }
+  await db.batch(patchStmts as any);
 
   return c.json({ ...existing, ...updates });
 });
@@ -306,6 +322,14 @@ hearingsRouter.post('/:id/reschedule', enforceSubscriptionReadOnly, requirePermi
       .update(schema.cases)
       .set({ nextHearingAt: parse.data.scheduledAt, updatedAt: now })
       .where(and(eq(schema.cases.id, existing.caseId), eq(schema.cases.firmId, firm.id))),
+    buildRescheduleRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: id,
+      newDueAt: parse.data.scheduledAt,
+      newRemindAt: computeRemindAtIso(parse.data.scheduledAt, 24 * 60 * 60 * 1000),
+      updatedBy: user.id,
+      nowIso: now,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -424,6 +448,14 @@ hearingsRouter.post('/:id/adjourn', enforceSubscriptionReadOnly, requirePermissi
       .update(schema.cases)
       .set({ nextHearingAt: nextScheduledAt, updatedAt: now })
       .where(and(eq(schema.cases.id, oldHearing.caseId), eq(schema.cases.firmId, firm.id))),
+    buildRescheduleRemindersStmt(db, {
+      firmId: firm.id,
+      sourceId: hearingId,
+      newDueAt: nextScheduledAt,
+      newRemindAt: computeRemindAtIso(nextScheduledAt, 24 * 60 * 60 * 1000),
+      updatedBy: user.id,
+      nowIso: now,
+    }),
     db.insert(schema.auditLog).values(
       buildAuditEntry({
         firmId: firm.id,
@@ -534,6 +566,16 @@ hearingsRouter.post('/bulk-status', enforceSubscriptionReadOnly, requirePermissi
         })
       )
     );
+    if (targetStatus === 'cancelled' || targetStatus === 'held') {
+      stmts.push(
+        buildDismissRemindersStmt(db, {
+          firmId: firm.id,
+          sourceId: h.id,
+          updatedBy: user.id,
+          nowIso: now,
+        })
+      );
+    }
   }
 
   await db.batch(stmts as any);
@@ -625,6 +667,14 @@ hearingsRouter.post('/bulk-adjourn', enforceSubscriptionReadOnly, requirePermiss
         .update(schema.cases)
         .set({ nextHearingAt: item.nextDate, updatedAt: now })
         .where(and(eq(schema.cases.id, oldH.caseId), eq(schema.cases.firmId, firm.id))),
+      buildRescheduleRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: oldH.id,
+        newDueAt: item.nextDate,
+        newRemindAt: computeRemindAtIso(item.nextDate, 24 * 60 * 60 * 1000),
+        updatedBy: user.id,
+        nowIso: now,
+      }),
       db.insert(schema.auditLog).values(
         buildAuditEntry({
           firmId: firm.id,
@@ -708,6 +758,14 @@ hearingsRouter.post('/bulk-reschedule', enforceSubscriptionReadOnly, requirePerm
         .update(schema.cases)
         .set({ nextHearingAt: item.newDate, updatedAt: now })
         .where(and(eq(schema.cases.id, oldH.caseId), eq(schema.cases.firmId, firm.id))),
+      buildRescheduleRemindersStmt(db, {
+        firmId: firm.id,
+        sourceId: oldH.id,
+        newDueAt: item.newDate,
+        newRemindAt: computeRemindAtIso(item.newDate, 24 * 60 * 60 * 1000),
+        updatedBy: user.id,
+        nowIso: now,
+      }),
       db.insert(schema.auditLog).values(
         buildAuditEntry({
           firmId: firm.id,
