@@ -6,7 +6,7 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
 - [ ] **Cloudflare Pages Assembly, Supabase Postgres Migration Push & GitHub `origin/cloudflare` Push (In Progress — Awaiting `wrangler` Auth for Cloudflare Pages/Worker Redeploy)**:
   - **1. Supabase Postgres Schema Pushed (`rmuontqsoxwnzevtnvkc`, `ap-south-1`)**:
     - Applied all 14 versioned PostgreSQL Drizzle migrations (`0000_shallow_kitty_pryde` through `0013_custom_trial_period`) via Supabase MCP; all 31 tables verified created (`public` schema) alongside existing private Supabase Storage buckets (`bdlegal-photos`, `bdlegal-backups`), while retaining Cloudflare D1 (`bdlegal-d1-prod`) + synthetic chamber data (`Dhaka Synthetic Law Chambers`) for the live Cloudflare Worker.
-    - Surfaced Supabase `rls_disabled_in_public` security advisory (31 tables) with remediation SQL for user approval.
+    - Applied `0014_enable_rls_public_tables` enabling Row-Level Security (`rls_enabled: true`) across all 31 `public` tables in Supabase (`rmuontqsoxwnzevtnvkc`), eliminating all `ERROR`-level security advisories (`get_advisors` returns only `INFO` `rls_enabled_no_policy`, blocking `anon`/`authenticated` Data API exposure while preserving `postgres`/`service_role` backend access).
   - **2. Unified Cloudflare Pages Build & Worker CORS Wiring (`cloudflare` branch)**:
     - Updated `.env.production` and `admin-app/.env.production` to point at `https://bdlegal-api.lawyers-e-chamber.workers.dev` / `/api/v1`.
     - Added `scripts/buildPages.mjs` (`npm run build:pages`) assembling the main Chamber SPA (`/`) and Super Admin Console (`/admin/`) together inside `dist/` with Cloudflare Pages `_redirects` (`/admin/* /admin/index.html 200`) and security `_headers`.
