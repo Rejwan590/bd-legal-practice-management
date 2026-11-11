@@ -10,13 +10,14 @@ CORS_ORIGIN = "https://bd-legal-practice-management.vercel.app"
 [[d1_databases]]
 binding = "DB"
 database_name = "bdlegal-d1-prod"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7d3f5e2b-53ab-4c98-84e7-b20e1803a9aa"
 migrations_dir = "migrations"
 
-[[r2_buckets]]
-binding = "PHOTOS_BUCKET"
-bucket_name = "bdlegal-photos"
-
-[[r2_buckets]]
-binding = "BACKUPS_BUCKET"
-bucket_name = "bdlegal-backups"
+# Enable R2 in Cloudflare Dashboard first, then create buckets and uncomment:
+# [[r2_buckets]]
+# binding = "PHOTOS_BUCKET"
+# bucket_name = "bdlegal-photos"
+#
+# [[r2_buckets]]
+# binding = "BACKUPS_BUCKET"
+# bucket_name = "bdlegal-backups"

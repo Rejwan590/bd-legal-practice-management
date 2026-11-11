@@ -3,6 +3,18 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Live Account Provisioning (D1, Secrets, Worker Upload Completed; Onboarding Subdomain & R2 Pending User Dashboard Activation)**:
+  - **1. Provisioned Remote Resources**:
+    - Verified Cloudflare Account ID (bee6614feb7b8982c5437d8d8d5a02de) via API Token.
+    - Created remote D1 database bdlegal-d1-prod (UUID: 7d3f5e2b-53ab-4c98-84e7-b20e1803a9aa) in region APAC.
+    - Updated server-cloudflare/wrangler.toml with real database_id.
+    - Applied migration 0000_complete_magneto.sql remotely (133 SQL commands executed in 14.55ms, all 31 tables live).
+    - Uploaded Worker script bdlegal-api (494.75 KiB / 96.25 KiB gzip, 16ms startup time) bound to D1.
+    - Provisioned Worker secrets JWT_SECRET and ADMIN_JWT_SECRET remotely via wrangler secret put.
+  - **2. Remaining Account Dashboard Onboarding Steps (Requires Cloudflare Web UI)**:
+    - Register a workers.dev subdomain (error code 10007) at https://dash.cloudflare.com/bee6614feb7b8982c5437d8d8d5a02de/workers/onboarding so bdlegal-api can be published to a live URL.
+    - Enable R2 Object Storage (error code 10042) in Cloudflare Dashboard, then create bdlegal-photos and bdlegal-backups buckets and uncomment [[r2_buckets]] in wrangler.toml.
+    - Enable Workers Paid ($5/mo) in Dashboard so PBKDF2-HMAC-SHA-512 (100,000 iterations) does not exceed the 10ms Free CPU limit.
 - [x] **Cloudflare Workers Backend Implementation (Completed on isolated 'cloudflare' branch)**:
   - **1. Architecture & Core Implementation (server-cloudflare/)**:
     - Built edge-native backend using Hono 4.x and Drizzle ORM for Cloudflare D1 (SQLite) and Cloudflare R2 (Object Storage).
