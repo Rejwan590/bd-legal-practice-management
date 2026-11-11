@@ -36,12 +36,12 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
   useEffect(() => {
     if (initialData) {
-      setName(initialData.name);
+      setName(initialData.name || '');
       setNameBn(initialData.nameBn || '');
-      setPhone(initialData.phone);
+      setPhone(initialData.phone || '');
       setEmail(initialData.email || '');
-      setAddress(initialData.address);
-      setNotes(initialData.notes);
+      setAddress(initialData.address || '');
+      setNotes(initialData.notes || '');
     } else {
       setName('');
       setNameBn('');
@@ -55,11 +55,11 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    if (!(name || '').trim()) {
       setErrorMsg('Client name is required');
       return;
     }
-    if (!phone.trim()) {
+    if (!(phone || '').trim()) {
       setErrorMsg('Phone number is required');
       return;
     }
@@ -68,12 +68,12 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
     setErrorMsg(null);
     try {
       await onSave({
-        name: name.trim(),
-        nameBn: nameBn.trim() || undefined,
-        phone: phone.trim(),
-        email: email.trim() || undefined,
-        address: address.trim(),
-        notes: notes.trim(),
+        name: (name || '').trim(),
+        nameBn: (nameBn || '').trim() || undefined,
+        phone: (phone || '').trim(),
+        email: (email || '').trim() || undefined,
+        address: (address || '').trim(),
+        notes: (notes || '').trim(),
       });
       onClose();
     } catch (err: unknown) {

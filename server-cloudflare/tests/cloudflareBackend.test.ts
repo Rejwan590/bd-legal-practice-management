@@ -1185,4 +1185,65 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     const extended = (await extendRes.json()) as any;
     expect(extended.firm.trialDays).toBe(21);
   });
+
+  it('21. POST & PATCH /api/v1/cases/:id persist counsel fields and accept nullable optional fields when changing status', async () => {
+    const createRes = await app.request(
+      '/api/v1/cases',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          clientId: firmDClientId,
+          responsibleLawyerId: null,
+          fileSerial: 'F-2026-9901',
+          caseNumber: 'Title Suit 99/2026',
+          court: 'Dhaka District & Sessions Judge Court',
+          matterType: 'Civil / Land Title Partition Suit',
+          description: null,
+          caseCategory: 'civil',
+          caseDate: null,
+          closedOn: null,
+          plaintiff: 'Side A Test',
+          defendant: 'Side B Test',
+          ourRole: 'Plaintiff',
+          plaintiffLawyer: 'Advocate Plaintiff',
+          defendantLawyer: null,
+          status: 'ongoing',
+          restricted: false,
+        }),
+      },
+      env
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as any;
+    expect(created.plaintiffLawyer).toBe('Advocate Plaintiff');
+    expect(created.defendantLawyer).toBeNull();
+    expect(created.responsibleLawyerId).toBeNull();
+    expect(created.caseDate).toBeNull();
+
+    const patchRes = await app.request(
+      `/api/v1/cases/${created.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          responsibleLawyerId: null,
+          caseDate: null,
+          description: null,
+          plaintiffLawyer: 'Advocate Plaintiff Updated',
+          defendantLawyer: 'Advocate Defendant',
+          status: 'closed',
+          closedOn: '2026-11-11',
+        }),
+      },
+      env
+    );
+    expect(patchRes.status).toBe(200);
+    const updated = (await patchRes.json()) as any;
+    expect(updated.status).toBe('closed');
+    expect(updated.closedOn).toBe('2026-11-11');
+    expect(updated.plaintiffLawyer).toBe('Advocate Plaintiff Updated');
+    expect(updated.defendantLawyer).toBe('Advocate Defendant');
+    expect(updated.responsibleLawyerId).toBeNull();
+  });
 });

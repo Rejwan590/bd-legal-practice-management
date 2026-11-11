@@ -3,6 +3,16 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Nullable `CaseFormModal` / `ClientFormModal` Input State & Cloudflare Cases Counsel/Nullable Parity**:
+  - **Root Cause**: Cases fetched from Cloudflare D1 return `null` for optional SQLite columns (`description`, `plaintiffLawyer`, `defendantLawyer`, `fileSerial`, `plaintiff`, `defendant`, `partyARole`, `partyBRole`, `policeStation`, `sectionsOfLaw`, `responsibleLawyerId`, `caseDate`). In `src/modules/cases/CaseFormModal.tsx` (and `src/modules/clients/ClientFormModal.tsx`), `useEffect` assigned nullable `initialData` properties directly into React controlled `<input>`/`<textarea>` state without `|| ''`, triggering React's `value prop on input should not be null` and controlled-to-uncontrolled warnings, and `handleSubmit` threw `Cannot read properties of null (reading 'trim')` on save (e.g., when changing Case Status). Additionally, `server-cloudflare/src/routes/cases.ts` (`POST /` and `PATCH /:id`) omitted `plaintiffLawyer`/`defendantLawyer` and rejected `null` for `responsibleLawyerId`/`caseDate`.
+  - **Fixes Applied**:
+    - `src/modules/cases/CaseFormModal.tsx`: Coerced all `initialData` string fields with `|| ''` (and boolean `restricted` with `Boolean(...)`) inside `useEffect`, and guarded all `.trim()` calls with `(val || '').trim()`.
+    - `src/modules/clients/ClientFormModal.tsx`: Coerced `initialData` string fields (`name`, `nameBn`, `phone`, `email`, `address`, `notes`) with `|| ''` and guarded all `.trim()` calls.
+    - `server-cloudflare/src/routes/cases.ts`: Added `plaintiffLawyer` and `defendantLawyer` (`z.string().nullable().optional()`) to both `POST /` and `PATCH /:id` schemas/writes, and changed `responsibleLawyerId` and `caseDate` to `.nullable().optional()`.
+    - `server-cloudflare/tests/cloudflareBackend.test.ts`: Added Test 21 verifying `POST` & `PATCH /api/v1/cases/:id` persist counsel fields and accept `null` optional fields when changing case status.
+  - **Verification & Deployment**:
+    - Verified `npm run lint`, `npm run build --prefix server-cloudflare`, `npm test --prefix server-cloudflare` (`21/21` passed), `npm test --prefix server` (all 18 suites passed), and `npm run build:pages`.
+    - Deployed Cloudflare Worker `bdlegal-api` (`1ea1d540-b173-4ab9-9793-8377faecee7f`) and Cloudflare Pages `bdlegal-app` (`https://fbaf98e8.bdlegal-app.pages.dev` / `https://bdlegal-app.pages.dev`).
 - [x] **Remove Quick Demo Access from Chamber Login UI (`LoginScreen.tsx`)**:
   - Removed the **Quick Demo Access** (`Adv. Mahbubur` / `Adv. Nusrat` demo buttons) and `handleDemoLogin` handler from `src/modules/foundation/LoginScreen.tsx`, updated the placeholder email from `lawyer@firm.bd` to `you@chamber.com`, and set `VITE_ENABLE_DEMO_LOGIN=false` in local `.env`.
   - Verified `npm run lint`, `npm test --prefix server`, and `npm run build:pages`, redeployed Cloudflare Pages (`bdlegal-app`), and verified on `https://bdlegal-app.pages.dev/` that only the standard credential sign-in form renders.
