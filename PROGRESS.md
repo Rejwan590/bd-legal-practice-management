@@ -3,6 +3,9 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix Duplicate Chamber Users Rendering in Super Admin (`FirmDetailScreen.tsx`)**:
+  - Removed a duplicate `{activeTab === 'users'}` render block in `admin-app/src/screens/FirmDetailScreen.tsx` that rendered the `firmUsers` list twice in the **Chamber Users** tab even though only one Owner row existed in D1.
+  - Verified `npm run lint`, `npm test --prefix server`, `npm run build:pages`, and redeployed Cloudflare Pages (`bdlegal-app`), then verified visually in the browser that **Chamber Users (1)** displays one single row per user.
 - [x] **Custom Paid Trial Pricing (`trialPriceBdt`), Trial UI Labeling & Cloudflare `ownerUser` Contract Fix**:
   - **1. Database Schemas & Migrations (`server/`, `server-cloudflare/`, Remote D1 & Supabase)**:
     - Added `trialPriceBdt` (`trial_price_bdt integer DEFAULT 0 NOT NULL`) to both Postgres (`server/src/db/schema.ts`, `server/drizzle/0014_trial_price.sql`) and D1 SQLite (`server-cloudflare/src/db/schema.ts`, `server-cloudflare/migrations/0001_trial_price.sql`), plus in-memory DB adapter (`server/src/db/client.ts`) and seed (`server/src/db/seed.ts`).

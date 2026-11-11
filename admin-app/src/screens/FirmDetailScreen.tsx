@@ -572,61 +572,6 @@ export const FirmDetailScreen: React.FC<FirmDetailScreenProps> = ({ firmId, onBa
           </div>
         )}
 
-        {/* Tab 4: Users */}
-        {activeTab === 'users' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-            {firmUsers.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">No users found for this chamber firm.</div>
-            ) : (
-              <div className="divide-y divide-slate-800/80">
-                {firmUsers.map((u) => {
-                  const isOwner = u.role === 'Owner';
-                  return (
-                    <div key={u.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-white text-sm">{u.name}</span>
-                          <span
-                            className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                              isOwner
-                                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
-                                : 'bg-slate-800 text-slate-300 border-slate-700'
-                            }`}
-                          >
-                            {u.role}
-                          </span>
-                          {!u.active && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                              Inactive
-                            </span>
-                          )}
-                          {u.mustChangePassword && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                              Password change required
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-400 font-mono">{u.email}</div>
-                      </div>
-
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setUserToReset(u)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 rounded-xl transition-colors min-h-[36px]"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          Reset Password
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Tab 2: Payments */}
         {activeTab === 'payments' && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
