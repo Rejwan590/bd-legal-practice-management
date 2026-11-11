@@ -53,24 +53,6 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = async (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setLoading(true);
-    setErrorMessage(null);
-
-    const result = await login(demoEmail, demoPass);
-    setLoading(false);
-
-    if (!result.success) {
-      if (result.code === 'DEVICE_PENDING') {
-        setPendingDevice({ email: demoEmail, deviceName: result.device?.name });
-        return;
-      }
-      setErrorMessage(result.error || t('auth.loginFailed', { defaultValue: 'Invalid email or password.' }));
-    }
-  };
-
   if (pendingDevice) {
     return (
       <DevicePendingScreen
@@ -150,7 +132,7 @@ export const LoginScreen: React.FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="lawyer@firm.bd"
+                  placeholder="you@chamber.com"
                   required
                   autoComplete="email"
                   className="w-full bg-slate-900 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-11 pr-4 py-3 text-base text-white placeholder:text-slate-500 transition min-h-[48px]"
@@ -203,57 +185,6 @@ export const LoginScreen: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Demo One-Click Sign In Options */}
-          {import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true' && (
-            <div className="pt-4 border-t border-slate-700/80 space-y-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block text-center">
-                Quick Demo Access
-              </span>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDemoLogin(
-                      import.meta.env.VITE_DEMO_OWNER_EMAIL || '',
-                      import.meta.env.VITE_DEMO_OWNER_PASSWORD || ''
-                    )
-                  }
-                  disabled={loading}
-                  className="p-3 bg-slate-700/50 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-600 text-left transition flex items-center gap-2.5 min-h-[50px]"
-                >
-                  <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-xs shrink-0">
-                    MR
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-white truncate">Adv. Mahbubur</div>
-                    <div className="text-[10px] text-purple-400 uppercase font-semibold">Owner Demo</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDemoLogin(
-                      import.meta.env.VITE_DEMO_STAFF_EMAIL || '',
-                      import.meta.env.VITE_DEMO_STAFF_PASSWORD || ''
-                    )
-                  }
-                  disabled={loading}
-                  className="p-3 bg-slate-700/50 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-600 text-left transition flex items-center gap-2.5 min-h-[50px]"
-                >
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
-                    NJ
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-white truncate">Adv. Nusrat</div>
-                    <div className="text-[10px] text-blue-400 uppercase font-semibold">Staff Demo</div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </main>
 

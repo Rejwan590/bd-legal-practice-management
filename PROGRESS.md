@@ -3,6 +3,9 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Remove Quick Demo Access from Chamber Login UI (`LoginScreen.tsx`)**:
+  - Removed the **Quick Demo Access** (`Adv. Mahbubur` / `Adv. Nusrat` demo buttons) and `handleDemoLogin` handler from `src/modules/foundation/LoginScreen.tsx`, updated the placeholder email from `lawyer@firm.bd` to `you@chamber.com`, and set `VITE_ENABLE_DEMO_LOGIN=false` in local `.env`.
+  - Verified `npm run lint`, `npm test --prefix server`, and `npm run build:pages`, redeployed Cloudflare Pages (`bdlegal-app`), and verified on `https://bdlegal-app.pages.dev/` that only the standard credential sign-in form renders.
 - [x] **Fix Duplicate Chamber Users Rendering in Super Admin (`FirmDetailScreen.tsx`)**:
   - Removed a duplicate `{activeTab === 'users'}` render block in `admin-app/src/screens/FirmDetailScreen.tsx` that rendered the `firmUsers` list twice in the **Chamber Users** tab even though only one Owner row existed in D1.
   - Verified `npm run lint`, `npm test --prefix server`, `npm run build:pages`, and redeployed Cloudflare Pages (`bdlegal-app`), then verified visually in the browser that **Chamber Users (1)** displays one single row per user.
