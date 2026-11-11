@@ -1,7 +1,6 @@
 import { can } from '../../../permissions';
 import { getDhakaDateString } from '../../../utils/dateUtils';
 import { IDashboardRepository } from '../../interfaces';
-import { localStore } from '../../mockStore';
 import {
   AppointmentRecord,
   CaseRecord,
@@ -10,6 +9,7 @@ import {
   DashboardUrgentItems,
   HearingRecord,
   PhysicalFileRecord,
+  ReminderRecord,
   SecurityContext,
   TaskRecord,
 } from '../../types';
@@ -48,7 +48,7 @@ export class RestDashboardRepository implements IDashboardRepository {
     const nowMs = now.getTime();
     const todayDhaka = getDhakaDateString(now);
 
-    const [cases, clients, hearings, allTasks, appointments, rawFiles] = await Promise.all([
+    const [cases, clients, hearings, allTasks, appointments, rawFiles, activeReminders] = await Promise.all([
       restFetch<CaseRecord[]>('/cases').catch(() => []),
       restFetch<ClientRecord[]>('/clients').catch(() => []),
       restFetch<HearingRecord[]>('/hearings').catch(() => []),
@@ -57,6 +57,7 @@ export class RestDashboardRepository implements IDashboardRepository {
       can('files.view', currentUser)
         ? restFetch<PhysicalFileRecord[]>('/physical-files').catch(() => [])
         : Promise.resolve([] as PhysicalFileRecord[]),
+      restFetch<ReminderRecord[]>('/reminders?status=active').catch(() => []),
     ]);
 
     // 1. Cases: active court cases
@@ -88,7 +89,6 @@ export class RestDashboardRepository implements IDashboardRepository {
     ).length;
 
     // 5. Files: checked out & overdue
-    const store = localStore.getData();
     const files = rawFiles.filter((f) => {
       if (f.firmId !== firmId || f.deletedAt !== null) return false;
       if (f.caseId && !allowedCaseIds.has(f.caseId)) return false;
@@ -110,8 +110,8 @@ export class RestDashboardRepository implements IDashboardRepository {
       (a) => getDhakaDateString(a.startsAt) === todayDhaka
     ).length;
 
-    // 7. Reminders: active pending alerts
-    let reminders = (store.reminders || []).filter(
+    // 7. Reminders: active pending alerts (backend already scopes firm/visibility/Staff partitioning)
+    let reminders = activeReminders.filter(
       (r) => r.firmId === firmId && r.deletedAt === null && r.status !== 'dismissed'
     );
     if (currentUser.role === 'Staff') {

@@ -157,6 +157,9 @@ hearingsRouter.post(
 
         const updated = await txDb.updateHearing(hearing.id, firmId, updates);
         affectedCaseIds.add(hearing.caseId);
+        if (status === 'cancelled') {
+          await txDb.dismissRemindersBySource(firmId, hearing.id, req.user!.id);
+        }
 
         await recordAudit({
           firmId,
@@ -239,6 +242,7 @@ hearingsRouter.post(
           outcomeNote: outcomeNote !== undefined ? outcomeNote : hearing.outcomeNote,
           updatedBy: req.user!.id,
         });
+        await txDb.rescheduleRemindersBySource(firmId, hearing.id, new Date(nextDate), undefined, req.user!.id);
 
         await txDb.insertHearing({
           id: crypto.randomUUID(),
@@ -349,6 +353,7 @@ hearingsRouter.post(
           fixedForNote: fixedForNote !== undefined ? fixedForNote : hearing.fixedForNote,
           updatedBy: req.user!.id,
         });
+        await txDb.rescheduleRemindersBySource(firmId, hearing.id, new Date(newDate), undefined, req.user!.id);
 
         affectedCaseIds.add(hearing.caseId);
 
@@ -512,6 +517,17 @@ hearingsRouter.patch(
     const result = await db.transaction(async (txDb) => {
       const updated = await txDb.updateHearing(req.params.id, firmId, updates);
       await syncCaseNextHearing(txDb, firmId, existing.caseId);
+      if (updates.status === 'cancelled') {
+        await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id);
+      } else if (updates.scheduledAt) {
+        await txDb.rescheduleRemindersBySource(
+          firmId,
+          existing.id,
+          new Date(updates.scheduledAt),
+          undefined,
+          req.user!.id
+        );
+      }
       await recordAudit({
         firmId,
         userId: req.user!.id,
@@ -585,6 +601,7 @@ hearingsRouter.post(
       });
 
       await syncCaseNextHearing(txDb, firmId, existing.caseId);
+      await txDb.rescheduleRemindersBySource(firmId, existing.id, new Date(scheduledAt), undefined, req.user!.id);
 
       await recordAudit({
         firmId,
@@ -681,8 +698,9 @@ hearingsRouter.post(
         changedBy: req.user!.id,
       });
 
-      // 4. Update case next_hearing_at
+      // 4. Update case next_hearing_at & reschedule linked hearing reminders
       await syncCaseNextHearing(txDb, firmId, existing.caseId);
+      await txDb.rescheduleRemindersBySource(firmId, existing.id, new Date(nextDate), undefined, req.user!.id);
 
       // 5. Record audit
       await recordAudit({
@@ -745,6 +763,7 @@ hearingsRouter.delete(
 
     await db.transaction(async (txDb) => {
       await txDb.deleteHearing(existing.id, firmId, req.user!.id);
+      await txDb.dismissRemindersBySource(firmId, existing.id, req.user!.id, true);
       await syncCaseNextHearing(txDb, firmId, existing.caseId);
       await recordAudit({
         firmId,

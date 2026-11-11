@@ -3,7 +3,19 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-- [x] **Phase 8 — Physical File Tracking & Custody Backend (`master` branch)**:
+- [x] **Phase 9 — Calendar & Automated Reminders Backend (`cloudflare` & `master`)**:
+  - **PostgreSQL + Express (`/server`)**:
+    - Added `reminders` table to `server/src/db/schema.ts` and migration `server/drizzle/0015_reminders.sql` (+ journal entry `idx: 15` in `server/drizzle/meta/_journal.json`).
+    - Implemented `listReminders`, `getReminderById`, `insertReminder`, `updateReminder`, `dismissRemindersBySource`, `rescheduleRemindersBySource`, and `listRemindersBySourceIds` across `IDatabase`, `MemoryDatabase` (with rollback snapshots & real `remindersCount` in `getCaseLinkedCounts`), and `PostgresDatabase` in `server/src/db/client.ts`.
+    - Built `server/src/routes/reminders.ts` (`/api/v1/reminders`, `/due`, `POST /`, `/sync`, `/clear-source`, `/reschedule-source`, `/:id/dismiss`) and `server/src/routes/calendar.ts` (`/api/v1/calendar`, `/cause-list` with `Asia/Dhaka` UTC+6 day grouping) mounted in `server/src/app.ts`.
+    - Wired automatic reminder lifecycle sync & cascades into `server/src/routes/hearings.ts` (`bulk-status`, `bulk-adjourn`, `bulk-reschedule`, `PATCH`, `reschedule`, `adjourn`, `DELETE`), `tasks.ts` (`PATCH`, `complete`, `reassign`, `DELETE`), `physicalFiles.ts` (`PATCH`, `check-out`, `check-in`, `dispatch-court`, `DELETE`), `appointments.ts` (`POST`, `PATCH`, `DELETE`, including `reminderMinutesBefore === 0` fix), and `cases.ts` (`DELETE` cascade inside transaction).
+  - **Frontend REST Parity (`/src` & `/tests`)**:
+    - Created `RestReminderRepository` (`src/data/repositories/rest/restReminder.ts`), updated `RestCalendarRepository` (`src/data/repositories/rest/restCalendar.ts`) and `RestDashboardRepository` (`src/data/repositories/rest/restDashboard.ts`) to query `/calendar`, `/calendar/cause-list`, and `/reminders?status=active` without `localStore`, wired `RestReminderRepository` under `isRestMode` in `src/data/repositories/index.ts`, and updated `tests/dashboard.test.ts`.
+  - **Tests & Verification**:
+    - Added `server/tests/remindersCalendar.test.ts` (48 passed, 0 failed) + `"test:reminders"` in `server/package.json`.
+    - Verified `npm run lint`, `npm test --prefix server` (all 20 suites passed), `npm run test:dashboard` (27 passed), `npm run test:health` (87 passed), and `npm run build` / `npm run build --prefix server`.
+
+- [x] **Phase 8 — Physical File Tracking & Custody Backend (`master` & `cloudflare`)**:
   - **PostgreSQL + Express (`/server`)**:
     - Added `physicalFiles` (`physical_files`) and `fileMovements` (`file_movements`) tables to `server/src/db/schema.ts` and migration `server/drizzle/0014_physical_files.sql` (+ journal entry in `server/drizzle/meta/_journal.json`).
     - Implemented all physical file & movement methods across both `MemoryDatabase` and `PostgresDatabase` in `server/src/db/client.ts`, populated real `files[]` in `getClientLinkedOverview` and `filesCount` in `getCaseLinkedCounts`, and wired rollback snapshots in `MemoryDatabase.transaction`.

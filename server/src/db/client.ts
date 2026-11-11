@@ -1,7 +1,7 @@
 import pg from 'pg';
 import crypto from 'crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, and, isNull, isNotNull, desc, asc, gte, lte, or, ilike, ne, sql, SQL } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, desc, asc, gte, lte, or, ilike, ne, sql, SQL, inArray } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema.js';
 import { getSeedUsers, SEED_FIRMS, SEED_PLANS, SEED_CLIENTS, SEED_CASES } from './seed.js';
@@ -275,6 +275,45 @@ export interface IDatabase {
   insertFileMovement(
     movement: schema.NewFileMovement
   ): Promise<schema.FileMovement & { userName: string }>;
+  // Reminders Module (Phase 9)
+  listReminders(
+    firmId: string,
+    filter?: {
+      status?: 'pending' | 'sent' | 'dismissed' | 'active';
+      sourceType?: 'hearing' | 'task' | 'file_return' | 'appointment';
+      userId?: string;
+      search?: string;
+      dueOnly?: boolean;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Reminder & { userName?: string }>>;
+  getReminderById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.Reminder & { userName?: string }) | null>;
+  insertReminder(
+    reminder: schema.NewReminder
+  ): Promise<schema.Reminder & { userName?: string }>;
+  updateReminder(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Reminder>
+  ): Promise<schema.Reminder & { userName?: string }>;
+  dismissRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    updatedBy?: string,
+    softDelete?: boolean,
+    userIdRestrict?: string
+  ): Promise<number>;
+  rescheduleRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    newDueAt: Date,
+    newRemindAt?: Date,
+    updatedBy?: string
+  ): Promise<number>;
+  listRemindersBySourceIds(firmId: string, sourceIds: string[]): Promise<schema.Reminder[]>;
   // Accounts Module (Accounts Phase 1)
   getAccountsSummary(
     firmId: string,
@@ -495,6 +534,7 @@ class MemoryDatabase implements IDatabase {
   public chamberAdvanceSettlements: schema.ChamberAdvanceSettlement[] = [];
   public physicalFiles: schema.PhysicalFile[] = [];
   public fileMovements: schema.FileMovement[] = [];
+  public reminders: schema.Reminder[] = [];
   private initialized = false;
 
   public async init() {
@@ -1362,11 +1402,34 @@ class MemoryDatabase implements IDatabase {
     const filesCount = this.physicalFiles.filter(
       (f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt
     ).length;
+    const hearingIds = new Set(
+      this.hearings.filter((h) => h.caseId === caseId && h.firmId === firmId && !h.deletedAt).map((h) => h.id)
+    );
+    const taskIds = new Set(
+      this.tasks.filter((t) => t.caseId === caseId && t.firmId === firmId && !t.deletedAt).map((t) => t.id)
+    );
+    const fileIds = new Set(
+      this.physicalFiles.filter((f) => f.caseId === caseId && f.firmId === firmId && !f.deletedAt).map((f) => f.id)
+    );
+    const apptIds = new Set(
+      this.appointments.filter((a) => a.caseId === caseId && a.firmId === firmId && !a.deletedAt).map((a) => a.id)
+    );
+    const remindersCount = this.reminders.filter(
+      (r) =>
+        r.firmId === firmId &&
+        !r.deletedAt &&
+        r.status === 'pending' &&
+        (r.sourceId === caseId ||
+          (r.sourceType === 'hearing' && hearingIds.has(r.sourceId)) ||
+          (r.sourceType === 'task' && taskIds.has(r.sourceId)) ||
+          (r.sourceType === 'file_return' && fileIds.has(r.sourceId)) ||
+          (r.sourceType === 'appointment' && apptIds.has(r.sourceId)))
+    ).length;
     return {
       hearingsCount,
       tasksCount,
       filesCount,
-      remindersCount: 0,
+      remindersCount,
     };
   }
 
@@ -1913,6 +1976,212 @@ class MemoryDatabase implements IDatabase {
       ...created,
       userName: u ? u.name : 'Unknown User',
     };
+  }
+
+  // Reminders Methods (Phase 9)
+  private enrichReminderForMemory(r: schema.Reminder): schema.Reminder & { userName?: string } {
+    const u = this.users.find((usr) => usr.id === r.userId);
+    return {
+      ...r,
+      userName: u ? u.name : undefined,
+    };
+  }
+
+  public async listReminders(
+    firmId: string,
+    filter?: {
+      status?: 'pending' | 'sent' | 'dismissed' | 'active';
+      sourceType?: 'hearing' | 'task' | 'file_return' | 'appointment';
+      userId?: string;
+      search?: string;
+      dueOnly?: boolean;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Reminder & { userName?: string }>> {
+    await this.init();
+    const visibleCaseIds = this.getVisibleCaseSetForMemory(firmId, user, true);
+    const hearingMap = new Map(this.hearings.filter((h) => h.firmId === firmId && !h.deletedAt).map((h) => [h.id, h]));
+    const taskMap = new Map(this.tasks.filter((t) => t.firmId === firmId && !t.deletedAt).map((t) => [t.id, t]));
+    const fileMap = new Map(this.physicalFiles.filter((f) => f.firmId === firmId && !f.deletedAt).map((f) => [f.id, f]));
+    const apptMap = new Map(this.appointments.filter((a) => a.firmId === firmId && !a.deletedAt).map((a) => [a.id, a]));
+    const nowMs = Date.now();
+
+    return this.reminders
+      .filter((r) => {
+        if (r.firmId !== firmId || r.deletedAt) return false;
+        if (user?.role === 'Staff') {
+          if (r.userId !== user.id) return false;
+        } else if (filter?.userId && r.userId !== filter.userId) {
+          return false;
+        }
+
+        if (user) {
+          if (r.sourceType === 'hearing') {
+            const h = hearingMap.get(r.sourceId);
+            if (h && h.caseId && !visibleCaseIds.has(h.caseId)) return false;
+          } else if (r.sourceType === 'task') {
+            const t = taskMap.get(r.sourceId);
+            if (t && t.caseId && !visibleCaseIds.has(t.caseId)) return false;
+          } else if (r.sourceType === 'file_return') {
+            const f = fileMap.get(r.sourceId);
+            if (f && f.caseId && !visibleCaseIds.has(f.caseId)) return false;
+          } else if (r.sourceType === 'appointment') {
+            const a = apptMap.get(r.sourceId);
+            if (a && a.caseId && !visibleCaseIds.has(a.caseId)) return false;
+          }
+        }
+
+        if (filter?.status) {
+          if (filter.status === 'active') {
+            if (r.status === 'dismissed') return false;
+          } else if (r.status !== filter.status) {
+            return false;
+          }
+        }
+        if (filter?.dueOnly && new Date(r.remindAt).getTime() > nowMs) {
+          return false;
+        }
+        if (filter?.sourceType && r.sourceType !== filter.sourceType) {
+          return false;
+        }
+        if (filter?.search) {
+          const q = filter.search.toLowerCase();
+          const hit =
+            r.title.toLowerCase().includes(q) ||
+            (r.description && r.description.toLowerCase().includes(q));
+          if (!hit) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime())
+      .map((r) => this.enrichReminderForMemory({ ...r }));
+  }
+
+  public async getReminderById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.Reminder & { userName?: string }) | null> {
+    await this.init();
+    const found = this.reminders.find((r) => r.id === id && r.firmId === firmId && !r.deletedAt);
+    return found ? this.enrichReminderForMemory({ ...found }) : null;
+  }
+
+  public async insertReminder(
+    reminder: schema.NewReminder
+  ): Promise<schema.Reminder & { userName?: string }> {
+    await this.init();
+    const now = new Date();
+    const created: schema.Reminder = {
+      id: reminder.id || crypto.randomUUID(),
+      firmId: reminder.firmId,
+      userId: reminder.userId,
+      sourceType: reminder.sourceType,
+      sourceId: reminder.sourceId,
+      title: reminder.title,
+      description: reminder.description ?? null,
+      remindAt: reminder.remindAt,
+      dueAt: reminder.dueAt,
+      channel: reminder.channel ?? 'in_app',
+      status: reminder.status ?? 'pending',
+      sentAt: reminder.sentAt ?? null,
+      dismissedAt: reminder.dismissedAt ?? null,
+      createdAt: reminder.createdAt ?? now,
+      updatedAt: reminder.updatedAt ?? now,
+      deletedAt: reminder.deletedAt ?? null,
+      createdBy: reminder.createdBy ?? null,
+      updatedBy: reminder.updatedBy ?? null,
+    };
+    this.reminders.push(created);
+    return this.enrichReminderForMemory({ ...created });
+  }
+
+  public async updateReminder(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Reminder>
+  ): Promise<schema.Reminder & { userName?: string }> {
+    await this.init();
+    const idx = this.reminders.findIndex((r) => r.id === id && r.firmId === firmId && !r.deletedAt);
+    if (idx === -1) throw new Error(`Reminder not found: ${id}`);
+    const updated: schema.Reminder = {
+      ...this.reminders[idx],
+      ...updates,
+      id: this.reminders[idx].id,
+      firmId: this.reminders[idx].firmId,
+      updatedAt: updates.updatedAt ?? new Date(),
+    };
+    this.reminders[idx] = updated;
+    return this.enrichReminderForMemory({ ...updated });
+  }
+
+  public async dismissRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    updatedBy?: string,
+    softDelete = false,
+    userIdRestrict?: string
+  ): Promise<number> {
+    await this.init();
+    const now = new Date();
+    let count = 0;
+    for (let i = 0; i < this.reminders.length; i++) {
+      const r = this.reminders[i];
+      if (
+        r.firmId === firmId &&
+        r.sourceId === sourceId &&
+        !r.deletedAt &&
+        r.status !== 'dismissed' &&
+        (!userIdRestrict || r.userId === userIdRestrict)
+      ) {
+        this.reminders[i] = {
+          ...r,
+          status: 'dismissed',
+          dismissedAt: now,
+          deletedAt: softDelete ? now : r.deletedAt,
+          updatedAt: now,
+          updatedBy: updatedBy ?? r.updatedBy,
+        };
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public async rescheduleRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    newDueAt: Date,
+    newRemindAt?: Date,
+    updatedBy?: string
+  ): Promise<number> {
+    await this.init();
+    const now = new Date();
+    const targetRemindAt = newRemindAt ?? new Date(newDueAt.getTime() - 24 * 60 * 60 * 1000);
+    let count = 0;
+    for (let i = 0; i < this.reminders.length; i++) {
+      const r = this.reminders[i];
+      if (r.firmId === firmId && r.sourceId === sourceId && !r.deletedAt) {
+        this.reminders[i] = {
+          ...r,
+          dueAt: newDueAt,
+          remindAt: targetRemindAt,
+          status: 'pending',
+          dismissedAt: null,
+          updatedAt: now,
+          updatedBy: updatedBy ?? r.updatedBy,
+        };
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public async listRemindersBySourceIds(firmId: string, sourceIds: string[]): Promise<schema.Reminder[]> {
+    await this.init();
+    const set = new Set(sourceIds);
+    return this.reminders
+      .filter((r) => r.firmId === firmId && !r.deletedAt && set.has(r.sourceId))
+      .map((r) => ({ ...r }));
   }
 
   // Accounts Methods (Accounts Phase 1)
@@ -3555,6 +3824,7 @@ class MemoryDatabase implements IDatabase {
       chamberAdvanceSettlements: [...this.chamberAdvanceSettlements],
       physicalFiles: [...this.physicalFiles],
       fileMovements: [...this.fileMovements],
+      reminders: [...this.reminders],
     };
 
     try {
@@ -3593,6 +3863,7 @@ class MemoryDatabase implements IDatabase {
       this.chamberAdvanceSettlements = snapshot.chamberAdvanceSettlements;
       this.physicalFiles = snapshot.physicalFiles;
       this.fileMovements = snapshot.fileMovements;
+      this.reminders = snapshot.reminders;
       throw err;
     }
   }
@@ -4573,11 +4844,42 @@ class PostgresDatabase implements IDatabase {
           isNull(schema.physicalFiles.deletedAt)
         )
       );
+    const apptsRows = await this.db
+      .select({ id: schema.appointments.id })
+      .from(schema.appointments)
+      .where(
+        and(
+          eq(schema.appointments.caseId, caseId),
+          eq(schema.appointments.firmId, firmId),
+          isNull(schema.appointments.deletedAt)
+        )
+      );
+    const sourceIds = [
+      caseId,
+      ...hearingsRows.map((r) => r.id),
+      ...tasksRows.map((r) => r.id),
+      ...filesRows.map((r) => r.id),
+      ...apptsRows.map((r) => r.id),
+    ];
+    const remindersRows =
+      sourceIds.length > 0
+        ? await this.db
+            .select({ id: schema.reminders.id })
+            .from(schema.reminders)
+            .where(
+              and(
+                eq(schema.reminders.firmId, firmId),
+                isNull(schema.reminders.deletedAt),
+                eq(schema.reminders.status, 'pending'),
+                inArray(schema.reminders.sourceId, sourceIds)
+              )
+            )
+        : [];
     return {
       hearingsCount: hearingsRows.length,
       tasksCount: tasksRows.length,
       filesCount: filesRows.length,
-      remindersCount: 0,
+      remindersCount: remindersRows.length,
     };
   }
 
@@ -5190,6 +5492,252 @@ class PostgresDatabase implements IDatabase {
       ...created,
       userName,
     };
+  }
+
+  public async listReminders(
+    firmId: string,
+    filter?: {
+      status?: 'pending' | 'sent' | 'dismissed' | 'active';
+      sourceType?: 'hearing' | 'task' | 'file_return' | 'appointment';
+      userId?: string;
+      search?: string;
+      dueOnly?: boolean;
+    },
+    user?: VisibilityUserContext
+  ): Promise<Array<schema.Reminder & { userName?: string }>> {
+    const conditions: SQL[] = [
+      eq(schema.reminders.firmId, firmId),
+      isNull(schema.reminders.deletedAt),
+    ];
+
+    if (user?.role === 'Staff') {
+      conditions.push(eq(schema.reminders.userId, user.id));
+    } else if (filter?.userId) {
+      conditions.push(eq(schema.reminders.userId, filter.userId));
+    }
+
+    if (filter?.status) {
+      if (filter.status === 'active') {
+        conditions.push(ne(schema.reminders.status, 'dismissed'));
+      } else {
+        conditions.push(eq(schema.reminders.status, filter.status));
+      }
+    }
+
+    if (filter?.sourceType) {
+      conditions.push(eq(schema.reminders.sourceType, filter.sourceType));
+    }
+
+    if (filter?.dueOnly) {
+      conditions.push(lte(schema.reminders.remindAt, new Date()));
+    }
+
+    const rows = await this.db
+      .select({
+        reminder: schema.reminders,
+        userName: schema.users.name,
+      })
+      .from(schema.reminders)
+      .leftJoin(schema.users, eq(schema.reminders.userId, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(asc(schema.reminders.remindAt));
+
+    let items = rows.map((r) => ({
+      ...r.reminder,
+      userName: r.userName || undefined,
+    }));
+
+    if (user) {
+      const visibleCases = await this.listCases(firmId, { user, includeRestricted: true });
+      const visibleCaseIds = new Set(visibleCases.map((c) => c.id));
+
+      const hearingIds = items.filter((r) => r.sourceType === 'hearing').map((r) => r.sourceId);
+      const taskIds = items.filter((r) => r.sourceType === 'task').map((r) => r.sourceId);
+      const fileIds = items.filter((r) => r.sourceType === 'file_return').map((r) => r.sourceId);
+      const apptIds = items.filter((r) => r.sourceType === 'appointment').map((r) => r.sourceId);
+
+      const [hRows, tRows, fRows, aRows] = await Promise.all([
+        hearingIds.length
+          ? this.db
+              .select({ id: schema.hearings.id, caseId: schema.hearings.caseId })
+              .from(schema.hearings)
+              .where(and(eq(schema.hearings.firmId, firmId), isNull(schema.hearings.deletedAt), inArray(schema.hearings.id, hearingIds)))
+          : Promise.resolve([]),
+        taskIds.length
+          ? this.db
+              .select({ id: schema.tasks.id, caseId: schema.tasks.caseId })
+              .from(schema.tasks)
+              .where(and(eq(schema.tasks.firmId, firmId), isNull(schema.tasks.deletedAt), inArray(schema.tasks.id, taskIds)))
+          : Promise.resolve([]),
+        fileIds.length
+          ? this.db
+              .select({ id: schema.physicalFiles.id, caseId: schema.physicalFiles.caseId })
+              .from(schema.physicalFiles)
+              .where(and(eq(schema.physicalFiles.firmId, firmId), isNull(schema.physicalFiles.deletedAt), inArray(schema.physicalFiles.id, fileIds)))
+          : Promise.resolve([]),
+        apptIds.length
+          ? this.db
+              .select({ id: schema.appointments.id, caseId: schema.appointments.caseId })
+              .from(schema.appointments)
+              .where(and(eq(schema.appointments.firmId, firmId), isNull(schema.appointments.deletedAt), inArray(schema.appointments.id, apptIds)))
+          : Promise.resolve([]),
+      ]);
+
+      const hCaseMap = new Map(hRows.map((x) => [x.id, x.caseId]));
+      const tCaseMap = new Map(tRows.map((x) => [x.id, x.caseId]));
+      const fCaseMap = new Map(fRows.map((x) => [x.id, x.caseId]));
+      const aCaseMap = new Map(aRows.map((x) => [x.id, x.caseId]));
+
+      items = items.filter((r) => {
+        let caseId: string | null | undefined;
+        if (r.sourceType === 'hearing') caseId = hCaseMap.get(r.sourceId);
+        else if (r.sourceType === 'task') caseId = tCaseMap.get(r.sourceId);
+        else if (r.sourceType === 'file_return') caseId = fCaseMap.get(r.sourceId);
+        else if (r.sourceType === 'appointment') caseId = aCaseMap.get(r.sourceId);
+        if (caseId && !visibleCaseIds.has(caseId)) return false;
+        return true;
+      });
+    }
+
+    if (filter?.search) {
+      const q = filter.search.toLowerCase();
+      items = items.filter(
+        (r) =>
+          r.title.toLowerCase().includes(q) ||
+          (r.description && r.description.toLowerCase().includes(q))
+      );
+    }
+
+    return items;
+  }
+
+  public async getReminderById(
+    id: string,
+    firmId: string
+  ): Promise<(schema.Reminder & { userName?: string }) | null> {
+    const rows = await this.db
+      .select({
+        reminder: schema.reminders,
+        userName: schema.users.name,
+      })
+      .from(schema.reminders)
+      .leftJoin(schema.users, eq(schema.reminders.userId, schema.users.id))
+      .where(and(eq(schema.reminders.id, id), eq(schema.reminders.firmId, firmId), isNull(schema.reminders.deletedAt)))
+      .limit(1);
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].reminder,
+      userName: rows[0].userName || undefined,
+    };
+  }
+
+  public async insertReminder(
+    reminder: schema.NewReminder
+  ): Promise<schema.Reminder & { userName?: string }> {
+    const id = reminder.id || crypto.randomUUID();
+    const rows = await this.db
+      .insert(schema.reminders)
+      .values({ ...reminder, id })
+      .returning();
+    const created = rows[0];
+    const userName = await this.resolveHolderNamePostgres(created.userId);
+    return {
+      ...created,
+      userName: userName || undefined,
+    };
+  }
+
+  public async updateReminder(
+    id: string,
+    firmId: string,
+    updates: Partial<schema.Reminder>
+  ): Promise<schema.Reminder & { userName?: string }> {
+    const rows = await this.db
+      .update(schema.reminders)
+      .set({ ...updates, updatedAt: updates.updatedAt ?? new Date() })
+      .where(and(eq(schema.reminders.id, id), eq(schema.reminders.firmId, firmId), isNull(schema.reminders.deletedAt)))
+      .returning();
+    if (!rows[0]) throw new Error(`Reminder not found: ${id}`);
+    const userName = await this.resolveHolderNamePostgres(rows[0].userId);
+    return {
+      ...rows[0],
+      userName: userName || undefined,
+    };
+  }
+
+  public async dismissRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    updatedBy?: string,
+    softDelete = false,
+    userIdRestrict?: string
+  ): Promise<number> {
+    const now = new Date();
+    const conditions: SQL[] = [
+      eq(schema.reminders.firmId, firmId),
+      eq(schema.reminders.sourceId, sourceId),
+      isNull(schema.reminders.deletedAt),
+      ne(schema.reminders.status, 'dismissed'),
+    ];
+    if (userIdRestrict) {
+      conditions.push(eq(schema.reminders.userId, userIdRestrict));
+    }
+    const updated = await this.db
+      .update(schema.reminders)
+      .set({
+        status: 'dismissed',
+        dismissedAt: now,
+        ...(softDelete ? { deletedAt: now } : {}),
+        updatedAt: now,
+        ...(updatedBy ? { updatedBy } : {}),
+      })
+      .where(and(...conditions))
+      .returning({ id: schema.reminders.id });
+    return updated.length;
+  }
+
+  public async rescheduleRemindersBySource(
+    firmId: string,
+    sourceId: string,
+    newDueAt: Date,
+    newRemindAt?: Date,
+    updatedBy?: string
+  ): Promise<number> {
+    const now = new Date();
+    const targetRemindAt = newRemindAt ?? new Date(newDueAt.getTime() - 24 * 60 * 60 * 1000);
+    const updated = await this.db
+      .update(schema.reminders)
+      .set({
+        dueAt: newDueAt,
+        remindAt: targetRemindAt,
+        status: 'pending',
+        dismissedAt: null,
+        updatedAt: now,
+        ...(updatedBy ? { updatedBy } : {}),
+      })
+      .where(
+        and(
+          eq(schema.reminders.firmId, firmId),
+          eq(schema.reminders.sourceId, sourceId),
+          isNull(schema.reminders.deletedAt)
+        )
+      )
+      .returning({ id: schema.reminders.id });
+    return updated.length;
+  }
+
+  public async listRemindersBySourceIds(firmId: string, sourceIds: string[]): Promise<schema.Reminder[]> {
+    if (sourceIds.length === 0) return [];
+    return this.db
+      .select()
+      .from(schema.reminders)
+      .where(
+        and(
+          eq(schema.reminders.firmId, firmId),
+          isNull(schema.reminders.deletedAt),
+          inArray(schema.reminders.sourceId, sourceIds)
+        )
+      );
   }
   public async getAccountsSummary(
     firmId: string,

@@ -789,6 +789,37 @@ export type NewPhysicalFile = typeof physicalFiles.$inferInsert;
 export type FileMovement = typeof fileMovements.$inferSelect;
 export type NewFileMovement = typeof fileMovements.$inferInsert;
 
+// Reminders Table (Phase 9 - Calendar & Automated Reminders Backend)
+export const reminders = pgTable('reminders', {
+  id: text('id').primaryKey(),
+  firmId: text('firm_id').references(() => firms.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  sourceType: text('source_type').$type<'hearing' | 'task' | 'file_return' | 'appointment'>().notNull(),
+  sourceId: text('source_id').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  remindAt: timestamp('remind_at', { withTimezone: true }).notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+  channel: text('channel').$type<'in_app' | 'email_stub' | 'sms_stub'>().default('in_app').notNull(),
+  status: text('status').$type<'pending' | 'sent' | 'dismissed'>().default('pending').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+}, (table) => [
+  index('idx_reminders_firm_id').on(table.firmId),
+  index('idx_reminders_firm_user').on(table.firmId, table.userId),
+  index('idx_reminders_remind_at').on(table.remindAt),
+  index('idx_reminders_source').on(table.firmId, table.sourceType, table.sourceId),
+  index('idx_reminders_status').on(table.status),
+]);
+
+export type Reminder = typeof reminders.$inferSelect;
+export type NewReminder = typeof reminders.$inferInsert;
+
 
 
 

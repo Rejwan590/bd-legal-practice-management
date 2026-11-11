@@ -12,4 +12,5 @@ export * from './restAccounts';
 export * from './restChamberExpenses';
 export * from './restDashboard';
 export * from './restCalendar';
+export * from './restReminder';
 export * from './restSearch';

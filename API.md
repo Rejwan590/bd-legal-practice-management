@@ -329,11 +329,20 @@ Enforces central case visibility, confidentiality (`restricted.view`), firm isol
 
 ---
 
-### 2.10 Planned Modules (`/files`, `/reminders`) `[PLANNED]`
-
-Target endpoints for upcoming phases:
-- `GET /api/v1/files` & `POST /api/v1/files/:id/checkout` / `checkin`: Physical custody movement.
-- `GET /api/v1/reminders`: Chamber deadline notification center.
+### 2.10 Physical Custody, Calendar & Automated Reminders (`[BUILT]`)
+- **Physical Custody (`/api/v1/physical-files`)**:
+  - `GET /api/v1/physical-files`, `GET /next-serial`, `GET /by-serial/:serial`, `GET /by-case/:caseId`, `GET /:id`, `GET /:id/movements`
+  - `POST /api/v1/physical-files`, `PATCH /:id`, `POST /:id/check-out`, `POST /:id/check-in`, `POST /:id/dispatch-court`, `DELETE /:id`
+- **Calendar Aggregation & Cause List (`/api/v1/calendar`)**:
+  - `GET /api/v1/calendar`: Returns unified chronological feed of hearings, tasks, physical file return deadlines, and appointments respecting firm isolation, central visibility (`restricted.view` / `canUserSeeCase`), and Staff task partitioning. Query params: `startIso`/`fromDate`, `endIso`/`toDate`, `type` (`all` | `hearing` | `task` | `file_return` | `appointment`).
+  - `GET /api/v1/calendar/cause-list`: Returns `{ date, hearings, firmName }` grouped by `Asia/Dhaka` (`UTC+6`) calendar date (`?date=YYYY-MM-DD`).
+- **Automated Reminders (`/api/v1/reminders`)**:
+  - `GET /api/v1/reminders`: Lists chamber reminders (`status=active|pending|sent|dismissed`, `sourceType`, `userId`, `search`, `dueOnly`). Enforces Staff partitioning (`userId === currentUser.id`) and confidential case filtering.
+  - `GET /api/v1/reminders/due`: Lists active due reminders (`remindAt <= now`).
+  - `POST /api/v1/reminders`: Creates a manual reminder (gated by `enforceSubscriptionReadOnly` & source visibility).
+  - `POST /api/v1/reminders/sync`: Idempotently generates/updates reminders from scheduled hearings (`-24h`), incomplete tasks (`-2h`), checked-out/in-court files (`-4h`), and scheduled appointments (`-reminderMinutesBefore`).
+  - `POST /api/v1/reminders/clear-source` & `POST /api/v1/reminders/reschedule-source`: Bulk dismisses or reschedules reminders by `sourceId`.
+  - `POST /api/v1/reminders/:id/dismiss`: Dismisses a reminder (Staff restricted to own reminders; records `audit_log`).
 
 ---
 
