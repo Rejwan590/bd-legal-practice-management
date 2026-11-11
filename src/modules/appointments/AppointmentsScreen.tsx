@@ -95,10 +95,10 @@ export const AppointmentsScreen: React.FC = () => {
         repos.user.list({ currentUser }).catch(() => []),
       ]);
 
-      let loadedAppts = Array.isArray(appts) ? appts : ((appts as any)?.appointments || []);
+      let loadedAppts = Array.isArray(appts) ? appts : ((appts as { appointments?: AppointmentRecord[] })?.appointments || []);
       if (statusFilter === 'cancelled') {
         loadedAppts = [...loadedAppts].sort(
-          (a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+          (a, b) => (new Date(b.startsAt).getTime() || 0) - (new Date(a.startsAt).getTime() || 0)
         );
       }
       setAppointments(loadedAppts);
@@ -394,15 +394,21 @@ export const AppointmentsScreen: React.FC = () => {
               accessor: (a) => {
                 const start = new Date(a.startsAt);
                 const end = new Date(a.endsAt);
+                const startValid = !isNaN(start.getTime());
+                const endValid = !isNaN(end.getTime());
                 return (
                   <div className="space-y-0.5">
                     <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>{start.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      <span>
+                        {startValid
+                          ? start.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                          : '—'}
+                      </span>
                     </div>
                     <div className="text-[11px] text-slate-500 pl-5">
-                      {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
-                      {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {startValid ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'} -{' '}
+                      {endValid ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
                   </div>
                 );
@@ -596,7 +602,7 @@ export const AppointmentsScreen: React.FC = () => {
             const client = a.clientId ? clientsMap[a.clientId] : null;
             const caseItem = a.caseId ? casesMap[a.caseId] : null;
             const start = new Date(a.startsAt);
-            const end = new Date(a.endsAt);
+            const startValid = !isNaN(start.getTime());
 
             return (
               <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
@@ -623,10 +629,10 @@ export const AppointmentsScreen: React.FC = () => {
 
                   <div className="text-right text-xs text-slate-500">
                     <div className="font-bold text-slate-800">
-                      {start.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      {startValid ? start.toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—'}
                     </div>
                     <div className="text-[11px]">
-                      {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {startValid ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
                   </div>
                 </div>

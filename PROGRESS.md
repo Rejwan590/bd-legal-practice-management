@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Fix `RangeError: Invalid time value` in `AppointmentFormModal` & Appointments Screen/Repository Bugs**:
+  - **Root Cause**:
+    - In `src/modules/appointments/AppointmentFormModal.tsx`, `isRescheduling` evaluated `new Date(startsAt).toISOString()` and `new Date(endsAt).toISOString()` unconditionally during render. Because `AppointmentsScreen` keeps `<AppointmentFormModal>` mounted with `startsAt` / `endsAt` initialized to `''`, clicking Edit (or clearing a `datetime-local` input) ran a render pass with `initialData` set and `startsAt === ''` before `useEffect` ran, throwing `RangeError: Invalid time value` caught by `ErrorBoundary`.
+    - `handleStartChange`, `handleSubmit`, and `formatDatetimeLocal` also called `.toISOString()` / date formatting without guarding `isNaN(d.getTime())`, and nullable `initialData` fields lacked fallback coalescing.
+    - `src/modules/appointments/AppointmentsScreen.tsx` sorted cancelled appointments by nonexistent `appointmentDate` instead of `startsAt`, and did not guard invalid dates when formatting table/card cells.
+    - `MockAppointmentRepository.list` and `RestAppointmentRepository.list` did not enforce `filter.range` (`upcoming` / `past` / `all`), despite `AppointmentsScreen` passing it.
+  - **Fixes Applied**:
+    - `src/utils/dateUtils.ts`: Added `toSafeIsoString` returning `null` for empty/invalid inputs instead of throwing.
+    - `src/modules/appointments/AppointmentFormModal.tsx`: Replaced unguarded `.toISOString()` calls in `isRescheduling`, `formatDatetimeLocal`, `handleStartChange`, and `handleSubmit` with `toSafeIsoString` / `toDateTimeInputValue`, coalesced nullable `initialData` fields, and added invalid-datetime validation feedback (`appointments.invalidDateTime` in `src/locales/en.json` and `src/locales/bn.json`).
+    - `src/modules/appointments/AppointmentsScreen.tsx`: Fixed cancelled sort to use `startsAt` safely and guarded table/mobile card date/time rendering against invalid timestamps.
+    - `src/data/repositories/common.ts`, `src/data/repositories/appointment.ts`, `src/data/repositories/rest/restAppointment.ts`: Extracted shared `applyAppointmentFilters` helper supporting `range` (`upcoming` / `past` / `all`), `status`, `type`, `clientId`, `caseId`, `fromDate`, `toDate`, and `search` with dual-mode parity.
+    - `tests/browserConsoleErrors.test.ts`: Added regression assertions for `toSafeIsoString` and appointment repository `range` partitioning.
+  - **Verification**:
+    - Verified `npm run lint`, `npm run build`, `npm run test:consoleErrors`, `npm run test:health` (87/87 passed), and `npm test --prefix server` (all 18 suites passed) all pass cleanly.
+
 - [x] **Eliminate Repeated `/clients/:id/photo` 404 Fetches in `ClientAvatar` & Linked Screens**:
   - **Root Cause**: In `src/components/ClientAvatar.tsx`, `clientPhotoCache.has(clientId)` only returned early when cached value was non-null, and `useEffect` depended on the freshly-created `effectiveContext` object literal—re-fetching `/clients/:id/photo` (`404`) on re-renders whenever a client lacked a photo. Furthermore, `CasesScreen.tsx`, `CaseDetailsView.tsx`, and `AppointmentsScreen.tsx` omitted `hasPhoto` on `<ClientAvatar>`.
   - **Fixes Applied**:

@@ -1070,6 +1070,7 @@
     "rescheduleReasonOptional": "Reschedule Reason (Audited)",
     "overlapWarning": "Warning: Overlapping appointment detected for one or more attendees.",
     "titleRequired": "Title is required.",
+    "invalidDateTime": "Please enter valid start and end date and time.",
     "endAfterStart": "End time must be after start time.",
     "modeInPerson": "In Person",
     "modePhone": "Phone Call",

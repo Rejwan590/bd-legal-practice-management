@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../foundation/AuthContext';
 import { getRepositories } from '../../data/repositories';
-import { toDateTimeInputValue } from '../../utils/dateUtils';
+import { toDateTimeInputValue, toSafeIsoString } from '../../utils/dateUtils';
 import { ResponsiveModal } from '../../components/responsive/ResponsiveModal';
 import {
   AppointmentRecord,
@@ -47,18 +47,15 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
   const { currentUser, isReadOnly } = useAuth();
   const repos = getRepositories();
 
-  // Helper to format ISO to datetime-local (YYYY-MM-DDTHH:mm)
-  const formatDatetimeLocal = (isoString?: string) => {
+  // Helper to format ISO to datetime-local (YYYY-MM-DDTHH:mm) safely
+  const formatDatetimeLocal = (isoString?: string | null) => {
     if (!isoString) {
       const d = new Date();
       d.setMinutes(0, 0, 0);
       d.setHours(d.getHours() + 1);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return toDateTimeInputValue(d);
     }
-    const d = new Date(isoString);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return toDateTimeInputValue(isoString);
   };
 
   const [title, setTitle] = useState('');
@@ -84,8 +81,14 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
 
+  const currentStartIso = toSafeIsoString(startsAt);
+  const currentEndIso = toSafeIsoString(endsAt);
+  const initialStartIso = toSafeIsoString(initialData?.startsAt);
+  const initialEndIso = toSafeIsoString(initialData?.endsAt);
   const isRescheduling = Boolean(
-    initialData && (initialData.startsAt !== new Date(startsAt).toISOString() || initialData.endsAt !== new Date(endsAt).toISOString())
+    initialData &&
+      ((currentStartIso && initialStartIso && currentStartIso !== initialStartIso) ||
+        (currentEndIso && initialEndIso && currentEndIso !== initialEndIso))
   );
 
   useEffect(() => {
@@ -109,10 +112,10 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
     loadPrereqs();
 
     if (initialData) {
-      setTitle(initialData.title);
-      setType(initialData.type);
-      setMode(initialData.mode);
-      setStatus(initialData.status);
+      setTitle(initialData.title || '');
+      setType(initialData.type || 'client_meeting');
+      setMode(initialData.mode || 'in_person');
+      setStatus(initialData.status || 'scheduled');
       setStartsAt(formatDatetimeLocal(initialData.startsAt));
       setEndsAt(formatDatetimeLocal(initialData.endsAt));
       setLocation(initialData.location || '');
@@ -120,13 +123,18 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
       setReminderMinutesBefore(initialData.reminderMinutesBefore ?? 30);
       setClientId(initialData.clientId || '');
       setCaseId(initialData.caseId || '');
-      setAttendeeIds(initialData.attendees || [currentUser.id]);
+      setAttendeeIds(
+        Array.isArray(initialData.attendees) && initialData.attendees.length > 0
+          ? initialData.attendees
+          : [currentUser.id]
+      );
       setRescheduleReason('');
     } else {
       const nowFormatted = formatDatetimeLocal();
       const startD = new Date(nowFormatted);
-      const endD = new Date(startD.getTime() + 30 * 60 * 1000);
-      const endFormatted = formatDatetimeLocal(endD.toISOString());
+      const endFormatted = !isNaN(startD.getTime())
+        ? toDateTimeInputValue(new Date(startD.getTime() + 30 * 60 * 1000))
+        : nowFormatted;
 
       setTitle('');
       setType('client_meeting');
@@ -156,12 +164,14 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
 
   const handleStartChange = (val: string) => {
     setStartsAt(val);
-    // If endsAt is before or equal to startsAt, set endsAt to startsAt + 30m
+    if (!val) return;
+    // If endsAt is missing, invalid, or before/equal to startsAt, set endsAt to startsAt + 30m
     const startD = new Date(val);
+    if (isNaN(startD.getTime())) return;
     const endD = new Date(endsAt);
-    if (!endsAt || endD <= startD) {
+    if (!endsAt || isNaN(endD.getTime()) || endD <= startD) {
       const newEnd = new Date(startD.getTime() + 30 * 60 * 1000);
-      setEndsAt(formatDatetimeLocal(newEnd.toISOString()));
+      setEndsAt(toDateTimeInputValue(newEnd));
     }
   };
 
@@ -174,12 +184,17 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-    if (!title.trim()) {
+    const trimmedTitle = (title || '').trim();
+    if (!trimmedTitle) {
       setErrorMsg(t('appointments.titleRequired', 'Title is required'));
       return;
     }
-    const startIso = new Date(startsAt).toISOString();
-    const endIso = new Date(endsAt).toISOString();
+    const startIso = toSafeIsoString(startsAt);
+    const endIso = toSafeIsoString(endsAt);
+    if (!startIso || !endIso) {
+      setErrorMsg(t('appointments.invalidDateTime', 'Please enter valid start and end date and time.'));
+      return;
+    }
 
     if (new Date(endIso) <= new Date(startIso)) {
       setErrorMsg(t('appointments.endAfterStart', 'End time must be after start time'));
@@ -189,47 +204,54 @@ export const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
     setSaving(true);
     setErrorMsg(null);
     try {
+      const trimmedLocation = (location || '').trim() || null;
+      const trimmedNotes = (notes || '').trim() || null;
+      const trimmedReason = (rescheduleReason || '').trim() || undefined;
+      const reminderValue = reminderMinutesBefore !== null ? Number(reminderMinutesBefore) : undefined;
+
       if (initialData) {
         const res = await repos.appointment.update({ currentUser }, initialData.id, {
-          title: title.trim(),
+          title: trimmedTitle,
           type,
           mode,
           status,
           startsAt: startIso,
           endsAt: endIso,
-          location: location.trim() || null,
-          notes: notes.trim() || null,
-          reminderMinutesBefore: reminderMinutesBefore !== null ? Number(reminderMinutesBefore) : undefined,
+          location: trimmedLocation,
+          notes: trimmedNotes,
+          reminderMinutesBefore: reminderValue,
           clientId: clientId || null,
           caseId: caseId || null,
           attendees: attendeeIds,
-          rescheduleReason: rescheduleReason.trim() || undefined,
+          rescheduleReason: trimmedReason,
         });
 
-        if (res.overlapWarning) {
+        const hasOverlap = Boolean(res.overlapWarning ?? (res as { hasOverlap?: boolean }).hasOverlap);
+        if (hasOverlap) {
           setWarningMsg(t('appointments.overlapWarning', 'Warning: Overlapping appointment detected for one or more attendees.'));
         }
-        onSaved(res, res.overlapWarning);
+        onSaved(res, hasOverlap);
       } else {
         const res = await repos.appointment.create({ currentUser }, {
-          title: title.trim(),
+          title: trimmedTitle,
           type,
           mode,
           status,
           startsAt: startIso,
           endsAt: endIso,
-          location: location.trim() || null,
-          notes: notes.trim() || null,
-          reminderMinutesBefore: reminderMinutesBefore !== null ? Number(reminderMinutesBefore) : undefined,
+          location: trimmedLocation,
+          notes: trimmedNotes,
+          reminderMinutesBefore: reminderValue,
           clientId: clientId || null,
           caseId: caseId || null,
           attendees: attendeeIds,
         });
 
-        if (res.overlapWarning) {
+        const hasOverlap = Boolean(res.overlapWarning ?? (res as { hasOverlap?: boolean }).hasOverlap);
+        if (hasOverlap) {
           setWarningMsg(t('appointments.overlapWarning', 'Warning: Overlapping appointment detected for one or more attendees.'));
         }
-        onSaved(res, res.overlapWarning);
+        onSaved(res, hasOverlap);
       }
       onClose();
     } catch (err: unknown) {

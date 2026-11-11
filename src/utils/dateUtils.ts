@@ -322,3 +322,14 @@ export function calculateDaysLeftDhaka(
 
   return Math.round((tUtc - rUtc) / 86400000);
 }
+
+/**
+ * Safely converts a Date, timestamp, or date string to an ISO 8601 UTC string.
+ * Returns null when the input is empty or invalid instead of throwing RangeError.
+ */
+export function toSafeIsoString(val?: Date | string | number | null): string | null {
+  if (val === undefined || val === null || val === '') return null;
+  const d = typeof val === 'object' && val instanceof Date ? val : new Date(val);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}

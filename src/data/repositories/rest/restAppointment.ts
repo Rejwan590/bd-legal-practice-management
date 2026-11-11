@@ -1,19 +1,12 @@
 import { IAppointmentRepository } from '../../interfaces';
 import { AppointmentRecord, SecurityContext } from '../../types';
+import { applyAppointmentFilters, AppointmentListFilter } from '../common';
 import { restFetch } from './restCommon';
 
 export class RestAppointmentRepository implements IAppointmentRepository {
   async list(
     _context: SecurityContext,
-    filter?: {
-      status?: AppointmentRecord['status'] | 'all';
-      type?: AppointmentRecord['type'] | 'all';
-      fromDate?: string;
-      toDate?: string;
-      clientId?: string;
-      caseId?: string;
-      search?: string;
-    }
+    filter?: AppointmentListFilter
   ): Promise<AppointmentRecord[]> {
     const params = new URLSearchParams();
     if (filter?.status) params.set('status', filter.status);
@@ -27,7 +20,8 @@ export class RestAppointmentRepository implements IAppointmentRepository {
     const res = await restFetch<{ appointments?: AppointmentRecord[]; total?: number } | AppointmentRecord[]>(
       `/appointments${qs}`
     );
-    return Array.isArray(res) ? res : (Array.isArray(res?.appointments) ? res.appointments : []);
+    const items = Array.isArray(res) ? res : (Array.isArray(res?.appointments) ? res.appointments : []);
+    return applyAppointmentFilters(items, filter);
   }
 
   async getById(_context: SecurityContext, id: string): Promise<AppointmentRecord | null> {

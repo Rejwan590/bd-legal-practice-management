@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { toDateInputValue, toDateTimeInputValue, getDhakaDateString, isSameDhakaDay } from '../src/utils/dateUtils';
+import { toDateInputValue, toDateTimeInputValue, toSafeIsoString, getDhakaDateString, isSameDhakaDay } from '../src/utils/dateUtils';
 import { isLawyerOrOwner } from '../src/rolePresets';
 import { isLawyerOrOwner as serverIsLawyerOrOwner } from '../server/src/rolePresets';
 import { getRepositories } from '../src/data/repositories';
@@ -44,7 +44,22 @@ async function runTests() {
     assert.strictEqual(toDateTimeInputValue(null), '', 'null returns empty string for datetime');
     assert.strictEqual(toDateTimeInputValue(undefined), '', 'undefined returns empty string for datetime');
     assert.strictEqual(toDateTimeInputValue('invalid'), '', 'invalid date returns empty string');
-    console.log('[PASS] toDateTimeInputValue formats datetime inputs safely');
+
+    // Safe ISO conversion (prevents RangeError: Invalid time value in AppointmentFormModal)
+    assert.strictEqual(toSafeIsoString(''), null, 'empty string returns null instead of throwing');
+    assert.strictEqual(toSafeIsoString(null), null, 'null returns null instead of throwing');
+    assert.strictEqual(toSafeIsoString(undefined), null, 'undefined returns null instead of throwing');
+    assert.strictEqual(toSafeIsoString('not-a-date'), null, 'invalid string returns null instead of throwing');
+    assert.strictEqual(
+      toSafeIsoString('2026-05-15T10:30:00.000Z'),
+      '2026-05-15T10:30:00.000Z',
+      'valid ISO timestamp preserves exact ISO output'
+    );
+    assert(
+      typeof toSafeIsoString('2026-05-15T10:30') === 'string' && toSafeIsoString('2026-05-15T10:30')!.endsWith('Z'),
+      'valid datetime-local value converts to ISO string'
+    );
+    console.log('[PASS] toDateTimeInputValue and toSafeIsoString handle valid and invalid inputs safely');
   }
 
   // 3. Responsible lawyer contract verification (isLawyerOrOwner parity)
@@ -99,6 +114,27 @@ async function runTests() {
     invalidateClientPhotoCache('client-syn-019');
     invalidateClientPhotoCache('client-syn-099', 'data:image/jpeg;base64,test');
     console.log('[PASS] Client photo records include hasPhoto flag with zero unintended 404 lookups');
+
+    // 5. Appointment range filtering parity
+    console.log('\n--- 5. Appointment Repository Range Filtering ---');
+    const apptsAll = await repos.appointment.list(
+      { ...mockContext, currentUser: { ...mockContext.currentUser, permissions: ['appointments.view'] as PermissionKey[] } },
+      { range: 'all' }
+    );
+    const apptsUpcoming = await repos.appointment.list(
+      { ...mockContext, currentUser: { ...mockContext.currentUser, permissions: ['appointments.view'] as PermissionKey[] } },
+      { range: 'upcoming' }
+    );
+    const apptsPast = await repos.appointment.list(
+      { ...mockContext, currentUser: { ...mockContext.currentUser, permissions: ['appointments.view'] as PermissionKey[] } },
+      { range: 'past' }
+    );
+    assert.strictEqual(
+      apptsUpcoming.length + apptsPast.length,
+      apptsAll.length,
+      'Upcoming and past appointments partition total appointments cleanly'
+    );
+    console.log('[PASS] Appointment repository range filtering partitions upcoming/past/all cleanly');
   }
 
   console.log('\n========================================');

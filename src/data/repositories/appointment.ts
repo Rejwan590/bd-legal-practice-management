@@ -3,7 +3,7 @@ import { canUserSeeAppointment, filterVisibleAppointments } from '../appointment
 import { IAppointmentRepository, IAuditLogRepository } from '../interfaces';
 import { localStore } from '../mockStore';
 import { AppointmentRecord, SecurityContext } from '../types';
-import { assertNotReadOnly, generateUUID } from './common';
+import { applyAppointmentFilters, AppointmentListFilter, assertNotReadOnly, generateUUID } from './common';
 
 export class MockAppointmentRepository implements IAppointmentRepository {
   private auditRepo: IAuditLogRepository;
@@ -14,15 +14,7 @@ export class MockAppointmentRepository implements IAppointmentRepository {
 
   async list(
     context: SecurityContext,
-    filter?: {
-      status?: AppointmentRecord['status'] | 'all';
-      type?: AppointmentRecord['type'] | 'all';
-      fromDate?: string;
-      toDate?: string;
-      clientId?: string;
-      caseId?: string;
-      search?: string;
-    }
+    filter?: AppointmentListFilter
   ): Promise<AppointmentRecord[]> {
     if (!can('appointments.view', context.currentUser)) {
       throw new Error('Permission denied: appointments.view required');
@@ -35,7 +27,7 @@ export class MockAppointmentRepository implements IAppointmentRepository {
         ? store.firm
         : { ...store.firm, id: currentUser.firmId, visibilityMode: 'open' as const };
 
-    let results = filterVisibleAppointments(
+    const visible = filterVisibleAppointments(
       currentUser,
       store.appointments || [],
       firm,
@@ -44,38 +36,7 @@ export class MockAppointmentRepository implements IAppointmentRepository {
       store.caseShares || []
     );
 
-    if (filter?.status && filter.status !== 'all') {
-      results = results.filter((a) => a.status === filter.status);
-    }
-    if (filter?.type && filter.type !== 'all') {
-      results = results.filter((a) => a.type === filter.type);
-    }
-    if (filter?.clientId) {
-      results = results.filter((a) => a.clientId === filter.clientId);
-    }
-    if (filter?.caseId) {
-      results = results.filter((a) => a.caseId === filter.caseId);
-    }
-    if (filter?.fromDate) {
-      results = results.filter((a) => new Date(a.startsAt) >= new Date(filter.fromDate!));
-    }
-    if (filter?.toDate) {
-      results = results.filter((a) => new Date(a.startsAt) <= new Date(filter.toDate!));
-    }
-    if (filter?.search && filter.search.trim()) {
-      const q = filter.search.trim().toLowerCase();
-      results = results.filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          (a.location && a.location.toLowerCase().includes(q)) ||
-          (a.notes && a.notes.toLowerCase().includes(q))
-      );
-    }
-
-    // Sort by scheduled start ascending
-    return results.sort(
-      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-    );
+    return applyAppointmentFilters(visible, filter);
   }
 
   async getById(context: SecurityContext, id: string): Promise<AppointmentRecord | null> {
