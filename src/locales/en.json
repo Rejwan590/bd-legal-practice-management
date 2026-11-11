@@ -1070,6 +1070,7 @@
     "rescheduleReasonOptional": "Reschedule Reason (Audited)",
     "overlapWarning": "Warning: Overlapping appointment detected for one or more attendees.",
     "titleRequired": "Title is required.",
+    "invalidDateTime": "Please enter valid start and end date and time.",
     "endAfterStart": "End time must be after start time.",
     "modeInPerson": "In Person",
     "modePhone": "Phone Call",
@@ -1356,5 +1357,13 @@
     "voidExpenseTitle": "Void Chamber Expense",
     "voidReasonLabel": "Reason for Voiding",
     "voidReasonMinError": "Void reason must be at least 3 characters"
+  },
+  "errors": {
+    "newVersionTitle": "Application update available",
+    "chunkLoadHint": "A newer version of this application was deployed. Please reload the page to load the latest files.",
+    "reloadPage": "Reload Page",
+    "sectionErrorTitle": "Something went wrong rendering this section",
+    "unexpectedError": "An unexpected runtime error occurred.",
+    "tryAgain": "Try Again"
   }
 }

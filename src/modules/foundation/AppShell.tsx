@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
 import { calculateDaysLeftDhaka, toBnDigits } from '../../utils/dateUtils';
 import { useNavigation, ScreenId } from './NavigationContext';
-const UserSwitchModal = React.lazy(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
-const GlobalSearchModal = React.lazy(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
+const UserSwitchModal = lazyWithRetry(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
+const GlobalSearchModal = lazyWithRetry(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
 import {
   LayoutDashboard,
   Users,

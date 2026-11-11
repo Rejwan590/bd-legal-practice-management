@@ -1,24 +1,25 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense } from 'react';
 import { AuthProvider, useAuth } from './modules/foundation/AuthContext';
 import { NavigationProvider, useNavigation } from './modules/foundation/NavigationContext';
 import { AppShell } from './modules/foundation/AppShell';
 import { LoginScreen } from './modules/foundation/LoginScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
-const HealthScreen = lazy(() => import('./modules/health/HealthScreen').then(m => ({ default: m.HealthScreen })));
-const AuditLogScreen = lazy(() => import('./modules/audit/AuditLogScreen').then(m => ({ default: m.AuditLogScreen })));
-const SettingsScreen = lazy(() => import('./modules/settings/SettingsScreen').then(m => ({ default: m.SettingsScreen })));
-const ClientsScreen = lazy(() => import('./modules/clients/ClientsScreen').then(m => ({ default: m.ClientsScreen })));
-const CasesScreen = lazy(() => import('./modules/cases/CasesScreen').then(m => ({ default: m.CasesScreen })));
-const HearingsScreen = lazy(() => import('./modules/hearings/HearingsScreen').then(m => ({ default: m.HearingsScreen })));
-const TasksScreen = lazy(() => import('./modules/tasks/TasksScreen').then(m => ({ default: m.TasksScreen })));
-const FilesScreen = lazy(() => import('./modules/files/FilesScreen').then(m => ({ default: m.FilesScreen })));
-const CalendarScreen = lazy(() => import('./modules/calendar/CalendarScreen').then(m => ({ default: m.CalendarScreen })));
-const AppointmentsScreen = lazy(() => import('./modules/appointments/AppointmentsScreen').then(m => ({ default: m.AppointmentsScreen })));
-const DashboardScreen = lazy(() => import('./modules/dashboard/DashboardScreen').then(m => ({ default: m.DashboardScreen })));
-const BackupScreen = lazy(() => import('./modules/backup/BackupScreen').then(m => ({ default: m.BackupScreen })));
-const GlobalSearchModal = lazy(() => import('./modules/search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
-const BillingScreen = lazy(() => import('./modules/billing/BillingScreen').then(m => ({ default: m.BillingScreen })));
+const HealthScreen = lazyWithRetry(() => import('./modules/health/HealthScreen').then(m => ({ default: m.HealthScreen })));
+const AuditLogScreen = lazyWithRetry(() => import('./modules/audit/AuditLogScreen').then(m => ({ default: m.AuditLogScreen })));
+const SettingsScreen = lazyWithRetry(() => import('./modules/settings/SettingsScreen').then(m => ({ default: m.SettingsScreen })));
+const ClientsScreen = lazyWithRetry(() => import('./modules/clients/ClientsScreen').then(m => ({ default: m.ClientsScreen })));
+const CasesScreen = lazyWithRetry(() => import('./modules/cases/CasesScreen').then(m => ({ default: m.CasesScreen })));
+const HearingsScreen = lazyWithRetry(() => import('./modules/hearings/HearingsScreen').then(m => ({ default: m.HearingsScreen })));
+const TasksScreen = lazyWithRetry(() => import('./modules/tasks/TasksScreen').then(m => ({ default: m.TasksScreen })));
+const FilesScreen = lazyWithRetry(() => import('./modules/files/FilesScreen').then(m => ({ default: m.FilesScreen })));
+const CalendarScreen = lazyWithRetry(() => import('./modules/calendar/CalendarScreen').then(m => ({ default: m.CalendarScreen })));
+const AppointmentsScreen = lazyWithRetry(() => import('./modules/appointments/AppointmentsScreen').then(m => ({ default: m.AppointmentsScreen })));
+const DashboardScreen = lazyWithRetry(() => import('./modules/dashboard/DashboardScreen').then(m => ({ default: m.DashboardScreen })));
+const BackupScreen = lazyWithRetry(() => import('./modules/backup/BackupScreen').then(m => ({ default: m.BackupScreen })));
+const GlobalSearchModal = lazyWithRetry(() => import('./modules/search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
+const BillingScreen = lazyWithRetry(() => import('./modules/billing/BillingScreen').then(m => ({ default: m.BillingScreen })));
 
 function MainApp() {
   const { isAuthenticated, isLoading } = useAuth();

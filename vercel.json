@@ -6,7 +6,7 @@
       "framework": "vite",
       "rewrites": [
         {
-          "source": "/(.*)",
+          "source": "/((?!assets/|favicon\\.ico).*)",
           "destination": "/index.html"
         }
       ]
@@ -20,11 +20,11 @@
           "destination": "/assets/$1"
         },
         {
-          "source": "/admin/(.*)",
+          "source": "/admin/((?!assets/|favicon\\.ico).*)",
           "destination": "/index.html"
         },
         {
-          "source": "/(.*)",
+          "source": "/((?!assets/|favicon\\.ico).*)",
           "destination": "/index.html"
         }
       ],

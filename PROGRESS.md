@@ -3,6 +3,15 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Stale Chunk Load Recovery & Vercel Asset Rewrite Fix (`master` branch)**:
+  - **Root Cause**: After deploying a new build to Vercel (`58f19e0`), open browser tabs holding the previous entry bundle (`index-CskPJUZC.js`) requested old hashed lazy chunks (e.g., `/assets/AppointmentsScreen-Dksje8El.js`). Because `vercel.json` rewrote `/(.*)` to `/index.html` without excluding `/assets/*`, Vercel returned HTTP `200 text/html` for missing `.js` chunk URLs (causing strict MIME type rejection + `TypeError: Failed to fetch dynamically imported module`). Clicking **Try Again** in `ErrorBoundary` re-attempted the same stale import URL in memory instead of reloading `index.html`.
+  - **Fixes Applied**:
+    - `src/utils/lazyWithRetry.ts`: Added `isChunkLoadError`, `triggerChunkReloadOnce` (single reload per 15s cooldown in `sessionStorage`), `clearChunkReloadGuard`, and `lazyWithRetry`.
+    - `src/App.tsx` & `src/modules/foundation/AppShell.tsx`: Switched all `React.lazy(...)` imports to `lazyWithRetry(...)`.
+    - `src/main.tsx`: Registered `vite:preloadError` listener to trigger `triggerChunkReloadOnce()`.
+    - `src/components/ErrorBoundary.tsx` & `src/locales/{en,bn}.json`: Updated chunk-load fallback messaging (bilingual EN/BN) and changed reset action on chunk errors to call `window.location.reload()`.
+    - `vercel.json` & `admin-app/vercel.json`: Excluded `/assets/` and `/favicon.ico` from SPA `/index.html` fallback rewrites (`"/((?!assets/|favicon\\.ico).*)"`).
+    - `tests/lazyWithRetry.test.ts` & `package.json`: Added automated unit test suite `npm run test:chunkRetry`.
 - [x] **Fix Null `.trim()` Crash on Case Edit & Repeated `/clients/:id/photo` 404 Spam (Completed & Verified)**:
   - **1. `Cannot read properties of null (reading 'trim')` when editing case status**:
     - Root cause: Nullable string columns stored as `null` in PostgreSQL (`fileSerial`, `description`, `plaintiff`, `defendant`, `plaintiffLawyer`, `defendantLawyer`, etc.) were loaded directly into React state in `src/modules/cases/CaseFormModal.tsx`, causing `.trim()` in `handleSubmit` to throw when saving a status change.

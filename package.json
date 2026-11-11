@@ -16,6 +16,7 @@
     "lint": "tsc --noEmit && tsc --noEmit --project admin-app/tsconfig.json",
     "test:health": "tsx scripts/runHealth.ts",
     "test:restFetch": "tsx tests/restFetch.test.ts",
+    "test:chunkRetry": "tsx tests/lazyWithRetry.test.ts",
     "test:hardening": "tsx tests/authAndContractHardening.test.ts",
     "test:consoleErrors": "tsx tests/browserConsoleErrors.test.ts",
     "test:photoPersistence": "tsx tests/clientPhotoUploadPersistence.test.ts",
