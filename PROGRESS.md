@@ -3,16 +3,19 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
-- [x] **Supabase Storage Integration Replacing R2 on 'cloudflare' Branch (Code & Buckets Provisioned; Worker Secret Key Pending)**:
+- [x] **Supabase Storage Integration Replacing R2 on 'cloudflare' Branch (Live Secret Bound & Storage Smoke-Tested)**:
   - **1. Supabase Project & Private Buckets Provisioned**:
     - Connected via Supabase MCP to project `rmuontqsoxwnzevtnvkc` (`ap-south-1`, `https://rmuontqsoxwnzevtnvkc.supabase.co`).
     - Created private storage buckets `bdlegal-photos` (`public = false`, 300 KB limit, JPEG/PNG/WebP allowlist) and `bdlegal-backups` (`public = false`, 50 MB limit) with RLS enabled and zero public policies.
     - Verified `get_advisors` (`security` and `health`) returned clean with 0 lints.
-  - **2. Cloudflare Worker Supabase Storage Client (`server-cloudflare/`)**:
+  - **2. Cloudflare Worker Secret & Live Supabase Storage Verification**:
+    - Bound `SUPABASE_SECRET_KEY` on Cloudflare Worker `bdlegal-api` via `wrangler secret put`.
+    - Executed live REST smoke test against `https://rmuontqsoxwnzevtnvkc.supabase.co/storage/v1` (`POST` upload -> `GET` authenticated download byte-exact match -> `DELETE` cleanup, HTTP 200 across all 3 operations) and verified live `https://bdlegal-api.lawyers-e-chamber.workers.dev/api/v1/health` returns `200 OK`.
+  - **3. Cloudflare Worker Supabase Storage Client (`server-cloudflare/`)**:
     - Added lightweight Web `fetch` Supabase Storage adapter in `server-cloudflare/src/services/supabaseStorage.ts` supporting both `sb_secret_...` (`apikey` header) and legacy `service_role` JWTs.
     - Updated `server-cloudflare/src/routes/clients.ts` (`PUT /api/v1/clients/:id/photo`, `GET /api/v1/clients/:id/photo` with binary and `?format=json` support, and `DELETE /api/v1/clients/:id/photo`) to store photos in Supabase Storage (`bdlegal-photos`) instead of R2, enforce JPEG/PNG/WebP magic-byte verification and 300 KB cap, stream with private cache headers, and record metadata-only `audit_log` rows.
     - Configured non-secret `[vars]` (`SUPABASE_URL`, `SUPABASE_PHOTOS_BUCKET`, `SUPABASE_BACKUPS_BUCKET`) in `server-cloudflare/wrangler.toml` and bindings in `server-cloudflare/src/middleware/auth.ts`.
-  - **3. Automated Test Verification**:
+  - **4. Automated Test Verification**:
     - Added Test 12 in `server-cloudflare/tests/cloudflareBackend.test.ts` verifying Supabase Storage PUT/GET/DELETE lifecycle, magic-byte rejection, lean D1 pointer rows (`bytes = ''`), and `SUBSCRIPTION_READ_ONLY` enforcement on photo mutations (12/12 tests passing).
 - [x] **Cloudflare Worker Live Deployment & Edge Smoke Tests (Completed on 'cloudflare' branch)**:
   - **1. Live Edge Deployment**:
