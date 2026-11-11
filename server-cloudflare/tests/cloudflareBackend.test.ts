@@ -120,6 +120,8 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     const data = (await res.json() as any);
     expect(data.user.email).toBe(ownerEmail);
     expect(data.user.role).toBe('Owner');
+    expect(data.user.active).toBe(true);
+    expect(data.user.permissions).toContain('cases.view');
     expect(data.user.mustChangePassword).toBe(true);
 
     const setCookie = res.headers.get('set-cookie');
@@ -179,6 +181,16 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     const data = (await res.json() as any);
     expect(data.caseNumber).toBe('WP-1042/2026');
     caseAId = data.id;
+
+    // Verify CasesScreen wildcard filter query (?status=all&court=ALL&scope=all) returns the created case
+    const listAllRes = await app.request(
+      '/api/v1/cases?status=all&court=ALL&scope=all',
+      { headers: { Cookie: ownerCookie } },
+      env
+    );
+    expect(listAllRes.status).toBe(200);
+    const listAllData = (await listAllRes.json()) as any[];
+    expect(listAllData.some((c) => c.id === caseAId)).toBe(true);
   });
 
   // 7. Schedule Hearing & Sync Case Next Hearing (Scenario 4)

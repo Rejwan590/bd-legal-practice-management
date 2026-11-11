@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../utils/crypto';
 import { signAdminToken } from '../utils/jwt';
 import { calculateMonthlyPriceBdt } from '../utils/pricing';
-import { generateSecureTemporaryPassword } from '../utils/security';
+import { generateSecureTemporaryPassword, ALL_OWNER_PERMISSIONS } from '../utils/security';
 import { buildAdminAuditEntry, buildAuditEntry } from '../utils/audit';
 import { eq, isNull, desc, and, sql, asc } from 'drizzle-orm';
 
@@ -364,7 +364,7 @@ adminRouter.post('/firms', adminAuthMiddleware, async (c) => {
     passwordHash,
     role: 'Owner' as const,
     jobType: 'lawyer_senior' as const,
-    permissions: ['*'],
+    permissions: [...ALL_OWNER_PERMISSIONS],
     language: 'en' as const,
     active: true,
     mustChangePassword: !data.ownerPassword,

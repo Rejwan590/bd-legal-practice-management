@@ -80,3 +80,42 @@ export function generateSecureTemporaryPassword(): string {
   }
   return picked.join('');
 }
+
+export const ALL_OWNER_PERMISSIONS: readonly string[] = [
+  'cases.view',
+  'cases.create',
+  'cases.edit',
+  'cases.delete',
+  'hearings.update',
+  'clients.view',
+  'clients.edit',
+  'appointments.view',
+  'appointments.manage',
+  'tasks.view',
+  'tasks.assign',
+  'tasks.complete',
+  'files.view',
+  'files.manage',
+  'restricted.view',
+  'billing.view',
+  'billing.manage',
+  'accounts.view',
+  'accounts.manage',
+  'expenses.record',
+  'accounts.export',
+  'users.manage',
+  'settings.manage',
+  'data.export',
+  'chamber_expenses.view',
+  'chamber_expenses.record',
+  'chamber_expenses.manage',
+  'chamber_expenses.salary',
+];
+
+export function normalizeUserPermissions(role: string, permissions: unknown): string[] {
+  const list = Array.isArray(permissions) ? (permissions as string[]) : [];
+  if (role === 'Owner' || list.includes('*')) {
+    return [...ALL_OWNER_PERMISSIONS];
+  }
+  return list;
+}

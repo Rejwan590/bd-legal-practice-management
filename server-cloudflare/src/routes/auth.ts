@@ -7,7 +7,13 @@ import * as schema from '../db/schema';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../utils/crypto';
 import { signUserToken, verifyUserToken } from '../utils/jwt';
 import { evaluateServerSubscription } from '../utils/subscription';
-import { generateRandomHex, sha256Hex, summarizeUserAgent, validatePasswordStrength } from '../utils/security';
+import {
+  generateRandomHex,
+  sha256Hex,
+  summarizeUserAgent,
+  validatePasswordStrength,
+  normalizeUserPermissions,
+} from '../utils/security';
 import { buildAuditEntry } from '../utils/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 
@@ -300,10 +306,12 @@ authRouter.post('/login', async (c) => {
       email: user.email,
       role: user.role,
       jobType: user.jobType,
-      jobTitleLabel: user.jobTitleLabel,
-      permissions: user.permissions,
+      jobTitleLabel: user.jobTitleLabel ?? null,
+      reportsToUserId: user.reportsToUserId ?? null,
+      permissions: normalizeUserPermissions(user.role, user.permissions),
       language: user.language,
-      mustChangePassword: user.mustChangePassword,
+      active: Boolean(user.active),
+      mustChangePassword: Boolean(user.mustChangePassword),
     },
     firm: {
       id: firm.id,
@@ -337,10 +345,12 @@ authRouter.get('/me', authMiddleware, async (c) => {
       email: user.email,
       role: user.role,
       jobType: user.jobType,
-      jobTitleLabel: user.jobTitleLabel,
-      permissions: user.permissions,
+      jobTitleLabel: user.jobTitleLabel ?? null,
+      reportsToUserId: user.reportsToUserId ?? null,
+      permissions: normalizeUserPermissions(user.role, user.permissions),
       language: user.language,
-      mustChangePassword: user.mustChangePassword,
+      active: Boolean(user.active),
+      mustChangePassword: Boolean(user.mustChangePassword),
     },
     firm,
     subscription: evaluateServerSubscription(firm),

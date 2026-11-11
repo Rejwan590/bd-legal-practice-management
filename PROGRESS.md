@@ -3,6 +3,17 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Live Browser E2E Verification & Runtime Parity Fixes on `cloudflare` Branch (Live on `bdlegal-api.lawyers-e-chamber.workers.dev`)**:
+  - **1. Live Synthetic Preview Provisioned on `bdlegal-d1-prod`**:
+    - Provisioned synthetic chamber `"Dhaka Synthetic Law Chambers"`, synthetic owner (`owner@synthetic-demo.test`), synthetic clients, cases (`WP-101/2026 (Synthetic)`, `CR-405/2026 (Synthetic)`), scheduled hearings, fee agreement (BDT 75,000), and receipt `REC-2026-00001` (BDT 35,000) directly via live Worker requests (`https://bdlegal-api.lawyers-e-chamber.workers.dev`).
+  - **2. Live Browser E2E Integration Bugfixes**:
+    - Expanded Owner permissions via `ALL_OWNER_PERMISSIONS` + `normalizeUserPermissions()` (`server-cloudflare/src/utils/security.ts`, `routes/admin.ts`, `routes/users.ts`, `routes/auth.ts`) and included `active: Boolean(user.active)` and `reportsToUserId` in `/auth/login` and `/auth/me` payloads so frontend `can()` checks unlock all 28 permissions cleanly.
+    - Updated `server-cloudflare/src/routes/cases.ts` and `hearings.ts` to ignore wildcard filter values (`status=all`, `court=ALL`, `matterType=ALL`), support `scope=my`, and apply `sortBy`/`sortOrder`.
+    - Added null-safe `c.fileSerial` rendering in `src/modules/cases/CasesScreen.tsx` when `fileSerial` is `null`.
+  - **3. Deployment & Full Verification**:
+    - Deployed updated `bdlegal-api` Worker to `https://bdlegal-api.lawyers-e-chamber.workers.dev` (Version ID: `b380bc18-dbb1-49e3-a2a9-13f1d58f5b51`, `695.42 KiB` / `122.48 KiB` gzip, `21 ms` startup).
+    - Verified live authenticated browser navigation across Dashboard, Cases Register, Clients Directory, Hearings, and Billing & Accounts against `https://bdlegal-api.lawyers-e-chamber.workers.dev` with zero console or network errors.
+    - Verified `npm run lint`, `npm run build --prefix server-cloudflare`, `npm test --prefix server-cloudflare` (`18/18` passing), `npm run build`, and `npm test --prefix server` all pass with exit code 0.
 - [x] **Cloudflare Workers Full Express Feature & API Contract Parity on `cloudflare` Branch (Deployed & Verified)**:
   - **1. Remote D1 Cleanup & Hygiene**:
     - Cleaned synthetic E2E test rows from remote `bdlegal-d1-prod` while preserving all 4 seeded subscription plans (`plans_count: 4`, `firms_count: 0`, `admins_count: 0`).

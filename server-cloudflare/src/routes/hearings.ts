@@ -29,7 +29,9 @@ hearingsRouter.get('/', requirePermission('cases.view'), async (c) => {
   const conditions = [eq(schema.hearings.firmId, firm.id), isNull(schema.hearings.deletedAt)];
   if (visible !== 'ALL') conditions.push(inArray(schema.hearings.caseId, visible));
   if (caseId) conditions.push(eq(schema.hearings.caseId, caseId));
-  if (status) conditions.push(eq(schema.hearings.status, status as any));
+  if (status && status.toLowerCase() !== 'all') {
+    conditions.push(eq(schema.hearings.status, (status === 'completed' ? 'held' : status) as any));
+  }
   if (fromDate) conditions.push(sql`${schema.hearings.scheduledAt} >= ${fromDate}`);
   if (toDate) conditions.push(sql`${schema.hearings.scheduledAt} <= ${toDate}`);
 

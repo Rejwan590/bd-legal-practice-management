@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Env, authMiddleware, enforceSubscriptionReadOnly, requirePermission, requireOwner } from '../middleware/auth';
 import { getDb } from '../db/client';
 import * as schema from '../db/schema';
-import { eq, and, isNull, sql, desc, inArray } from 'drizzle-orm';
+import { eq, and, isNull, sql, asc, desc, inArray } from 'drizzle-orm';
 import { getVisibleCaseIds, canUserSeeCaseId } from '../utils/visibility';
 import { buildAuditEntry } from '../utils/audit';
 
@@ -44,6 +44,11 @@ casesRouter.get('/', requirePermission('cases.view'), async (c) => {
   const firm = c.get('firm') as schema.Firm;
   const user = c.get('user') as schema.User;
   const status = c.req.query('status');
+  const court = c.req.query('court');
+  const matterType = c.req.query('matterType');
+  const scope = c.req.query('scope');
+  const sortBy = c.req.query('sortBy');
+  const sortOrder = c.req.query('sortOrder');
   const clientId = c.req.query('clientId');
   const responsibleLawyerId = c.req.query('responsibleLawyerId');
   const search = (c.req.query('search') || c.req.query('q'))?.trim();
@@ -61,8 +66,17 @@ casesRouter.get('/', requirePermission('cases.view'), async (c) => {
   if (visible !== 'ALL') {
     conditions.push(inArray(schema.cases.id, visible));
   }
-  if (status) {
+  if (status && status.toLowerCase() !== 'all') {
     conditions.push(eq(schema.cases.status, status as any));
+  }
+  if (court && court.toLowerCase() !== 'all') {
+    conditions.push(eq(schema.cases.court, court));
+  }
+  if (matterType && matterType.toLowerCase() !== 'all') {
+    conditions.push(eq(schema.cases.matterType, matterType));
+  }
+  if (scope === 'my') {
+    conditions.push(eq(schema.cases.responsibleLawyerId, user.id));
   }
   if (clientId) {
     conditions.push(eq(schema.cases.clientId, clientId));
@@ -77,13 +91,21 @@ casesRouter.get('/', requirePermission('cases.view'), async (c) => {
     );
   }
 
+  const sortCol =
+    sortBy === 'updated_at'
+      ? schema.cases.updatedAt
+      : sortBy === 'case_date'
+        ? schema.cases.caseDate
+        : schema.cases.createdAt;
+  const orderExpr = sortOrder === 'asc' ? asc(sortCol) : desc(sortCol);
+
   const rows = await db
     .select()
     .from(schema.cases)
     .where(and(...conditions))
     .limit(limit)
     .offset(offset)
-    .orderBy(desc(schema.cases.createdAt));
+    .orderBy(orderExpr);
 
   return c.json(rows);
 });

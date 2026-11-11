@@ -5,7 +5,7 @@ import { getDb } from '../db/client';
 import * as schema from '../db/schema';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { hashPassword } from '../utils/crypto';
-import { generateSecureTemporaryPassword } from '../utils/security';
+import { generateSecureTemporaryPassword, ALL_OWNER_PERMISSIONS, normalizeUserPermissions } from '../utils/security';
 import { buildAuditEntry } from '../utils/audit';
 
 export const usersRouter = new Hono<{ Bindings: Env; Variables: any }>();
@@ -58,7 +58,7 @@ function sanitizeUser(u: schema.User) {
     jobType: u.jobType,
     jobTitleLabel: u.jobTitleLabel ?? null,
     reportsToUserId: u.reportsToUserId ?? null,
-    permissions: u.permissions,
+    permissions: normalizeUserPermissions(u.role, u.permissions),
     language: u.language,
     active: u.active,
     mustChangePassword: u.mustChangePassword,
@@ -161,7 +161,7 @@ usersRouter.post('/', enforceSubscriptionReadOnly, async (c) => {
   const resolvedJobType = data.jobType || presetDef?.defaultJobType || (data.role === 'Owner' ? 'lawyer_senior' : 'other');
   const resolvedPermissions =
     data.role === 'Owner'
-      ? ['*']
+      ? [...ALL_OWNER_PERMISSIONS]
       : data.permissions ?? presetDef?.permissions ?? ['cases.view', 'clients.view', 'tasks.view'];
 
   const rawPassword = data.temporaryPassword || generateSecureTemporaryPassword();
