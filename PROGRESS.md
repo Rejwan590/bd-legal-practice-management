@@ -3,6 +3,17 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Client Dossier In-Place Appointment Scheduling & Editing (`lockClientId` Hub Modal)**:
+  - **Root Cause**: Clicking **Schedule Appointment** inside `src/modules/clients/ClientProfileView.tsx` called `navigateToScreen('appointments')`, redirecting to the main Appointments screen without preselecting or locking the client. `AppointmentFormModal` also lacked a `lockClientId` prop, and `NavigationContext` did not expose a global `openAppointmentForm` hub modal.
+  - **Fixes Applied**:
+    - `src/modules/appointments/AppointmentFormModal.tsx`: Added optional `lockClientId?: boolean` prop to `AppointmentFormModalProps`, disabling the **Linked Client** `<select>` and displaying the `Lock` + `hub.lockedField` indicator when locked while keeping **Linked Case** filtered to that client's cases.
+    - `src/modules/foundation/NavigationContext.tsx`: Added `appointmentFormState`, `openAppointmentForm`, and global `<AppointmentFormModal>` rendering with `triggerRefresh()` on save, and updated `openEntityModalById('appointment', id)` to open the modal in-place when permitted.
+    - `src/modules/clients/ClientProfileView.tsx`: Wired **Schedule Appointment** (`client-add-appointment-btn`) to `openAppointmentForm({ defaultClientId: client.id, lockClientId: true })` and added an in-place **Edit** button on each appointment card calling `openAppointmentForm({ initialData: appt, lockClientId: true })`.
+  - **Verification**:
+    - `npm run lint` (`tsc --noEmit && tsc --noEmit --project admin-app/tsconfig.json`) -> passed (0 errors).
+    - `npm test --prefix server` -> all 20 server test suites passed (0 failures).
+    - `npm run build` -> passed (`dist/` built in 4.37s).
+
 - [x] **Phase 9 — Calendar & Automated Reminders Backend (`cloudflare` & `master`)**:
   - **PostgreSQL + Express (`/server`)**:
     - Added `reminders` table to `server/src/db/schema.ts` and migration `server/drizzle/0016_reminders.sql` (+ journal entry `idx: 16` in `server/drizzle/meta/_journal.json`).

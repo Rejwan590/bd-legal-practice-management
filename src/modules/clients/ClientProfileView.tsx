@@ -76,7 +76,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     openFileCheckOut,
     openFileCheckIn,
     openFileHistory,
-    navigateToScreen,
+    openAppointmentForm,
   } = useNavigation();
   const repos = getRepositories();
 
@@ -757,7 +757,12 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
                   type="button"
                   data-testid="client-add-appointment-btn"
                   disabled={isReadOnly}
-                  onClick={() => navigateToScreen('appointments')}
+                  onClick={() =>
+                    openAppointmentForm({
+                      defaultClientId: client.id,
+                      lockClientId: true,
+                    })
+                  }
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition disabled:opacity-40 min-h-[38px]"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -816,6 +821,19 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
                         <p className="text-xs text-slate-600 mt-1 italic">{appt.notes}</p>
                       )}
                     </div>
+                    {canManageAppointments && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => openAppointmentForm({ initialData: appt, lockClientId: true })}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-40 min-h-[34px]"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>{t('common.edit')}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

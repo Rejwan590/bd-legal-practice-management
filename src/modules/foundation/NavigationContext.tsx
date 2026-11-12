@@ -2,12 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useAuth } from './AuthContext';
 import { getRepositories } from '../../data/repositories';
 import {
+  AppointmentRecord,
   CaseRecord,
   ClientRecord,
   HearingRecord,
   PhysicalFileRecord,
   TaskRecord,
 } from '../../data/types';
+import { AppointmentFormModal } from '../appointments/AppointmentFormModal';
 import { CaseFormModal } from '../cases/CaseFormModal';
 import { ClientFormModal } from '../clients/ClientFormModal';
 import { HearingFormModal } from '../hearings/HearingFormModal';
@@ -226,6 +228,12 @@ interface NavigationContextValue {
   openFileCheckOut: (file: PhysicalFileRecord) => void;
   openFileCheckIn: (file: PhysicalFileRecord) => void;
   openFileHistory: (file: PhysicalFileRecord) => void;
+  openAppointmentForm: (opts?: {
+    initialData?: AppointmentRecord | null;
+    defaultClientId?: string;
+    defaultCaseId?: string;
+    lockClientId?: boolean;
+  }) => void;
   openEntityModalById: (
     entity: 'hearing' | 'task' | 'file' | 'case' | 'client' | 'appointment',
     id: string
@@ -319,6 +327,14 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [fileCheckOutTarget, setFileCheckOutTarget] = useState<PhysicalFileRecord | null>(null);
   const [fileCheckInTarget, setFileCheckInTarget] = useState<PhysicalFileRecord | null>(null);
   const [fileHistoryTarget, setFileHistoryTarget] = useState<PhysicalFileRecord | null>(null);
+
+  const [appointmentFormState, setAppointmentFormState] = useState<{
+    isOpen: boolean;
+    initialData?: AppointmentRecord | null;
+    defaultClientId?: string;
+    defaultCaseId?: string;
+    lockClientId?: boolean;
+  }>({ isOpen: false });
 
   // Normalize initial URL if hash was used or /cases/:id lacked tab
   useEffect(() => {
@@ -576,12 +592,36 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFileHistoryTarget(file);
   }, []);
 
+  const openAppointmentForm = useCallback(
+    (opts?: {
+      initialData?: AppointmentRecord | null;
+      defaultClientId?: string;
+      defaultCaseId?: string;
+      lockClientId?: boolean;
+    }) => {
+      if (isReadOnly || !can('appointments.manage')) return;
+      setAppointmentFormState({
+        isOpen: true,
+        initialData: opts?.initialData || null,
+        defaultClientId: opts?.defaultClientId,
+        defaultCaseId: opts?.defaultCaseId,
+        lockClientId: opts?.lockClientId,
+      });
+    },
+    [can, isReadOnly]
+  );
+
   const openEntityModalById = useCallback(
     async (entity: 'hearing' | 'task' | 'file' | 'case' | 'client' | 'appointment', id: string) => {
       if (!currentUser) return;
       try {
         if (entity === 'appointment') {
-          navigateToScreen('appointments');
+          const appt = await repos.appointment.getById({ currentUser }, id);
+          if (appt && !isReadOnly && can('appointments.manage')) {
+            openAppointmentForm({ initialData: appt });
+          } else {
+            navigateToScreen('appointments');
+          }
           return;
         }
         if (entity === 'case') {
@@ -644,6 +684,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       openTaskForm,
       openTaskComplete,
       openFileForm,
+      openAppointmentForm,
       navigateToScreen,
     ]
   );
@@ -681,6 +722,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         openFileCheckOut,
         openFileCheckIn,
         openFileHistory,
+        openAppointmentForm,
         openEntityModalById,
       }}
     >
@@ -868,6 +910,18 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isOpen={Boolean(fileHistoryTarget)}
             file={fileHistoryTarget}
             onClose={() => setFileHistoryTarget(null)}
+          />
+
+          <AppointmentFormModal
+            isOpen={appointmentFormState.isOpen}
+            initialData={appointmentFormState.initialData}
+            defaultClientId={appointmentFormState.defaultClientId}
+            defaultCaseId={appointmentFormState.defaultCaseId}
+            lockClientId={appointmentFormState.lockClientId}
+            onClose={() => setAppointmentFormState({ isOpen: false })}
+            onSaved={() => {
+              triggerRefresh();
+            }}
           />
         </>
       )}
