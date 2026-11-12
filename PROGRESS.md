@@ -3,6 +3,17 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Full-Chamber Backup Extension (Billing Ledger, Chamber Expenses/Advances & Case Shares on `cloudflare` branch)**:
+  - **Shared Types & Packaging (`src/`)**:
+    - Added `NumberSequenceRecord` and extended `ChamberBackupCounts` and `ChamberBackupData` in `src/data/types.ts` with optional `caseShares`, `feeAgreements`, `feeAgreementChanges`, `numberSequences`, `feePayments`, `expenseCategories`, `expenses`, `chamberExpenseCategories`, `chamberAdvances`, `chamberExpenses`, and `chamberAdvanceSettlements` (preserving backward compatibility with older backups).
+    - Updated `packageChamberBackup` in `src/data/repositories/backup.ts` so counts and SHA-256 checksums cover all extended collections.
+  - **Backend Export & Restore (`server-cloudflare/src/routes/backup.ts`)**:
+    - Extended `GET /api/v1/backup/export` to query all 11 billing, chamber-expense, and case-share tables (firm-scoped, `deletedAt IS NULL`), enforcing `restricted.view` / `hiddenCaseIdSet` filtering on `caseShares`, case-linked `feeAgreements`, `feeAgreementChanges`, `feePayments`, and `expenses` while preserving client-level (`caseId: null`) billing records.
+    - Extended `POST /api/v1/backup/restore` with Zod validation, dependency-ordered upserts, `merge`-mode parent linking against existing firm `clients`/`cases`, safe `users` FK resolution (`validUserIds` / `null` fallback for `givenToUserId`), `clean`-mode unique-index suffixing on `(firm_id, receipt_number)` and `(firm_id, idempotency_key)`, and `numberSequences` `max`/`clean` upsert.
+  - **Tests & Verification**:
+    - Added Test 26 in `server-cloudflare/tests/cloudflareBackend.test.ts` verifying full-chamber export/restore round-trip, `restricted.view` filtering, `merge` mode against existing clients, `clean` mode re-restore without unique-index collisions, and missing `userId` fallback.
+    - Verified `npm run lint`, `npm test --prefix server-cloudflare` (`26 passed (26)`), `npm run test:health` (`89 passed, 0 failed`), and `npm run build:pages`.
+
 - [x] **Chamber Backup & Restore Backend + REST Parity (`cloudflare` branch)**:
   - **Root Cause**: `src/data/repositories/index.ts` hardcoded `backupRepo` to `MockBackupRepository(auditLogRepo)` even in `isRestMode`, and `server-cloudflare` lacked `/api/v1/backup/*` routes. Exporting on live chambers threw `Firm ID mismatch: User firm <uuid> does not match store firm firm-bd-001`.
   - **Backend (`server-cloudflare/`)**:

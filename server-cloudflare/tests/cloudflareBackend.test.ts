@@ -2217,4 +2217,265 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     expect(firmDClient.firmId).toBe(exported.firm.id);
     expect(firmDClient.name).toBe('Restored Mock Client');
   });
+
+  it('26. Full-Chamber Backup includes billing ledger, chamber expenses/advances, and case shares with restricted.view filtering', async () => {
+    const db = getDb(mockD1);
+
+    // Export current Firm D to get firmId & an existing client
+    const preExportRes = await app.request('/api/v1/backup/export', { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(preExportRes.status).toBe(200);
+    const preExport = (await preExportRes.json()) as any;
+    const firmDId = preExport.firm.id;
+    const existingClientId = preExport.clients[0].id;
+
+    // Create a staff user with data.export & cases.view, WITHOUT restricted.view
+    const exportClerkRes = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          name: 'Restricted Export Clerk',
+          email: 'export.clerk@firm-d.test',
+          jobType: 'clerk',
+          permissions: ['cases.view', 'clients.view', 'data.export'],
+        }),
+      },
+      env
+    );
+    expect(exportClerkRes.status).toBe(201);
+    const exportClerkCreated = (await exportClerkRes.json()) as any;
+    const exportClerkLogin = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'export.clerk@firm-d.test', password: exportClerkCreated.temporaryPassword }),
+      },
+      env
+    );
+    expect(exportClerkLogin.status).toBe(200);
+    const exportClerkCookie = exportClerkLogin.headers.get('set-cookie')!;
+
+    // Restore a full-chamber dataset (normal case + restricted case + shares + billing + chamber expenses)
+    const normalCaseId = crypto.randomUUID();
+    const restrictedCaseId = crypto.randomUUID();
+    const normalShareId = crypto.randomUUID();
+    const restrictedShareId = crypto.randomUUID();
+    const expCatId = crypto.randomUUID();
+    const clientLevelAgrId = crypto.randomUUID();
+    const restrictedAgrId = crypto.randomUUID();
+    const restrictedAgrChangeId = crypto.randomUUID();
+    const clientPayId = crypto.randomUUID();
+    const restrictedPayId = crypto.randomUUID();
+    const restrictedExpId = crypto.randomUUID();
+    const chExpCatId = crypto.randomUUID();
+    const chAdvId = crypto.randomUUID();
+    const chExpId = crypto.randomUUID();
+    const chSettleId = crypto.randomUUID();
+
+    const restoreRes = await app.request(
+      '/api/v1/backup/restore',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          mode: 'merge',
+          data: {
+            clients: [],
+            cases: [
+              {
+                id: normalCaseId,
+                clientId: existingClientId,
+                fileSerial: 'FULL-BK-NORM-1',
+                caseNumber: 'NORM-2026',
+                court: 'Dhaka Judge Court',
+                matterType: 'civil',
+                status: 'ongoing',
+                restricted: false,
+              },
+              {
+                id: restrictedCaseId,
+                clientId: existingClientId,
+                fileSerial: 'FULL-BK-REST-1',
+                caseNumber: 'REST-2026',
+                court: 'High Court Division',
+                matterType: 'criminal_gr',
+                status: 'ongoing',
+                restricted: true,
+              },
+            ],
+            caseShares: [
+              { id: normalShareId, caseId: normalCaseId, userId: exportClerkCreated.id },
+              { id: restrictedShareId, caseId: restrictedCaseId, userId: exportClerkCreated.id },
+            ],
+            expenseCategories: [{ id: expCatId, name: 'Court Fee', isDefault: true }],
+            feeAgreements: [
+              {
+                id: clientLevelAgrId,
+                clientId: existingClientId,
+                caseId: null,
+                feeType: 'retainer',
+                agreedAmountPaisa: 500000,
+                agreementDate: '2026-11-01',
+                status: 'active',
+              },
+              {
+                id: restrictedAgrId,
+                clientId: existingClientId,
+                caseId: restrictedCaseId,
+                feeType: 'fixed',
+                agreedAmountPaisa: 900000,
+                agreementDate: '2026-11-01',
+                status: 'active',
+              },
+            ],
+            feeAgreementChanges: [
+              {
+                id: restrictedAgrChangeId,
+                feeAgreementId: restrictedAgrId,
+                oldAmountPaisa: 800000,
+                newAmountPaisa: 900000,
+                reason: 'Additional hearing scope',
+              },
+            ],
+            numberSequences: [{ type: 'receipt', prefix: 'RCP-', currentVal: 42 }],
+            feePayments: [
+              {
+                id: clientPayId,
+                clientId: existingClientId,
+                caseId: null,
+                feeAgreementId: clientLevelAgrId,
+                paymentDate: '2026-11-02',
+                amountPaisa: 200000,
+                method: 'bkash',
+                receiptNumber: 'RCP-0041',
+                purposeNote: 'Retainer installment',
+                idempotencyKey: 'idem-client-pay-1',
+              },
+              {
+                id: restrictedPayId,
+                clientId: existingClientId,
+                caseId: restrictedCaseId,
+                feeAgreementId: restrictedAgrId,
+                paymentDate: '2026-11-03',
+                amountPaisa: 300000,
+                method: 'bank',
+                receiptNumber: 'RCP-0042',
+                purposeNote: 'Restricted case advance',
+                idempotencyKey: 'idem-restricted-pay-1',
+              },
+            ],
+            expenses: [
+              {
+                id: restrictedExpId,
+                clientId: existingClientId,
+                caseId: restrictedCaseId,
+                categoryId: expCatId,
+                expenseDate: '2026-11-04',
+                amountPaisa: 15000,
+                description: 'Restricted stamp fee',
+              },
+            ],
+            chamberExpenseCategories: [
+              { id: chExpCatId, name: 'Office Rent', nameBn: 'অফিস ভাড়া', kind: 'general', isDefault: true },
+            ],
+            chamberAdvances: [
+              {
+                id: chAdvId,
+                givenTo: 'Clerk Karim',
+                givenToUserId: 'missing-user-id',
+                amountPaisa: 100000,
+                givenDate: '2026-11-01',
+                purpose: 'Court filing float',
+                paymentMethod: 'cash',
+                status: 'open',
+              },
+            ],
+            chamberExpenses: [
+              {
+                id: chExpId,
+                categoryId: chExpCatId,
+                description: 'November Rent',
+                amountPaisa: 2500000,
+                expenseDate: '2026-11-05',
+                paidTo: 'Landlord',
+                paymentMethod: 'bank',
+                advanceId: chAdvId,
+              },
+            ],
+            chamberAdvanceSettlements: [
+              {
+                id: chSettleId,
+                advanceId: chAdvId,
+                type: 'expense',
+                expenseId: chExpId,
+                amountPaisa: 50000,
+                settledDate: '2026-11-06',
+              },
+            ],
+          },
+        }),
+      },
+      env
+    );
+    expect(restoreRes.status).toBe(200);
+    const restoreJson = (await restoreRes.json()) as any;
+    expect(restoreJson.counts.caseShares).toBe(2);
+    expect(restoreJson.counts.feeAgreements).toBe(2);
+    expect(restoreJson.counts.feeAgreementChanges).toBe(1);
+    expect(restoreJson.counts.feePayments).toBe(2);
+    expect(restoreJson.counts.expenses).toBe(1);
+    expect(restoreJson.counts.chamberAdvances).toBe(1);
+    expect(restoreJson.counts.chamberExpenses).toBe(1);
+    expect(restoreJson.counts.chamberAdvanceSettlements).toBe(1);
+
+    // Owner export sees EVERYTHING
+    const ownerExportRes = await app.request('/api/v1/backup/export', { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(ownerExportRes.status).toBe(200);
+    const ownerExport = (await ownerExportRes.json()) as any;
+    expect(ownerExport.caseShares.some((s: any) => s.id === restrictedShareId)).toBe(true);
+    expect(ownerExport.feeAgreements.some((a: any) => a.id === restrictedAgrId)).toBe(true);
+    expect(ownerExport.feeAgreements.some((a: any) => a.id === clientLevelAgrId)).toBe(true);
+    expect(ownerExport.feeAgreementChanges.some((c: any) => c.id === restrictedAgrChangeId)).toBe(true);
+    expect(ownerExport.feePayments.some((p: any) => p.id === restrictedPayId)).toBe(true);
+    expect(ownerExport.expenses.some((e: any) => e.id === restrictedExpId)).toBe(true);
+    expect(ownerExport.chamberAdvances.find((a: any) => a.id === chAdvId)?.givenToUserId).toBeNull();
+    expect(ownerExport.chamberExpenses.some((ce: any) => ce.id === chExpId)).toBe(true);
+    expect(ownerExport.chamberAdvanceSettlements.some((cs: any) => cs.id === chSettleId)).toBe(true);
+    expect(ownerExport.numberSequences.some((ns: any) => ns.type === 'receipt' && ns.currentVal >= 42)).toBe(true);
+
+    // Restricted-less staff export EXCLUDES restricted case's shares/billing/expenses, KEEPS client-level agreement & payment
+    const clerkExportRes = await app.request('/api/v1/backup/export', { headers: { Cookie: exportClerkCookie } }, env);
+    expect(clerkExportRes.status).toBe(200);
+    const clerkExport = (await clerkExportRes.json()) as any;
+    expect(clerkExport.caseShares.some((s: any) => s.id === normalShareId)).toBe(true);
+    expect(clerkExport.caseShares.some((s: any) => s.id === restrictedShareId)).toBe(false);
+    expect(clerkExport.feeAgreements.some((a: any) => a.id === clientLevelAgrId)).toBe(true);
+    expect(clerkExport.feeAgreements.some((a: any) => a.id === restrictedAgrId)).toBe(false);
+    expect(clerkExport.feeAgreementChanges.some((c: any) => c.id === restrictedAgrChangeId)).toBe(false);
+    expect(clerkExport.feePayments.some((p: any) => p.id === clientPayId)).toBe(true);
+    expect(clerkExport.feePayments.some((p: any) => p.id === restrictedPayId)).toBe(false);
+    expect(clerkExport.expenses.some((e: any) => e.id === restrictedExpId)).toBe(false);
+
+    // Clean-mode re-restore of the owner export succeeds without unique-constraint collision on fee_payments
+    const cleanRestoreRes = await app.request(
+      '/api/v1/backup/restore',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          mode: 'clean',
+          data: ownerExport,
+        }),
+      },
+      env
+    );
+    expect(cleanRestoreRes.status).toBe(200);
+    const cleanRows = await db
+      .select()
+      .from(schema.feePayments)
+      .where(eq(schema.feePayments.firmId, firmDId));
+    expect(cleanRows.some((p) => p.id === clientPayId && p.deletedAt === null)).toBe(true);
+  });
 });

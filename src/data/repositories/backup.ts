@@ -50,6 +50,17 @@ export async function packageChamberBackup(
     clientNotes: data.clientNotes?.length || 0,
     caseNotes: data.caseNotes?.length || 0,
     appointments: data.appointments?.length || 0,
+    caseShares: data.caseShares?.length || 0,
+    feeAgreements: data.feeAgreements?.length || 0,
+    feeAgreementChanges: data.feeAgreementChanges?.length || 0,
+    numberSequences: data.numberSequences?.length || 0,
+    feePayments: data.feePayments?.length || 0,
+    expenseCategories: data.expenseCategories?.length || 0,
+    expenses: data.expenses?.length || 0,
+    chamberExpenseCategories: data.chamberExpenseCategories?.length || 0,
+    chamberAdvances: data.chamberAdvances?.length || 0,
+    chamberExpenses: data.chamberExpenses?.length || 0,
+    chamberAdvanceSettlements: data.chamberAdvanceSettlements?.length || 0,
   };
 
   const isEncrypted = Boolean(options?.password && options.password.trim().length > 0);

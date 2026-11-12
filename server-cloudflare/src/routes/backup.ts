@@ -83,6 +83,52 @@ function normalizeAppointmentStatus(raw: unknown): 'scheduled' | 'completed' | '
   return 'scheduled';
 }
 
+function normalizeFeeType(raw: unknown): 'fixed' | 'per_hearing' | 'hourly' | 'retainer' | 'installment' {
+  if (raw === 'fixed' || raw === 'per_hearing' || raw === 'hourly' || raw === 'retainer' || raw === 'installment') {
+    return raw;
+  }
+  return 'fixed';
+}
+
+function normalizeFeeAgreementStatus(raw: unknown): 'active' | 'closed' | 'void' {
+  if (raw === 'active' || raw === 'closed' || raw === 'void') return raw;
+  return 'active';
+}
+
+function normalizePaymentMethod(raw: unknown): 'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other' {
+  if (raw === 'cash' || raw === 'bank' || raw === 'bkash' || raw === 'nagad' || raw === 'cheque' || raw === 'other') {
+    return raw;
+  }
+  return 'cash';
+}
+
+function normalizePostedVoidStatus(raw: unknown): 'posted' | 'void' {
+  if (raw === 'posted' || raw === 'void') return raw;
+  return 'posted';
+}
+
+function normalizeChamberExpenseKind(raw: unknown): 'general' | 'salary' {
+  if (raw === 'general' || raw === 'salary') return raw;
+  return 'general';
+}
+
+function normalizeChamberPaymentMethod(raw: unknown): 'cash' | 'bank' | 'mobile_banking' | 'cheque' | 'other' {
+  if (raw === 'cash' || raw === 'bank' || raw === 'mobile_banking' || raw === 'cheque' || raw === 'other') {
+    return raw;
+  }
+  return 'cash';
+}
+
+function normalizeChamberAdvanceStatus(raw: unknown): 'open' | 'settled' | 'void' {
+  if (raw === 'open' || raw === 'settled' || raw === 'void') return raw;
+  return 'open';
+}
+
+function normalizeChamberSettlementType(raw: unknown): 'expense' | 'refund' {
+  if (raw === 'expense' || raw === 'refund') return raw;
+  return 'expense';
+}
+
 // GET /api/v1/backup/export
 // Remains available even during expired subscription read-only mode (Rule 10 & Rule 14).
 backupRouter.get('/export', requirePermission('data.export'), async (c) => {
@@ -96,6 +142,7 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     allClientNotes,
     allCases,
     allCaseNotes,
+    allCaseShares,
     allHearings,
     allHearingHistory,
     allTasks,
@@ -104,6 +151,16 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     allAppointments,
     allAppointmentAttendees,
     allReminders,
+    allFeeAgreements,
+    allFeeAgreementChanges,
+    allNumberSequences,
+    allFeePayments,
+    allExpenseCategories,
+    allExpenses,
+    allChamberExpenseCategories,
+    allChamberAdvances,
+    allChamberExpenses,
+    allChamberAdvanceSettlements,
     allAuditLogs,
     visibleCases,
   ] = await Promise.all([
@@ -111,6 +168,7 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     db.select().from(schema.clientNotes).where(and(eq(schema.clientNotes.firmId, firm.id), isNull(schema.clientNotes.deletedAt))),
     db.select().from(schema.cases).where(and(eq(schema.cases.firmId, firm.id), isNull(schema.cases.deletedAt))),
     db.select().from(schema.caseNotes).where(and(eq(schema.caseNotes.firmId, firm.id), isNull(schema.caseNotes.deletedAt))),
+    db.select().from(schema.caseShares).where(and(eq(schema.caseShares.firmId, firm.id), isNull(schema.caseShares.deletedAt))),
     db.select().from(schema.hearings).where(and(eq(schema.hearings.firmId, firm.id), isNull(schema.hearings.deletedAt))),
     db.select().from(schema.hearingDateHistory).where(eq(schema.hearingDateHistory.firmId, firm.id)),
     db.select().from(schema.tasks).where(and(eq(schema.tasks.firmId, firm.id), isNull(schema.tasks.deletedAt))),
@@ -119,6 +177,16 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     db.select().from(schema.appointments).where(and(eq(schema.appointments.firmId, firm.id), isNull(schema.appointments.deletedAt))),
     db.select().from(schema.appointmentAttendees).where(eq(schema.appointmentAttendees.firmId, firm.id)),
     db.select().from(schema.reminders).where(and(eq(schema.reminders.firmId, firm.id), isNull(schema.reminders.deletedAt))),
+    db.select().from(schema.feeAgreements).where(and(eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt))),
+    db.select().from(schema.feeAgreementChanges).where(eq(schema.feeAgreementChanges.firmId, firm.id)),
+    db.select().from(schema.numberSequences).where(eq(schema.numberSequences.firmId, firm.id)),
+    db.select().from(schema.feePayments).where(and(eq(schema.feePayments.firmId, firm.id), isNull(schema.feePayments.deletedAt))),
+    db.select().from(schema.expenseCategories).where(and(eq(schema.expenseCategories.firmId, firm.id), isNull(schema.expenseCategories.deletedAt))),
+    db.select().from(schema.expenses).where(and(eq(schema.expenses.firmId, firm.id), isNull(schema.expenses.deletedAt))),
+    db.select().from(schema.chamberExpenseCategories).where(and(eq(schema.chamberExpenseCategories.firmId, firm.id), isNull(schema.chamberExpenseCategories.deletedAt))),
+    db.select().from(schema.chamberAdvances).where(and(eq(schema.chamberAdvances.firmId, firm.id), isNull(schema.chamberAdvances.deletedAt))),
+    db.select().from(schema.chamberExpenses).where(and(eq(schema.chamberExpenses.firmId, firm.id), isNull(schema.chamberExpenses.deletedAt))),
+    db.select().from(schema.chamberAdvanceSettlements).where(and(eq(schema.chamberAdvanceSettlements.firmId, firm.id), isNull(schema.chamberAdvanceSettlements.deletedAt))),
     db.select().from(schema.auditLog).where(and(eq(schema.auditLog.firmId, firm.id), isNull(schema.auditLog.deletedAt))).orderBy(desc(schema.auditLog.timestamp)).limit(1000),
     getVisibleCaseIds(db, firm, user),
   ]);
@@ -130,6 +198,7 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
   const hiddenCaseIdSet = new Set(allCases.filter((cs) => visibleCaseSet && !visibleCaseSet.has(cs.id)).map((cs) => cs.id));
 
   const exportedCaseNotes = hiddenCaseIdSet.size > 0 ? allCaseNotes.filter((cn) => !hiddenCaseIdSet.has(cn.caseId)) : allCaseNotes;
+  const exportedCaseShares = hiddenCaseIdSet.size > 0 ? allCaseShares.filter((cs) => !hiddenCaseIdSet.has(cs.caseId)) : allCaseShares;
   const hiddenHearingIdSet = new Set(allHearings.filter((h) => hiddenCaseIdSet.has(h.caseId)).map((h) => h.id));
   const exportedHearings = hiddenCaseIdSet.size > 0 ? allHearings.filter((h) => !hiddenHearingIdSet.has(h.id)) : allHearings;
   const exportedHearingHistory = hiddenCaseIdSet.size > 0 ? allHearingHistory.filter((hd) => !hiddenHearingIdSet.has(hd.hearingId)) : allHearingHistory;
@@ -157,6 +226,29 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
         })
       : allReminders;
 
+  const hiddenFeeAgreementIdSet = new Set(
+    allFeeAgreements.filter((fa) => fa.caseId && hiddenCaseIdSet.has(fa.caseId)).map((fa) => fa.id)
+  );
+  const exportedFeeAgreements =
+    hiddenCaseIdSet.size > 0 ? allFeeAgreements.filter((fa) => !hiddenFeeAgreementIdSet.has(fa.id)) : allFeeAgreements;
+  const exportedFeeAgreementChanges =
+    hiddenCaseIdSet.size > 0
+      ? allFeeAgreementChanges.filter((fc) => !hiddenFeeAgreementIdSet.has(fc.feeAgreementId))
+      : allFeeAgreementChanges;
+  const exportedFeePayments =
+    hiddenCaseIdSet.size > 0
+      ? allFeePayments.filter(
+          (fp) =>
+            !(fp.caseId && hiddenCaseIdSet.has(fp.caseId)) &&
+            !(fp.feeAgreementId && hiddenFeeAgreementIdSet.has(fp.feeAgreementId)) &&
+            !(fp.hearingId && hiddenHearingIdSet.has(fp.hearingId))
+        )
+      : allFeePayments;
+  const exportedExpenses =
+    hiddenCaseIdSet.size > 0
+      ? allExpenses.filter((ex) => !(ex.caseId && hiddenCaseIdSet.has(ex.caseId)))
+      : allExpenses;
+
   const exportedAuditLogs =
     hiddenCaseIdSet.size > 0 || !canSeeRestricted
       ? allAuditLogs.filter((a) => {
@@ -182,10 +274,16 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
       counts: {
         clients: allClients.length,
         cases: exportedCases.length,
+        caseShares: exportedCaseShares.length,
         hearings: exportedHearings.length,
         tasks: exportedTasks.length,
         physicalFiles: exportedFiles.length,
         appointments: exportedAppointments.length,
+        feeAgreements: exportedFeeAgreements.length,
+        feePayments: exportedFeePayments.length,
+        expenses: exportedExpenses.length,
+        chamberAdvances: allChamberAdvances.length,
+        chamberExpenses: allChamberExpenses.length,
       },
       exportedAt: nowIso,
     },
@@ -212,6 +310,7 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     clientNotes: allClientNotes,
     cases: exportedCases,
     caseNotes: exportedCaseNotes,
+    caseShares: exportedCaseShares,
     hearings: exportedHearings,
     hearingDateHistory: exportedHearingHistory,
     tasks: exportedTasks,
@@ -220,6 +319,16 @@ backupRouter.get('/export', requirePermission('data.export'), async (c) => {
     appointments: exportedAppointments,
     appointmentAttendees: exportedAppointmentAttendees,
     reminders: exportedReminders,
+    feeAgreements: exportedFeeAgreements,
+    feeAgreementChanges: exportedFeeAgreementChanges,
+    numberSequences: allNumberSequences,
+    feePayments: exportedFeePayments,
+    expenseCategories: allExpenseCategories,
+    expenses: exportedExpenses,
+    chamberExpenseCategories: allChamberExpenseCategories,
+    chamberAdvances: allChamberAdvances,
+    chamberExpenses: allChamberExpenses,
+    chamberAdvanceSettlements: allChamberAdvanceSettlements,
     auditLogs: exportedAuditLogs,
   });
 });
@@ -239,6 +348,7 @@ const restoreBodySchema = z.object({
     clientNotes: z.array(z.record(z.string(), z.unknown())).default([]),
     cases: z.array(z.record(z.string(), z.unknown())).default([]),
     caseNotes: z.array(z.record(z.string(), z.unknown())).default([]),
+    caseShares: z.array(z.record(z.string(), z.unknown())).default([]),
     hearings: z.array(z.record(z.string(), z.unknown())).default([]),
     hearingDateHistory: z.array(z.record(z.string(), z.unknown())).default([]),
     tasks: z.array(z.record(z.string(), z.unknown())).default([]),
@@ -247,6 +357,16 @@ const restoreBodySchema = z.object({
     appointments: z.array(z.record(z.string(), z.unknown())).default([]),
     appointmentAttendees: z.array(z.record(z.string(), z.unknown())).default([]),
     reminders: z.array(z.record(z.string(), z.unknown())).default([]),
+    feeAgreements: z.array(z.record(z.string(), z.unknown())).default([]),
+    feeAgreementChanges: z.array(z.record(z.string(), z.unknown())).default([]),
+    numberSequences: z.array(z.record(z.string(), z.unknown())).default([]),
+    feePayments: z.array(z.record(z.string(), z.unknown())).default([]),
+    expenseCategories: z.array(z.record(z.string(), z.unknown())).default([]),
+    expenses: z.array(z.record(z.string(), z.unknown())).default([]),
+    chamberExpenseCategories: z.array(z.record(z.string(), z.unknown())).default([]),
+    chamberAdvances: z.array(z.record(z.string(), z.unknown())).default([]),
+    chamberExpenses: z.array(z.record(z.string(), z.unknown())).default([]),
+    chamberAdvanceSettlements: z.array(z.record(z.string(), z.unknown())).default([]),
   }),
 });
 
@@ -283,6 +403,15 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
   if (mode === 'clean') {
     const suffix = `_del_${Date.now()}`;
     statements.push(
+      db.update(schema.chamberAdvanceSettlements).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.chamberAdvanceSettlements.firmId, firm.id), isNull(schema.chamberAdvanceSettlements.deletedAt))),
+      db.update(schema.chamberExpenses).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.chamberExpenses.firmId, firm.id), isNull(schema.chamberExpenses.deletedAt))),
+      db.update(schema.chamberAdvances).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.chamberAdvances.firmId, firm.id), isNull(schema.chamberAdvances.deletedAt))),
+      db.update(schema.chamberExpenseCategories).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.chamberExpenseCategories.firmId, firm.id), isNull(schema.chamberExpenseCategories.deletedAt))),
+      db.update(schema.expenses).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.expenses.firmId, firm.id), isNull(schema.expenses.deletedAt))),
+      db.update(schema.expenseCategories).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.expenseCategories.firmId, firm.id), isNull(schema.expenseCategories.deletedAt))),
+      db.update(schema.feePayments).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.feePayments.firmId, firm.id), isNull(schema.feePayments.deletedAt))),
+      db.update(schema.feeAgreements).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt))),
+      db.update(schema.caseShares).set({ deletedAt: nowIso }).where(and(eq(schema.caseShares.firmId, firm.id), isNull(schema.caseShares.deletedAt))),
       db.update(schema.reminders).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.reminders.firmId, firm.id), isNull(schema.reminders.deletedAt))),
       db.update(schema.appointments).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.appointments.firmId, firm.id), isNull(schema.appointments.deletedAt))),
       db.update(schema.physicalFiles).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.physicalFiles.firmId, firm.id), isNull(schema.physicalFiles.deletedAt))),
@@ -294,9 +423,10 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
       db.update(schema.clients).set({ deletedAt: nowIso, updatedAt: nowIso, updatedBy: user.id }).where(and(eq(schema.clients.firmId, firm.id), isNull(schema.clients.deletedAt)))
     );
 
-    // Avoid unique index collisions on (firm_id, file_serial) / (firm_id, serial) from previously soft-deleted rows
+    // Avoid unique index collisions on (firm_id, file_serial) / (firm_id, serial) / (firm_id, receipt_number) / (firm_id, idempotency_key)
     const incomingCaseIds = new Set(data.cases.map((r) => String(r.id || '')));
     const incomingFileIds = new Set(data.physicalFiles.map((r) => String(r.id || '')));
+    const incomingFeePaymentIds = new Set(data.feePayments.map((r) => String(r.id || '')));
     const existingAllCases = await db
       .select({ id: schema.cases.id, fileSerial: schema.cases.fileSerial })
       .from(schema.cases)
@@ -317,6 +447,28 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
         statements.push(
           db.update(schema.physicalFiles).set({ serial: `${ef.serial}${suffix}` }).where(eq(schema.physicalFiles.id, ef.id))
         );
+      }
+    }
+    const existingAllFeePayments = await db
+      .select({
+        id: schema.feePayments.id,
+        receiptNumber: schema.feePayments.receiptNumber,
+        idempotencyKey: schema.feePayments.idempotencyKey,
+      })
+      .from(schema.feePayments)
+      .where(eq(schema.feePayments.firmId, firm.id));
+    for (const efp of existingAllFeePayments) {
+      if (!incomingFeePaymentIds.has(efp.id)) {
+        const nextReceipt = efp.receiptNumber.includes('_del_') ? efp.receiptNumber : `${efp.receiptNumber}${suffix}`;
+        const nextIdem = efp.idempotencyKey.includes('_del_') ? efp.idempotencyKey : `${efp.idempotencyKey}${suffix}`;
+        if (nextReceipt !== efp.receiptNumber || nextIdem !== efp.idempotencyKey) {
+          statements.push(
+            db
+              .update(schema.feePayments)
+              .set({ receiptNumber: nextReceipt, idempotencyKey: nextIdem })
+              .where(eq(schema.feePayments.id, efp.id))
+          );
+        }
       }
     }
   }
@@ -346,8 +498,13 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
     );
   }
 
+  const knownClientIds = new Set<string>([
+    ...clientIds,
+    ...(mode === 'merge' ? existingClients.map((ec) => ec.id) : []),
+  ]);
+
   for (const r of data.clientNotes) {
-    if (typeof r.clientId !== 'string' || !clientIds.has(r.clientId)) continue;
+    if (typeof r.clientId !== 'string' || !knownClientIds.has(r.clientId)) continue;
     const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
     const val = {
       id,
@@ -368,7 +525,7 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
 
   const caseIds = new Set<string>();
   for (const r of data.cases) {
-    if (typeof r.clientId !== 'string' || !clientIds.has(r.clientId)) continue;
+    if (typeof r.clientId !== 'string' || !knownClientIds.has(r.clientId)) continue;
     const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
     caseIds.add(id);
     const val = {
@@ -407,8 +564,13 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
     );
   }
 
+  const knownCaseIds = new Set<string>([
+    ...caseIds,
+    ...(mode === 'merge' ? existingCases.map((ec) => ec.id) : []),
+  ]);
+
   for (const r of data.caseNotes) {
-    if (typeof r.caseId !== 'string' || !caseIds.has(r.caseId)) continue;
+    if (typeof r.caseId !== 'string' || !knownCaseIds.has(r.caseId)) continue;
     const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
     const val = {
       id,
@@ -429,7 +591,7 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
 
   const hearingIds = new Set<string>();
   for (const r of data.hearings) {
-    if (typeof r.caseId !== 'string' || !caseIds.has(r.caseId)) continue;
+    if (typeof r.caseId !== 'string' || !knownCaseIds.has(r.caseId)) continue;
     const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
     hearingIds.add(id);
     const val = {
@@ -647,6 +809,354 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
     );
   }
 
+  let restoredCaseShareCount = 0;
+  for (const r of data.caseShares) {
+    if (typeof r.caseId !== 'string' || !knownCaseIds.has(r.caseId)) continue;
+    if (typeof r.userId !== 'string' || !validUserIds.has(r.userId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    const val = {
+      id,
+      firmId: firm.id,
+      caseId: r.caseId,
+      userId: r.userId,
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      createdBy: resolveUserId(r.createdBy),
+      deletedAt: null,
+    };
+    statements.push(
+      db.insert(schema.caseShares).values(val).onConflictDoUpdate({ target: schema.caseShares.id, set: val })
+    );
+    restoredCaseShareCount++;
+  }
+
+  const expenseCategoryIds = new Set<string>();
+  for (const r of data.expenseCategories) {
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    expenseCategoryIds.add(id);
+    const val = {
+      id,
+      firmId: firm.id,
+      name: String(r.name || 'General Expense'),
+      isDefault: Boolean(r.isDefault),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.expenseCategories).values(val).onConflictDoUpdate({ target: schema.expenseCategories.id, set: val })
+    );
+  }
+  if (mode === 'merge') {
+    const existingExpCats = await db
+      .select({ id: schema.expenseCategories.id })
+      .from(schema.expenseCategories)
+      .where(and(eq(schema.expenseCategories.firmId, firm.id), isNull(schema.expenseCategories.deletedAt)));
+    for (const cRow of existingExpCats) expenseCategoryIds.add(cRow.id);
+  }
+
+  const feeAgreementIds = new Set<string>();
+  for (const r of data.feeAgreements) {
+    if (typeof r.clientId !== 'string' || !knownClientIds.has(r.clientId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    feeAgreementIds.add(id);
+    const linkedCaseId = typeof r.caseId === 'string' && knownCaseIds.has(r.caseId) ? r.caseId : null;
+    const val = {
+      id,
+      firmId: firm.id,
+      clientId: r.clientId,
+      caseId: linkedCaseId,
+      feeType: normalizeFeeType(r.feeType),
+      agreedAmountPaisa: typeof r.agreedAmountPaisa === 'number' ? Math.round(r.agreedAmountPaisa) : 0,
+      agreementDate: typeof r.agreementDate === 'string' ? r.agreementDate : nowIso.slice(0, 10),
+      notes: typeof r.notes === 'string' ? r.notes : null,
+      status: normalizeFeeAgreementStatus(r.status),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.feeAgreements).values(val).onConflictDoUpdate({ target: schema.feeAgreements.id, set: val })
+    );
+  }
+  const knownFeeAgreementIds = new Set<string>(feeAgreementIds);
+  if (mode === 'merge') {
+    const existingAgreements = await db
+      .select({ id: schema.feeAgreements.id })
+      .from(schema.feeAgreements)
+      .where(and(eq(schema.feeAgreements.firmId, firm.id), isNull(schema.feeAgreements.deletedAt)));
+    for (const aRow of existingAgreements) knownFeeAgreementIds.add(aRow.id);
+  }
+
+  let restoredFeeAgreementChangeCount = 0;
+  for (const r of data.feeAgreementChanges) {
+    if (typeof r.feeAgreementId !== 'string' || !knownFeeAgreementIds.has(r.feeAgreementId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    const val = {
+      id,
+      firmId: firm.id,
+      feeAgreementId: r.feeAgreementId,
+      oldAmountPaisa: typeof r.oldAmountPaisa === 'number' ? Math.round(r.oldAmountPaisa) : 0,
+      newAmountPaisa: typeof r.newAmountPaisa === 'number' ? Math.round(r.newAmountPaisa) : 0,
+      reason: String(r.reason || 'Restored change'),
+      changedBy: resolveUserId(r.changedBy),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+    };
+    statements.push(
+      db.insert(schema.feeAgreementChanges).values(val).onConflictDoUpdate({ target: schema.feeAgreementChanges.id, set: val })
+    );
+    restoredFeeAgreementChangeCount++;
+  }
+
+  let restoredFeePaymentCount = 0;
+  for (const r of data.feePayments) {
+    if (typeof r.clientId !== 'string' || !knownClientIds.has(r.clientId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    const linkedCaseId = typeof r.caseId === 'string' && knownCaseIds.has(r.caseId) ? r.caseId : null;
+    const linkedAgreementId =
+      typeof r.feeAgreementId === 'string' && knownFeeAgreementIds.has(r.feeAgreementId) ? r.feeAgreementId : null;
+    const linkedHearingId = typeof r.hearingId === 'string' && hearingIds.has(r.hearingId) ? r.hearingId : null;
+    const val = {
+      id,
+      firmId: firm.id,
+      clientId: r.clientId,
+      caseId: linkedCaseId,
+      feeAgreementId: linkedAgreementId,
+      hearingId: linkedHearingId,
+      paymentDate: typeof r.paymentDate === 'string' ? r.paymentDate : nowIso.slice(0, 10),
+      amountPaisa: typeof r.amountPaisa === 'number' ? Math.round(r.amountPaisa) : 0,
+      method: normalizePaymentMethod(r.method),
+      reference: typeof r.reference === 'string' ? r.reference : null,
+      receiptNumber: typeof r.receiptNumber === 'string' && r.receiptNumber ? r.receiptNumber : `RCP-${id.slice(0, 8)}`,
+      purposeNote: String(r.purposeNote || ''),
+      status: normalizePostedVoidStatus(r.status),
+      voidReason: typeof r.voidReason === 'string' ? r.voidReason : null,
+      voidedBy: resolveOptionalUserId(r.voidedBy),
+      voidedAt: typeof r.voidedAt === 'string' ? r.voidedAt : null,
+      idempotencyKey:
+        typeof r.idempotencyKey === 'string' && r.idempotencyKey ? r.idempotencyKey : `restore-${id}`,
+      legacyUnassigned: Boolean(r.legacyUnassigned),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.feePayments).values(val).onConflictDoUpdate({ target: schema.feePayments.id, set: val })
+    );
+    restoredFeePaymentCount++;
+  }
+
+  let restoredExpenseCount = 0;
+  for (const r of data.expenses) {
+    if (typeof r.categoryId !== 'string' || !expenseCategoryIds.has(r.categoryId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    const linkedClientId = typeof r.clientId === 'string' && knownClientIds.has(r.clientId) ? r.clientId : null;
+    const linkedCaseId = typeof r.caseId === 'string' && knownCaseIds.has(r.caseId) ? r.caseId : null;
+    const val = {
+      id,
+      firmId: firm.id,
+      clientId: linkedClientId,
+      caseId: linkedCaseId,
+      categoryId: r.categoryId,
+      expenseDate: typeof r.expenseDate === 'string' ? r.expenseDate : nowIso.slice(0, 10),
+      amountPaisa: typeof r.amountPaisa === 'number' ? Math.round(r.amountPaisa) : 0,
+      description: String(r.description || 'Restored Expense'),
+      reimbursable: r.reimbursable === undefined ? true : Boolean(r.reimbursable),
+      status: normalizePostedVoidStatus(r.status),
+      voidReason: typeof r.voidReason === 'string' ? r.voidReason : null,
+      voidedBy: resolveOptionalUserId(r.voidedBy),
+      voidedAt: typeof r.voidedAt === 'string' ? r.voidedAt : null,
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.expenses).values(val).onConflictDoUpdate({ target: schema.expenses.id, set: val })
+    );
+    restoredExpenseCount++;
+  }
+
+  let restoredNumberSequenceCount = 0;
+  if (data.numberSequences.length > 0) {
+    const existingSeqs = await db
+      .select()
+      .from(schema.numberSequences)
+      .where(eq(schema.numberSequences.firmId, firm.id));
+    const seqByType = new Map(existingSeqs.map((s) => [s.type, s]));
+    for (const r of data.numberSequences) {
+      if (typeof r.type !== 'string' || !r.type) continue;
+      const incomingVal = typeof r.currentVal === 'number' ? Math.round(r.currentVal) : 0;
+      const prefix = typeof r.prefix === 'string' && r.prefix ? r.prefix : `${r.type.toUpperCase()}-`;
+      const existing = seqByType.get(r.type);
+      if (existing) {
+        const nextVal = mode === 'clean' ? incomingVal : Math.max(existing.currentVal, incomingVal);
+        statements.push(
+          db
+            .update(schema.numberSequences)
+            .set({ prefix, currentVal: nextVal, updatedAt: nowIso })
+            .where(eq(schema.numberSequences.id, existing.id))
+        );
+      } else {
+        const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+        statements.push(
+          db.insert(schema.numberSequences).values({
+            id,
+            firmId: firm.id,
+            type: r.type,
+            prefix,
+            currentVal: incomingVal,
+            updatedAt: nowIso,
+          })
+        );
+      }
+      restoredNumberSequenceCount++;
+    }
+  }
+
+  const chamberCategoryIds = new Set<string>();
+  for (const r of data.chamberExpenseCategories) {
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    chamberCategoryIds.add(id);
+    const val = {
+      id,
+      firmId: firm.id,
+      name: String(r.name || 'Chamber Expense'),
+      nameBn: typeof r.nameBn === 'string' ? r.nameBn : null,
+      kind: normalizeChamberExpenseKind(r.kind),
+      isDefault: Boolean(r.isDefault),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.chamberExpenseCategories).values(val).onConflictDoUpdate({ target: schema.chamberExpenseCategories.id, set: val })
+    );
+  }
+  if (mode === 'merge') {
+    const existingChamberCats = await db
+      .select({ id: schema.chamberExpenseCategories.id })
+      .from(schema.chamberExpenseCategories)
+      .where(and(eq(schema.chamberExpenseCategories.firmId, firm.id), isNull(schema.chamberExpenseCategories.deletedAt)));
+    for (const cc of existingChamberCats) chamberCategoryIds.add(cc.id);
+  }
+
+  const chamberAdvanceIds = new Set<string>();
+  for (const r of data.chamberAdvances) {
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    chamberAdvanceIds.add(id);
+    const val = {
+      id,
+      firmId: firm.id,
+      givenTo: String(r.givenTo || 'Staff'),
+      givenToUserId: resolveOptionalUserId(r.givenToUserId),
+      amountPaisa: typeof r.amountPaisa === 'number' ? Math.round(r.amountPaisa) : 0,
+      givenDate: typeof r.givenDate === 'string' ? r.givenDate : nowIso.slice(0, 10),
+      purpose: String(r.purpose || ''),
+      paymentMethod: normalizeChamberPaymentMethod(r.paymentMethod),
+      status: normalizeChamberAdvanceStatus(r.status),
+      voidReason: typeof r.voidReason === 'string' ? r.voidReason : null,
+      voidedBy: resolveOptionalUserId(r.voidedBy),
+      voidedAt: typeof r.voidedAt === 'string' ? r.voidedAt : null,
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.chamberAdvances).values(val).onConflictDoUpdate({ target: schema.chamberAdvances.id, set: val })
+    );
+  }
+  const knownChamberAdvanceIds = new Set<string>(chamberAdvanceIds);
+  if (mode === 'merge') {
+    const existingAdvances = await db
+      .select({ id: schema.chamberAdvances.id })
+      .from(schema.chamberAdvances)
+      .where(and(eq(schema.chamberAdvances.firmId, firm.id), isNull(schema.chamberAdvances.deletedAt)));
+    for (const ca of existingAdvances) knownChamberAdvanceIds.add(ca.id);
+  }
+
+  const chamberExpenseIds = new Set<string>();
+  for (const r of data.chamberExpenses) {
+    if (typeof r.categoryId !== 'string' || !chamberCategoryIds.has(r.categoryId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    chamberExpenseIds.add(id);
+    const linkedAdvanceId =
+      typeof r.advanceId === 'string' && knownChamberAdvanceIds.has(r.advanceId) ? r.advanceId : null;
+    const val = {
+      id,
+      firmId: firm.id,
+      categoryId: r.categoryId,
+      description: String(r.description || 'Restored Chamber Expense'),
+      amountPaisa: typeof r.amountPaisa === 'number' ? Math.round(r.amountPaisa) : 0,
+      expenseDate: typeof r.expenseDate === 'string' ? r.expenseDate : nowIso.slice(0, 10),
+      paidTo: String(r.paidTo || 'N/A'),
+      paymentMethod: normalizeChamberPaymentMethod(r.paymentMethod),
+      receiptRef: typeof r.receiptRef === 'string' ? r.receiptRef : null,
+      notes: typeof r.notes === 'string' ? r.notes : null,
+      advanceId: linkedAdvanceId,
+      status: normalizePostedVoidStatus(r.status),
+      voidReason: typeof r.voidReason === 'string' ? r.voidReason : null,
+      voidedBy: resolveOptionalUserId(r.voidedBy),
+      voidedAt: typeof r.voidedAt === 'string' ? r.voidedAt : null,
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db.insert(schema.chamberExpenses).values(val).onConflictDoUpdate({ target: schema.chamberExpenses.id, set: val })
+    );
+  }
+  const knownChamberExpenseIds = new Set<string>(chamberExpenseIds);
+  if (mode === 'merge') {
+    const existingChamberExpenses = await db
+      .select({ id: schema.chamberExpenses.id })
+      .from(schema.chamberExpenses)
+      .where(and(eq(schema.chamberExpenses.firmId, firm.id), isNull(schema.chamberExpenses.deletedAt)));
+    for (const ce of existingChamberExpenses) knownChamberExpenseIds.add(ce.id);
+  }
+
+  let restoredChamberSettlementCount = 0;
+  for (const r of data.chamberAdvanceSettlements) {
+    if (typeof r.advanceId !== 'string' || !knownChamberAdvanceIds.has(r.advanceId)) continue;
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID();
+    const linkedExpenseId =
+      typeof r.expenseId === 'string' && knownChamberExpenseIds.has(r.expenseId) ? r.expenseId : null;
+    const val = {
+      id,
+      firmId: firm.id,
+      advanceId: r.advanceId,
+      type: normalizeChamberSettlementType(r.type),
+      expenseId: linkedExpenseId,
+      amountPaisa: typeof r.amountPaisa === 'number' ? Math.round(r.amountPaisa) : 0,
+      settledDate: typeof r.settledDate === 'string' ? r.settledDate : nowIso.slice(0, 10),
+      notes: typeof r.notes === 'string' ? r.notes : null,
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso,
+      updatedAt: nowIso,
+      deletedAt: null,
+      createdBy: resolveUserId(r.createdBy),
+      updatedBy: user.id,
+    };
+    statements.push(
+      db
+        .insert(schema.chamberAdvanceSettlements)
+        .values(val)
+        .onConflictDoUpdate({ target: schema.chamberAdvanceSettlements.id, set: val })
+    );
+    restoredChamberSettlementCount++;
+  }
+
   const restoredCounts = {
     clients: clientIds.size,
     cases: caseIds.size,
@@ -660,6 +1170,17 @@ backupRouter.post('/restore', enforceSubscriptionReadOnly, requireOwner, async (
     clientNotes: data.clientNotes.length,
     caseNotes: data.caseNotes.length,
     appointments: appointmentIds.size,
+    caseShares: restoredCaseShareCount,
+    feeAgreements: feeAgreementIds.size,
+    feeAgreementChanges: restoredFeeAgreementChangeCount,
+    numberSequences: restoredNumberSequenceCount,
+    feePayments: restoredFeePaymentCount,
+    expenseCategories: expenseCategoryIds.size,
+    expenses: restoredExpenseCount,
+    chamberExpenseCategories: chamberCategoryIds.size,
+    chamberAdvances: chamberAdvanceIds.size,
+    chamberExpenses: chamberExpenseIds.size,
+    chamberAdvanceSettlements: restoredChamberSettlementCount,
   };
 
   const restoreAudit = buildAuditEntry({

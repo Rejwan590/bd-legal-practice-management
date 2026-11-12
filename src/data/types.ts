@@ -392,6 +392,17 @@ export interface ChamberBackupCounts {
   clientNotes?: number;
   caseNotes?: number;
   appointments?: number;
+  caseShares?: number;
+  feeAgreements?: number;
+  feeAgreementChanges?: number;
+  numberSequences?: number;
+  feePayments?: number;
+  expenseCategories?: number;
+  expenses?: number;
+  chamberExpenseCategories?: number;
+  chamberAdvances?: number;
+  chamberExpenses?: number;
+  chamberAdvanceSettlements?: number;
 }
 
 export interface ChamberBackupMetadata {
@@ -406,6 +417,16 @@ export interface ChamberBackupMetadata {
   counts: ChamberBackupCounts;
 }
 
+export interface NumberSequenceRecord {
+  id: string;
+  firmId: string;
+  type: string;
+  prefix: string;
+  currentVal: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ChamberBackupData {
   firm: FirmRecord;
   clients: ClientRecord[];
@@ -413,6 +434,7 @@ export interface ChamberBackupData {
   clientNotes?: ClientNoteRecord[];
   cases: CaseRecord[];
   caseNotes?: CaseNoteRecord[];
+  caseShares?: CaseShareRecord[];
   hearings: HearingRecord[];
   hearingDateHistory: HearingDateHistoryRecord[];
   tasks: TaskRecord[];
@@ -421,6 +443,16 @@ export interface ChamberBackupData {
   appointments?: AppointmentRecord[];
   appointmentAttendees?: AppointmentAttendeeRecord[];
   reminders: ReminderRecord[];
+  feeAgreements?: FeeAgreement[];
+  feeAgreementChanges?: FeeAgreementChange[];
+  numberSequences?: NumberSequenceRecord[];
+  feePayments?: FeePayment[];
+  expenseCategories?: ExpenseCategory[];
+  expenses?: Expense[];
+  chamberExpenseCategories?: ChamberExpenseCategory[];
+  chamberAdvances?: ChamberAdvance[];
+  chamberExpenses?: ChamberExpense[];
+  chamberAdvanceSettlements?: ChamberAdvanceSettlement[];
   auditLogs: AuditLogRecord[];
 }
 
