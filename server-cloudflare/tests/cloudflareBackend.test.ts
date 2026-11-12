@@ -2086,4 +2086,135 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     ).json()) as any[];
     expect(remAfterCaseDelete.some((r) => r.sourceId === h1.id)).toBe(false);
   });
+
+  it('25. Chamber Backup Export & Restore (firm isolation, read-only export allowed, restore Owner-only & clean/merge modes)', async () => {
+    // 1) Expired firm (Firm A ownerCookie) can STILL export backup, but CANNOT restore
+    const expiredExportRes = await app.request('/api/v1/backup/export', { headers: { Cookie: ownerCookie } }, env);
+    expect(expiredExportRes.status).toBe(200);
+    const expiredExport = (await expiredExportRes.json()) as any;
+    expect(expiredExport.firm).toBeDefined();
+    expect(Array.isArray(expiredExport.clients)).toBe(true);
+
+    const expiredRestoreRes = await app.request(
+      '/api/v1/backup/restore',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+        body: JSON.stringify({
+          mode: 'merge',
+          data: { clients: [], cases: [], hearings: [], tasks: [], physicalFiles: [], appointments: [], reminders: [] },
+        }),
+      },
+      env
+    );
+    expect(expiredRestoreRes.status).toBe(403);
+
+    // 2) Active firm (Firm D) exports snapshot
+    const exportRes = await app.request('/api/v1/backup/export', { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(exportRes.status).toBe(200);
+    const exported = (await exportRes.json()) as any;
+    expect(exported.firm.id).toBeDefined();
+    expect(Array.isArray(exported.clients)).toBe(true);
+    expect(exported.clients.length).toBeGreaterThan(0);
+
+    // 3) Staff without data.export cannot export, and staff cannot restore (Owner-only)
+    const staffUserRes = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          name: 'Backup Test Clerk',
+          email: 'backup.clerk@firm-d.test',
+          jobType: 'clerk',
+          permissions: ['cases.view', 'clients.view'],
+        }),
+      },
+      env
+    );
+    expect(staffUserRes.status).toBe(201);
+    const staffCreated = (await staffUserRes.json()) as any;
+    const staffLoginRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'backup.clerk@firm-d.test',
+          password: staffCreated.temporaryPassword,
+        }),
+      },
+      env
+    );
+    expect(staffLoginRes.status).toBe(200);
+    const staffCookieD = staffLoginRes.headers.get('set-cookie')!;
+
+    expect((await app.request('/api/v1/backup/export', { headers: { Cookie: staffCookieD } }, env)).status).toBe(403);
+    expect(
+      (
+        await app.request(
+          '/api/v1/backup/restore',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Cookie: staffCookieD },
+            body: JSON.stringify({ mode: 'merge', data: { clients: [] } }),
+          },
+          env
+        )
+      ).status
+    ).toBe(403);
+
+    // 4) Restore foreign-firm / mock IDs in merge mode -> remaps firmId & createdBy safely
+    const mockClientId = crypto.randomUUID();
+    const mockCaseId = crypto.randomUUID();
+    const restoreRes = await app.request(
+      '/api/v1/backup/restore',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: firmDOwnerCookie },
+        body: JSON.stringify({
+          mode: 'merge',
+          metadata: { firmId: 'foreign-firm-id', firmName: 'Foreign Chamber' },
+          data: {
+            clients: [
+              {
+                id: mockClientId,
+                firmId: 'foreign-firm-id',
+                name: 'Restored Mock Client',
+                phone: '+8801799887766',
+                address: 'Dhaka',
+                createdBy: 'non-existent-user',
+              },
+            ],
+            cases: [
+              {
+                id: mockCaseId,
+                firmId: 'foreign-firm-id',
+                clientId: mockClientId,
+                fileSerial: 'RESTORE-F-001',
+                caseNumber: 'RESTORE-101/2026',
+                court: 'District Judge Court, Dhaka',
+                matterType: 'civil',
+                status: 'ongoing',
+                createdBy: 'non-existent-user',
+              },
+            ],
+          },
+        }),
+      },
+      env
+    );
+    expect(restoreRes.status).toBe(200);
+    const restoreResult = (await restoreRes.json()) as any;
+    expect(restoreResult.success).toBe(true);
+    expect(restoreResult.counts.clients).toBe(1);
+    expect(restoreResult.counts.cases).toBe(1);
+
+    // Verify restored client & case exist in Firm D (and NOT in Firm A)
+    const firmDClientRes = await app.request(`/api/v1/clients/${mockClientId}`, { headers: { Cookie: firmDOwnerCookie } }, env);
+    expect(firmDClientRes.status).toBe(200);
+    const firmDClient = (await firmDClientRes.json()) as any;
+    expect(firmDClient.firmId).toBe(exported.firm.id);
+    expect(firmDClient.name).toBe('Restored Mock Client');
+  });
 });

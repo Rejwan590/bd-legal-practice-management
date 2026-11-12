@@ -33,6 +33,7 @@ import { MockTaskRepository } from './task';
 import { MockUserRepository } from './user';
 import { MockAccountsRepository } from './accounts';
 import { MockChamberExpenseRepository } from './chamberExpenses';
+import { RestBackupRepository } from './rest/restBackup';
 import {
   RestAuditLogRepository,
   RestFirmRepository,
@@ -158,7 +159,9 @@ const searchRepo: ISearchRepository = isRestMode
 const dashboardRepo: IDashboardRepository = isRestMode
   ? new RestDashboardRepository()
   : new MockDashboardRepository();
-const backupRepo = new MockBackupRepository(auditLogRepo);
+const backupRepo: IBackupRepository = isRestMode
+  ? new RestBackupRepository()
+  : new MockBackupRepository(auditLogRepo);
 const accountsRepo: IAccountsRepository = isRestMode
   ? new RestAccountsRepository()
   : new MockAccountsRepository(mockAuditLogRepo);

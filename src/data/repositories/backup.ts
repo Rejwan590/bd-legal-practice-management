@@ -23,6 +23,193 @@ import {
 import { getVisibleCaseIdsForContext } from './case';
 import { assertNotReadOnly, generateUUID } from './common';
 
+export async function packageChamberBackup(
+  context: SecurityContext,
+  data: ChamberBackupData,
+  options?: { password?: string }
+): Promise<{
+  filename: string;
+  payload: ChamberBackupPayload | EncryptedBackupPayload;
+  jsonString: string;
+  metadata: ChamberBackupMetadata;
+  checksum: string;
+  isEncrypted: boolean;
+}> {
+  const { currentUser } = context;
+  const firmData = data.firm;
+  const counts: ChamberBackupCounts = {
+    clients: data.clients?.length || 0,
+    cases: data.cases?.length || 0,
+    hearings: data.hearings?.length || 0,
+    hearingDateHistory: data.hearingDateHistory?.length || 0,
+    tasks: data.tasks?.length || 0,
+    physicalFiles: data.physicalFiles?.length || 0,
+    fileMovements: data.fileMovements?.length || 0,
+    reminders: data.reminders?.length || 0,
+    auditLog: data.auditLogs?.length || 0,
+    clientNotes: data.clientNotes?.length || 0,
+    caseNotes: data.caseNotes?.length || 0,
+    appointments: data.appointments?.length || 0,
+  };
+
+  const isEncrypted = Boolean(options?.password && options.password.trim().length > 0);
+  const nowIso = new Date().toISOString();
+
+  const metadata: ChamberBackupMetadata = {
+    version: '1.0',
+    exportedAt: nowIso,
+    exportedBy: currentUser.id,
+    exportedByName: currentUser.name,
+    firmId: currentUser.firmId,
+    firmName: firmData?.name || 'Chamber',
+    schemaVersion: 1,
+    encrypted: isEncrypted,
+    counts,
+  };
+
+  const canonicalDataStr = canonicalStringify(data);
+  const checksum = await computeSha256(canonicalDataStr);
+
+  const plainPayload: ChamberBackupPayload = {
+    magic: 'BD_LEGAL_PRACTICE_BACKUP',
+    metadata,
+    checksum,
+    data,
+  };
+
+  let finalPayload: ChamberBackupPayload | EncryptedBackupPayload = plainPayload;
+  if (isEncrypted && options?.password) {
+    finalPayload = await encryptChamberBackup(plainPayload, options.password);
+  }
+
+  const jsonString = JSON.stringify(finalPayload, null, 2);
+  const dateStamp = nowIso.split('T')[0];
+  const safeFirmName = (firmData?.name || 'chamber').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const filename = `${safeFirmName}-backup-${dateStamp}${isEncrypted ? '.enc.json' : '.json'}`;
+
+  return {
+    filename,
+    payload: finalPayload,
+    jsonString,
+    metadata,
+    checksum,
+    isEncrypted,
+  };
+}
+
+async function validateAndPreviewPlainPayload(
+  payload: ChamberBackupPayload,
+  currentFirmId: string
+): Promise<RestorePreview> {
+  const warnings: string[] = [];
+  if (!payload.metadata || !payload.data) {
+    return {
+      valid: false,
+      isEncrypted: false,
+      checksumMatched: false,
+      firmMatch: false,
+      warnings: ['Backup structure is missing metadata or data section.'],
+      error: 'Incomplete backup structure',
+    };
+  }
+
+  const canonicalStr = canonicalStringify(payload.data);
+  const calculatedChecksum = await computeSha256(canonicalStr);
+  const checksumMatched = calculatedChecksum === payload.checksum;
+
+  if (!checksumMatched) {
+    warnings.push(
+      `Tamper Warning: Checksum mismatch! Expected ${payload.checksum.slice(0, 10)}... but calculated ${calculatedChecksum.slice(0, 10)}... Data may have been tampered with or corrupted.`
+    );
+  }
+
+  const firmMatch = payload.metadata.firmId === currentFirmId;
+  if (!firmMatch) {
+    warnings.push(
+      `Firm Context Warning: Backup is from chamber "${payload.metadata.firmName}" (ID: ${payload.metadata.firmId}). Restoring will safely map records to your current chamber.`
+    );
+  }
+
+  return {
+    valid: checksumMatched,
+    isEncrypted: false,
+    metadata: payload.metadata,
+    checksumMatched,
+    firmMatch,
+    warnings,
+    counts: payload.metadata.counts,
+    payload,
+  };
+}
+
+export async function inspectBackupFileContent(
+  context: SecurityContext,
+  fileContent: string,
+  password?: string
+): Promise<RestorePreview> {
+  const { currentUser } = context;
+  if (!can('data.export', currentUser) && !can('settings.manage', currentUser)) {
+    throw new Error('Permission denied: insufficient privileges to inspect chamber backup');
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(fileContent);
+  } catch {
+    return {
+      valid: false,
+      isEncrypted: false,
+      checksumMatched: false,
+      firmMatch: false,
+      warnings: ['File is not valid JSON'],
+      error: 'Invalid JSON format',
+    };
+  }
+
+  if (parsed.magic === 'BD_LEGAL_PRACTICE_BACKUP_ENCRYPTED') {
+    if (!password) {
+      const meta = parsed.metadata as ChamberBackupMetadata | undefined;
+      return {
+        valid: true,
+        isEncrypted: true,
+        metadata: meta,
+        checksumMatched: true,
+        firmMatch: meta?.firmId === currentUser.firmId,
+        warnings: ['Backup is password-encrypted with AES-GCM-256. Enter chamber encryption password to inspect and restore.'],
+        counts: meta?.counts,
+      };
+    }
+
+    try {
+      const decrypted = await decryptChamberBackup(parsed as unknown as EncryptedBackupPayload, password);
+      return validateAndPreviewPlainPayload(decrypted, currentUser.firmId);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Decryption failed';
+      return {
+        valid: false,
+        isEncrypted: true,
+        checksumMatched: false,
+        firmMatch: false,
+        warnings: [errorMsg],
+        error: errorMsg || 'Decryption failed: Incorrect password or corrupted payload',
+      };
+    }
+  }
+
+  if (parsed.magic === 'BD_LEGAL_PRACTICE_BACKUP') {
+    return validateAndPreviewPlainPayload(parsed as unknown as ChamberBackupPayload, currentUser.firmId);
+  }
+
+  return {
+    valid: false,
+    isEncrypted: false,
+    checksumMatched: false,
+    firmMatch: false,
+    warnings: ['Unrecognized backup file format. Magic header missing or unsupported.'],
+    error: 'Unrecognized backup format',
+  };
+}
+
 export class MockBackupRepository implements IBackupRepository {
   private auditLogRepo: IAuditLogRepository;
 
@@ -121,33 +308,6 @@ export class MockBackupRepository implements IBackupRepository {
       });
     }
 
-    const counts: ChamberBackupCounts = {
-      clients: clients.length,
-      cases: cases.length,
-      hearings: hearings.length,
-      hearingDateHistory: hearingDateHistory.length,
-      tasks: tasks.length,
-      physicalFiles: physicalFiles.length,
-      fileMovements: fileMovements.length,
-      reminders: reminders.length,
-      auditLog: auditLogs.length,
-    };
-
-    const isEncrypted = Boolean(options?.password && options.password.trim().length > 0);
-    const nowIso = new Date().toISOString();
-
-    const metadata: ChamberBackupMetadata = {
-      version: '1.0',
-      exportedAt: nowIso,
-      exportedBy: currentUser.id,
-      exportedByName: currentUser.name,
-      firmId,
-      firmName: firmData.name,
-      schemaVersion: 1,
-      encrypted: isEncrypted,
-      counts,
-    };
-
     const data: ChamberBackupData = {
       firm: firmData,
       clients,
@@ -161,25 +321,7 @@ export class MockBackupRepository implements IBackupRepository {
       auditLogs,
     };
 
-    const canonicalDataStr = canonicalStringify(data);
-    const checksum = await computeSha256(canonicalDataStr);
-
-    const plainPayload: ChamberBackupPayload = {
-      magic: 'BD_LEGAL_PRACTICE_BACKUP',
-      metadata,
-      checksum,
-      data,
-    };
-
-    let finalPayload: ChamberBackupPayload | EncryptedBackupPayload = plainPayload;
-    if (isEncrypted && options?.password) {
-      finalPayload = await encryptChamberBackup(plainPayload, options.password);
-    }
-
-    const jsonString = JSON.stringify(finalPayload, null, 2);
-    const dateStamp = nowIso.split('T')[0];
-    const safeFirmName = firmData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const filename = `${safeFirmName}-backup-${dateStamp}${isEncrypted ? '.enc.json' : '.json'}`;
+    const packaged = await packageChamberBackup(context, data, options);
 
     // Record audit trail
     await this.auditLogRepo.record(context, {
@@ -188,21 +330,16 @@ export class MockBackupRepository implements IBackupRepository {
       action: 'BACKUP_EXPORT',
       oldValue: null,
       newValue: {
-        filename,
-        encrypted: isEncrypted,
-        counts,
-        checksum: isEncrypted ? (finalPayload as EncryptedBackupPayload).checksum : checksum,
+        filename: packaged.filename,
+        encrypted: packaged.isEncrypted,
+        counts: packaged.metadata.counts,
+        checksum: packaged.isEncrypted
+          ? (packaged.payload as EncryptedBackupPayload).checksum
+          : packaged.checksum,
       },
     });
 
-    return {
-      filename,
-      payload: finalPayload,
-      jsonString,
-      metadata,
-      checksum,
-      isEncrypted,
-    };
+    return packaged;
   }
 
   async inspectBackup(
@@ -210,113 +347,7 @@ export class MockBackupRepository implements IBackupRepository {
     fileContent: string,
     password?: string
   ): Promise<RestorePreview> {
-    const { currentUser } = context;
-    if (!can('data.export', currentUser) && !can('settings.manage', currentUser)) {
-      throw new Error('Permission denied: insufficient privileges to inspect chamber backup');
-    }
-
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(fileContent);
-    } catch {
-      return {
-        valid: false,
-        isEncrypted: false,
-        checksumMatched: false,
-        firmMatch: false,
-        warnings: ['File is not valid JSON'],
-        error: 'Invalid JSON format',
-      };
-    }
-
-    if (parsed.magic === 'BD_LEGAL_PRACTICE_BACKUP_ENCRYPTED') {
-      if (!password) {
-        const meta = parsed.metadata as ChamberBackupMetadata | undefined;
-        return {
-          valid: true,
-          isEncrypted: true,
-          metadata: meta,
-          checksumMatched: true,
-          firmMatch: meta?.firmId === currentUser.firmId,
-          warnings: ['Backup is password-encrypted with AES-GCM-256. Enter chamber encryption password to inspect and restore.'],
-          counts: meta?.counts,
-        };
-      }
-
-      try {
-        const decrypted = await decryptChamberBackup(parsed as unknown as EncryptedBackupPayload, password);
-        return this.validateAndPreviewPlainPayload(decrypted, currentUser.firmId);
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : 'Decryption failed';
-        return {
-          valid: false,
-          isEncrypted: true,
-          checksumMatched: false,
-          firmMatch: false,
-          warnings: [errorMsg],
-          error: errorMsg || 'Decryption failed: Incorrect password or corrupted payload',
-        };
-      }
-    }
-
-    if (parsed.magic === 'BD_LEGAL_PRACTICE_BACKUP') {
-      return this.validateAndPreviewPlainPayload(parsed as unknown as ChamberBackupPayload, currentUser.firmId);
-    }
-
-    return {
-      valid: false,
-      isEncrypted: false,
-      checksumMatched: false,
-      firmMatch: false,
-      warnings: ['Unrecognized backup file format. Magic header missing or unsupported.'],
-      error: 'Unrecognized backup format',
-    };
-  }
-
-  private async validateAndPreviewPlainPayload(
-    payload: ChamberBackupPayload,
-    currentFirmId: string
-  ): Promise<RestorePreview> {
-    const warnings: string[] = [];
-    if (!payload.metadata || !payload.data) {
-      return {
-        valid: false,
-        isEncrypted: false,
-        checksumMatched: false,
-        firmMatch: false,
-        warnings: ['Backup structure is missing metadata or data section.'],
-        error: 'Incomplete backup structure',
-      };
-    }
-
-    // Verify SHA-256 checksum
-    const canonicalStr = canonicalStringify(payload.data);
-    const calculatedChecksum = await computeSha256(canonicalStr);
-    const checksumMatched = calculatedChecksum === payload.checksum;
-
-    if (!checksumMatched) {
-      warnings.push(
-        `Tamper Warning: Checksum mismatch! Expected ${payload.checksum.slice(0, 10)}... but calculated ${calculatedChecksum.slice(0, 10)}... Data may have been tampered with or corrupted.`
-      );
-    }
-
-    const firmMatch = payload.metadata.firmId === currentFirmId;
-    if (!firmMatch) {
-      warnings.push(
-        `Firm Context Warning: Backup is from chamber "${payload.metadata.firmName}" (ID: ${payload.metadata.firmId}). Restoring will safely map records to your current chamber.`
-      );
-    }
-
-    return {
-      valid: checksumMatched,
-      isEncrypted: false,
-      metadata: payload.metadata,
-      checksumMatched,
-      firmMatch,
-      warnings,
-      counts: payload.metadata.counts,
-      payload,
-    };
+    return inspectBackupFileContent(context, fileContent, password);
   }
 
   async restoreBackup(

@@ -3,6 +3,20 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Chamber Backup & Restore Backend + REST Parity (`cloudflare` branch)**:
+  - **Root Cause**: `src/data/repositories/index.ts` hardcoded `backupRepo` to `MockBackupRepository(auditLogRepo)` even in `isRestMode`, and `server-cloudflare` lacked `/api/v1/backup/*` routes. Exporting on live chambers threw `Firm ID mismatch: User firm <uuid> does not match store firm firm-bd-001`.
+  - **Backend (`server-cloudflare/`)**:
+    - Added `server-cloudflare/src/routes/backup.ts` mounted at `/api/v1/backup` in `server-cloudflare/src/index.ts`:
+      - `GET /api/v1/backup/export` (`requirePermission('data.export')`, available during expired read-only mode per Rule 10 & Rule 14): exports firm-scoped data (`firm`, `clients`, `clientNotes`, `cases`, `caseNotes`, `hearings`, `hearingDateHistory`, `tasks`, `physicalFiles`, `fileMovements`, `appointments`, `appointmentAttendees`, `reminders`, `auditLogs`), applies `getVisibleCaseIds` + `restricted.view` confidentiality filtering, and records `audit_log` + `backups_log`.
+      - `POST /api/v1/backup/restore` (`enforceSubscriptionReadOnly`, `requireOwner`): validates payload with Zod, supports `clean` (soft-deletes existing firm records & avoids serial collisions) and `merge` (upsert by ID) modes, remaps `firmId` & unknown user IDs safely, executes in D1 batches, and writes `BACKUP_RESTORE` `audit_log`.
+  - **Frontend REST Parity (`src/`)**:
+    - Extracted shared `packageChamberBackup` and `inspectBackupFileContent` helpers in `src/data/repositories/backup.ts`.
+    - Created `RestBackupRepository` (`src/data/repositories/rest/restBackup.ts`) and wired it under `isRestMode` in `src/data/repositories/index.ts`.
+  - **Verification & Deployment**:
+    - Added Test 25 in `server-cloudflare/tests/cloudflareBackend.test.ts` (`25 passed (25)`).
+    - Verified `npm run lint`, `npm run test:health` (`89 passed, 0 failed`), `npm run build:pages`, and `npm test --prefix server`.
+    - Deployed Worker `bdlegal-api` (`9cb828dd-b4e1-4953-bfd0-3e25893aa4ad`) and Cloudflare Pages `bdlegal-app` (`https://7870d057.bdlegal-app.pages.dev` / `https://bdlegal-app.pages.dev`).
+
 - [x] **Client Dossier In-Place Appointment Scheduling & Editing (`lockClientId` Hub Modal)**:
   - **Root Cause**: Clicking **Schedule Appointment** inside `src/modules/clients/ClientProfileView.tsx` called `navigateToScreen('appointments')`, redirecting to the main Appointments screen without preselecting or locking the client. `AppointmentFormModal` also lacked a `lockClientId` prop, and `NavigationContext` did not expose a global `openAppointmentForm` hub modal.
   - **Fixes Applied**:

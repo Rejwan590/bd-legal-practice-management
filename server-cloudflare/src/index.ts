@@ -23,6 +23,7 @@ import { feeAgreementsRouter } from './routes/feeAgreements';
 import { feePaymentsRouter } from './routes/feePayments';
 import { expensesRouter } from './routes/expenses';
 import { chamberExpensesRouter } from './routes/chamberExpenses';
+import { backupRouter } from './routes/backup';
 import { adminRouter } from './routes/admin';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -105,6 +106,7 @@ app.route('/api/v1/fee-agreements', feeAgreementsRouter);
 app.route('/api/v1/fee-payments', feePaymentsRouter);
 app.route('/api/v1/expenses', expensesRouter);
 app.route('/api/v1/chamber-expenses', chamberExpensesRouter);
+app.route('/api/v1/backup', backupRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api/v1/admin', adminRouter);
 
