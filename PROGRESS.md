@@ -3,6 +3,21 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **User and Device Limits Hardening + Pricing Parity Verification (`cloudflare` branch)**:
+  - **Atomic Limit Defect Fixes (`server-cloudflare`)**:
+    - **User Create**: Updated `server-cloudflare/src/routes/users.ts` to count only active, non-deleted users (`active = 1 AND deleted_at IS NULL`) towards `maxUsers`. Implemented atomic conditional SQL insertion (`INSERT INTO users ... SELECT ... WHERE (SELECT COUNT(*) FROM users WHERE firm_id = ? AND active = 1 AND deleted_at IS NULL) < (SELECT max_users FROM firms WHERE id = ?)`) so race conditions are impossible under SQLite write serialization without interactive transactions. Returns HTTP 403 `"Firm user limit (N) reached"` when 0 rows are written.
+    - **User Reactivate**: Updated `POST /api/v1/users/:id/reactivate` in `server-cloudflare/src/routes/users.ts` with atomic conditional UPDATE (`UPDATE users SET active = 1 ... WHERE id = ? AND firm_id = ? AND (active = 1 OR (SELECT COUNT(*) FROM users WHERE firm_id = ? AND active = 1 AND deleted_at IS NULL) < (SELECT max_users FROM firms WHERE id = ?))`). Returns HTTP 403 `"Firm user limit (N) reached"` when rows written is 0.
+    - **Admin Device Approval**: Updated `POST /devices/:id/approve` in `server-cloudflare/src/routes/admin.ts` with atomic conditional UPDATE (`UPDATE devices SET status = 'approved' ... WHERE id = ? AND (status = 'approved' OR (SELECT COUNT(*) FROM devices WHERE firm_id = ? AND status = 'approved') < (SELECT max_devices FROM firms WHERE id = ?))`). Returns HTTP 403 `"Device limit reached. Increase maxDevices before approving."` when rows written is 0.
+    - **Device Auto-Approval (`auth.ts`)**: Updated `processDeviceLogin` in `server-cloudflare/src/routes/auth.ts` to conditionally insert device status (`CASE WHEN ? = 'auto-approve' AND (SELECT COUNT(*) FROM devices WHERE firm_id = ? AND status = 'approved') < (SELECT max_devices FROM firms WHERE id = ?) THEN 'approved' ELSE 'pending' END`) to prevent concurrency bypass on login.
+    - **Plans Archive Alias**: Added `POST /api/admin/plans/:id/archive` in `server-cloudflare/src/routes/admin.ts`.
+  - **Pricing Source of Truth & Parity Check**:
+    - Synchronized `server-cloudflare/src/utils/pricing.ts`, `admin-app/src/utils/pricing.ts`, and `src/utils/pricing.ts` to 100% byte-for-byte character parity.
+    - Added `scripts/verify-pricing-parity.mjs` verifying SHA256 parity and running diverse test vectors (Solo, Chamber with extras, Professional with custom overrides, null defaults) across all modules.
+    - Added `npm run verify:pricing` script and added to `.github/workflows/cloudflare.yml`.
+  - **Comprehensive Test Suite & Verification**:
+    - Added Test 28 in `server-cloudflare/tests/cloudflareBackend.test.ts` covering: limit reached on create (403), limit reached on reactivate (403), inactive users not counted, limit reached on admin approval (403), firm isolation, parallel create requests at limit-1 yielding exactly one 201 and one 403, and plan archive.
+    - Full verification: `npm run lint` (0 errors), `npm run verify:pricing` (PASS), `npm test --prefix server-cloudflare` (28/28 passed), `npx tsx tests/i18nParity.test.ts` (3/3 passed), `npm run build` (PASS), `npm run build:admin` (PASS), `npm run build:pages` (PASS).
+
 - [x] **Migration from Supabase Storage to Cloudflare R2 (`bdlegal-photos` & `bdlegal-backups`)**:
   - **R2 Buckets & Free-Tier Guard**:
     - Created R2 buckets `bdlegal-photos` and `bdlegal-backups` in Cloudflare account (`bee6614feb7b8982c5437d8d8d5a02de`).
