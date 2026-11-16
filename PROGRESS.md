@@ -3,6 +3,20 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Migration from Supabase Storage to Cloudflare R2 (`bdlegal-photos` & `bdlegal-backups`)**:
+  - **R2 Buckets & Free-Tier Guard**:
+    - Created R2 buckets `bdlegal-photos` and `bdlegal-backups` in Cloudflare account (`bee6614feb7b8982c5437d8d8d5a02de`).
+    - Stays completely within Cloudflare R2's generous free tier (10 GB/mo storage, 1M Class A write ops, 10M Class B read ops, zero egress fees). Profile photos are capped at $\le 300\text{ KB}$ per Rule 6 (allowing >33,000 profile photos under 10 GB).
+  - **Worker Bindings & Supabase Removal**:
+    - Configured `[[r2_buckets]]` for `PHOTOS_BUCKET` and `BACKUPS_BUCKET` in `server-cloudflare/wrangler.toml`.
+    - Removed `SUPABASE_*` environment variables from `wrangler.toml` and permanently deleted `SUPABASE_SECRET_KEY` secret from Cloudflare Worker `bdlegal-api`.
+  - **Backend Photo Lifecycle & Auto-Migration (`server-cloudflare/src/routes/clients.ts`)**:
+    - Updated upload route to prioritize native Cloudflare R2 writes directly into `c.env.PHOTOS_BUCKET` without D1 byte bloat.
+    - Updated photo download route to check `c.env.PHOTOS_BUCKET` first; if an existing legacy photo reference is accessed, it falls back to download from Supabase and automatically migrates the object to Cloudflare R2.
+    - Updated delete route to remove from `c.env.PHOTOS_BUCKET` cleanly.
+  - **Tests & Live Deployment**:
+    - Added Test 12b (`server-cloudflare/tests/cloudflareBackend.test.ts`) covering R2 photo lifecycle (PUT, GET binary, GET `?format=json`, DELETE) with all 27 tests passing.
+    - Deployed Worker `bdlegal-api` (Version ID: `d8ec00e5-122b-469f-b261-057f2b315f5f`) with live `PHOTOS_BUCKET` and `BACKUPS_BUCKET` bindings. Verified `/api/v1/health` returns HTTP 200 OK.
 - [x] **Cloudflare Zero Trust for Super Admin (`bdlegal-app.pages.dev/admin*`)**:
   - **Zero Trust Organization**: Initialized organization `lawyers-e-chamber` with authentication domain `lawyers-e-chamber.cloudflareaccess.com`.
   - **Identity Provider**: Configured built-in One-Time PIN (OTP) provider (`2f72d7aa-16d4-422b-be87-14c5b3698b22`).

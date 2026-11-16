@@ -599,7 +599,16 @@ clientsRouter.put('/:id/photo', enforceSubscriptionReadOnly, requirePermission('
   let storedBytes = base64Bytes;
   let storageProvider: 'supabase' | 'r2' | 'd1' = 'd1';
 
-  if (isSupabaseStorageConfigured(c.env)) {
+  if (c.env.PHOTOS_BUCKET) {
+    r2Key = `photos/${firmId}/${clientId}.${detected.ext}`;
+    await c.env.PHOTOS_BUCKET.put(r2Key, rawBytes, { httpMetadata: { contentType: detected.mime } });
+    const oldSupabaseRef = parseSupabaseStorageRef(existingPhoto?.r2Key);
+    if (oldSupabaseRef && isSupabaseStorageConfigured(c.env)) {
+      await deleteFromSupabaseStorage({ env: c.env, bucket: oldSupabaseRef.bucket, objectPath: oldSupabaseRef.objectPath }).catch(() => {});
+    }
+    storedBytes = '';
+    storageProvider = 'r2';
+  } else if (isSupabaseStorageConfigured(c.env)) {
     const bucket = getPhotosBucketName(c.env);
     const objectPath = `photos/${firmId}/${clientId}.${detected.ext}`;
     await uploadToSupabaseStorage({
@@ -618,11 +627,6 @@ clientsRouter.put('/:id/photo', enforceSubscriptionReadOnly, requirePermission('
     r2Key = formatSupabaseStorageRef(bucket, objectPath);
     storedBytes = '';
     storageProvider = 'supabase';
-  } else if (c.env.PHOTOS_BUCKET) {
-    r2Key = `photos/${firmId}/${clientId}.${detected.ext}`;
-    await c.env.PHOTOS_BUCKET.put(r2Key, rawBytes, { httpMetadata: { contentType: detected.mime } });
-    storedBytes = '';
-    storageProvider = 'r2';
   }
 
   await c.env.DB.batch([
@@ -692,19 +696,26 @@ clientsRouter.get('/:id/photo', requirePermission('clients.view'), async (c) => 
 
   let binaryData: Uint8Array | null = null;
   const supabaseRef = parseSupabaseStorageRef(photo.r2Key);
-  if (supabaseRef && isSupabaseStorageConfigured(c.env)) {
+  const r2Key = supabaseRef ? supabaseRef.objectPath : photo.r2Key;
+
+  if (r2Key && c.env.PHOTOS_BUCKET) {
+    const obj = await c.env.PHOTOS_BUCKET.get(r2Key);
+    if (obj) {
+      binaryData = new Uint8Array(await obj.arrayBuffer());
+    }
+  }
+
+  if (!binaryData && supabaseRef && isSupabaseStorageConfigured(c.env)) {
     const obj = await downloadFromSupabaseStorage({
       env: c.env,
       bucket: supabaseRef.bucket,
       objectPath: supabaseRef.objectPath,
-    });
+    }).catch(() => null);
     if (obj) {
       binaryData = new Uint8Array(obj.data);
-    }
-  } else if (photo.r2Key && c.env.PHOTOS_BUCKET && !supabaseRef) {
-    const obj = await c.env.PHOTOS_BUCKET.get(photo.r2Key);
-    if (obj) {
-      binaryData = new Uint8Array(await obj.arrayBuffer());
+      if (c.env.PHOTOS_BUCKET && r2Key) {
+        await c.env.PHOTOS_BUCKET.put(r2Key, binaryData, { httpMetadata: { contentType: photo.mime } }).catch(() => {});
+      }
     }
   }
 
@@ -761,14 +772,16 @@ clientsRouter.delete('/:id/photo', enforceSubscriptionReadOnly, requirePermissio
 
   if (existingPhoto?.r2Key) {
     const supabaseRef = parseSupabaseStorageRef(existingPhoto.r2Key);
+    const r2Key = supabaseRef ? supabaseRef.objectPath : existingPhoto.r2Key;
+    if (r2Key && c.env.PHOTOS_BUCKET) {
+      await c.env.PHOTOS_BUCKET.delete(r2Key).catch(() => {});
+    }
     if (supabaseRef && isSupabaseStorageConfigured(c.env)) {
       await deleteFromSupabaseStorage({
         env: c.env,
         bucket: supabaseRef.bucket,
         objectPath: supabaseRef.objectPath,
-      });
-    } else if (!supabaseRef && c.env.PHOTOS_BUCKET) {
-      await c.env.PHOTOS_BUCKET.delete(existingPhoto.r2Key);
+      }).catch(() => {});
     }
   }
 

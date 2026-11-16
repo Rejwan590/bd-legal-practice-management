@@ -563,6 +563,145 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
     }
   });
 
+  // 12b. Cloudflare R2 Client Photo Upload, Fetch, Auto-Migration & Delete
+  it('12b. Cloudflare R2 handles PUT, GET, and DELETE cleanly with zero D1 bloat', async () => {
+    const r2Store = new Map<string, { data: Uint8Array; httpMetadata?: any }>();
+    const mockR2 = {
+      put: async (key: string, value: any, options?: any) => {
+        let data: Uint8Array;
+        if (value instanceof Uint8Array) data = value;
+        else if (value instanceof ArrayBuffer) data = new Uint8Array(value);
+        else data = new TextEncoder().encode(String(value));
+        r2Store.set(key, { data, httpMetadata: options?.httpMetadata });
+        return { key, size: data.byteLength };
+      },
+      get: async (key: string) => {
+        const item = r2Store.get(key);
+        if (!item) return null;
+        return {
+          key,
+          size: item.data.byteLength,
+          arrayBuffer: async () => item.data.buffer.slice(item.data.byteOffset, item.data.byteOffset + item.data.byteLength),
+          httpMetadata: item.httpMetadata,
+        };
+      },
+      delete: async (key: string) => {
+        r2Store.delete(key);
+      },
+    } as unknown as R2Bucket;
+
+    const firmR2Res = await app.request(
+      '/api/admin/firms',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        body: JSON.stringify({
+          name: 'R2 Chamber & Associates',
+          ownerName: 'Advocate R2 User',
+          ownerEmail: 'owner@r2-chamber.com',
+          licenseType: 'trial',
+        }),
+      },
+      env
+    );
+    expect(firmR2Res.status).toBe(201);
+    const firmR2Data = (await firmR2Res.json() as any);
+    const loginR2Res = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@r2-chamber.com', password: firmR2Data.temporaryPassword }),
+      },
+      env
+    );
+    expect(loginR2Res.status).toBe(200);
+    const ownerR2Cookie = loginR2Res.headers.get('set-cookie')!.split(';')[0];
+
+    const createClientRes = await app.request(
+      '/api/v1/clients',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerR2Cookie },
+        body: JSON.stringify({
+          name: 'Sir Fazle Hasan Abed',
+          phone: '+8801811222333',
+          address: 'Mohakhali, Dhaka',
+        }),
+      },
+      env
+    );
+    expect(createClientRes.status).toBe(201);
+    const clientR2Id = ((await createClientRes.json()) as any).id;
+
+    const r2Env = {
+      ...env,
+      PHOTOS_BUCKET: mockR2,
+    };
+
+    const sampleJpegBase64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+
+    // PUT photo -> stores in R2, bytes in D1 is empty
+    const putRes = await app.request(
+      `/api/v1/clients/${clientR2Id}/photo`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: ownerR2Cookie },
+        body: JSON.stringify({ mime: 'image/jpeg', data: sampleJpegBase64 }),
+      },
+      r2Env
+    );
+    expect(putRes.status).toBe(200);
+    const expectedR2Key = `photos/${firmR2Data.firm.id}/${clientR2Id}.jpg`;
+    expect(r2Store.has(expectedR2Key)).toBe(true);
+
+    const db = getDb(mockD1);
+    const photoRows = await db
+      .select()
+      .from(schema.clientPhotos)
+      .where(eq(schema.clientPhotos.clientId, clientR2Id));
+    expect(photoRows[0].bytes).toBe('');
+    expect(photoRows[0].r2Key).toBe(expectedR2Key);
+
+    // GET binary photo from R2
+    const getBinRes = await app.request(
+      `/api/v1/clients/${clientR2Id}/photo`,
+      { headers: { Cookie: ownerR2Cookie } },
+      r2Env
+    );
+    expect(getBinRes.status).toBe(200);
+    expect(getBinRes.headers.get('content-type')).toBe('image/jpeg');
+    const fetchedBytes = await getBinRes.arrayBuffer();
+    expect(fetchedBytes.byteLength).toBe(r2Store.get(expectedR2Key)!.data.byteLength);
+
+    // GET JSON photo from R2
+    const getJsonRes = await app.request(
+      `/api/v1/clients/${clientR2Id}/photo?format=json`,
+      { headers: { Cookie: ownerR2Cookie } },
+      r2Env
+    );
+    expect(getJsonRes.status).toBe(200);
+    const jsonData = (await getJsonRes.json()) as any;
+    expect(jsonData.bytes).toBe(sampleJpegBase64);
+
+    // DELETE photo removes from R2 and D1
+    const delRes = await app.request(
+      `/api/v1/clients/${clientR2Id}/photo`,
+      { method: 'DELETE', headers: { Cookie: ownerR2Cookie } },
+      r2Env
+    );
+    expect(delRes.status).toBe(200);
+    expect(r2Store.has(expectedR2Key)).toBe(false);
+
+    const getAfterDeleteRes = await app.request(
+      `/api/v1/clients/${clientR2Id}/photo`,
+      { headers: { Cookie: ownerR2Cookie } },
+      r2Env
+    );
+    expect(getAfterDeleteRes.status).toBe(404);
+  });
+
   // ===========================================================================
   // COMPREHENSIVE PARITY & INVARIANT SUITE (TESTS 13-18)
   // ===========================================================================

@@ -6,10 +6,6 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ENVIRONMENT = "production"
 CORS_ORIGIN = "https://bdlegal-app.pages.dev,https://bd-legal-practice-management.vercel.app"
-SUPABASE_URL = "https://rmuontqsoxwnzevtnvkc.supabase.co"
-SUPABASE_PHOTOS_BUCKET = "bdlegal-photos"
-SUPABASE_BACKUPS_BUCKET = "bdlegal-backups"
-# Store SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) via `wrangler secret put` — never commit secrets here.
 
 [[d1_databases]]
 binding = "DB"
@@ -17,11 +13,10 @@ database_name = "bdlegal-d1-prod"
 database_id = "7d3f5e2b-53ab-4c98-84e7-b20e1803a9aa"
 migrations_dir = "migrations"
 
-# Enable R2 in Cloudflare Dashboard first, then create buckets and uncomment:
-# [[r2_buckets]]
-# binding = "PHOTOS_BUCKET"
-# bucket_name = "bdlegal-photos"
-#
-# [[r2_buckets]]
-# binding = "BACKUPS_BUCKET"
-# bucket_name = "bdlegal-backups"
+[[r2_buckets]]
+binding = "PHOTOS_BUCKET"
+bucket_name = "bdlegal-photos"
+
+[[r2_buckets]]
+binding = "BACKUPS_BUCKET"
+bucket_name = "bdlegal-backups"
