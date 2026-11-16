@@ -3,6 +3,11 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Zero Trust for Super Admin (`bdlegal-app.pages.dev/admin*`)**:
+  - **Zero Trust Organization**: Initialized organization `lawyers-e-chamber` with authentication domain `lawyers-e-chamber.cloudflareaccess.com`.
+  - **Identity Provider**: Configured built-in One-Time PIN (OTP) provider (`2f72d7aa-16d4-422b-be87-14c5b3698b22`).
+  - **Access Application & Policy**: Created self-hosted application `BD Legal Super Admin` on `bdlegal-app.pages.dev/admin` (App ID: `e5336381-00cf-4820-8f13-9596f771131d`) with allow policy restricted strictly to `Rejwan.ahmed.riad@gmail.com`.
+  - **Verified Isolation**: Chamber app (`/`) returns HTTP 200 without challenge, Worker API (`/api/v1/health`) returns HTTP 200 unblocked, and Super Admin (`/admin`) redirects to Cloudflare Access login challenge (HTTP 302).
 - [x] **Cloudflare Branch & CI/CD Connection (`cloudflare` default branch)**:
   - **Live Cloudflare Deployment**:
     - Deployed Cloudflare Worker API `bdlegal-api` (`https://bdlegal-api.lawyers-e-chamber.workers.dev`, Version ID: `c9a81311-df37-4744-aafc-06c912b7afd0`). Verified live health check (`status: ok`, `runtime: cloudflare-workers`, `environment: production`).
