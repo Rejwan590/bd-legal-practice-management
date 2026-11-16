@@ -26,6 +26,12 @@ const MODULES = [
 const VIEWPORT_WIDTHS = [320, 360, 375, 768, 1024, 1280, 1440, 1920];
 
 async function assertNoHorizontalOverflow(page: Page, contextName: string, width: number) {
+  // Fail immediately if unauthenticated and redirected to /login
+  expect(
+    page.url(),
+    `Expected authenticated route for ${contextName} at ${width}px, but page redirected to /login!`
+  ).not.toContain('/login');
+
   const scrollData = await page.evaluate(() => {
     const docScrollWidth = document.documentElement.scrollWidth;
     const bodyScrollWidth = document.body ? document.body.scrollWidth : 0;
@@ -104,6 +110,7 @@ test.describe('Deep Link, Refresh Persistence & Browser Back Navigation', () => 
     page,
   }) => {
     await page.goto('/cases/case-001/hearings', { waitUntil: 'networkidle' });
+    expect(page.url(), 'Expected authenticated route, but redirected to /login!').not.toContain('/login');
     await expect(page.getByTestId('dossier-panel-hearings')).toBeVisible();
 
     // Switch to Tasks tab -> URL updates to /cases/case-001/tasks
