@@ -4,7 +4,7 @@ import { createInMemoryD1 } from './d1Mock';
 import { hashPassword } from '../src/utils/crypto';
 import * as schema from '../src/db/schema';
 import { getDb } from '../src/db/client';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 
 describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
   let mockD1: D1Database;
@@ -2616,5 +2616,304 @@ describe('BD Legal Cloudflare Workers Backend Test Suite', () => {
       .from(schema.feePayments)
       .where(eq(schema.feePayments.firmId, firmDId));
     expect(cleanRows.some((p) => p.id === clientPayId && p.deletedAt === null)).toBe(true);
+  });
+
+  // 28. Atomic Limits Enforcement: Users & Devices
+  it('28. Atomic conditional SQL enforces user and device limits against race conditions', async () => {
+    const db = getDb(mockD1);
+    const nowIso = new Date().toISOString();
+    const firmLimitId = 'firm-limits-test';
+    const otherFirmId = 'firm-limits-other';
+
+    // Seed test firm with maxUsers: 2, maxDevices: 2
+    await db.insert(schema.firms).values({
+      id: firmLimitId,
+      firmId: firmLimitId,
+      name: 'Limits Test Chamber',
+      status: 'active',
+      planId: 'chamber',
+      maxUsers: 2,
+      maxDevices: 2,
+      licenseStartsAt: nowIso,
+      licenseExpiresAt: '2099-01-01T00:00:00.000Z',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Seed another firm with 10 users to verify firm isolation
+    await db.insert(schema.firms).values({
+      id: otherFirmId,
+      firmId: otherFirmId,
+      name: 'Other Chamber',
+      status: 'active',
+      planId: 'chamber',
+      maxUsers: 10,
+      maxDevices: 10,
+      licenseStartsAt: nowIso,
+      licenseExpiresAt: '2099-01-01T00:00:00.000Z',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Create 5 active users in the other firm
+    for (let i = 1; i <= 5; i++) {
+      await db.insert(schema.users).values({
+        id: `other-u-${i}`,
+        firmId: otherFirmId,
+        name: `Other User ${i}`,
+        email: `other-u-${i}@chamber-other.com`,
+        passwordHash: await hashPassword('Password123!'),
+        role: 'Staff',
+        permissions: ['cases.view'],
+        language: 'en',
+        active: true,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+
+    // Owner of firmLimitId
+    const limitOwnerHash = await hashPassword('OwnerPass123!');
+    const limitOwnerId = 'limit-owner-001';
+    await db.insert(schema.users).values({
+      id: limitOwnerId,
+      firmId: firmLimitId,
+      name: 'Barrister Limits Owner',
+      email: 'owner@limits-chamber.com',
+      passwordHash: limitOwnerHash,
+      role: 'Owner',
+      permissions: ['*'],
+      language: 'en',
+      active: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Login owner to get session cookie
+    const loginRes = await app.request(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@limits-chamber.com', password: 'OwnerPass123!' }),
+      },
+      env
+    );
+    expect(loginRes.status).toBe(200);
+    const limitOwnerCookie = loginRes.headers.get('set-cookie')!.split(';')[0];
+
+    // 1. Create user 2 (succeeds -> active users = 2, at limit)
+    const user2Res = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+        body: JSON.stringify({ name: 'Staff User Two', email: 'user2@limits-chamber.com', role: 'Staff' }),
+      },
+      env
+    );
+    expect(user2Res.status).toBe(201);
+    const user2 = (await user2Res.json()) as any;
+
+    // 2. Limit reached on create -> 403
+    const user3Blocked = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+        body: JSON.stringify({ name: 'Staff User Three', email: 'user3@limits-chamber.com', role: 'Staff' }),
+      },
+      env
+    );
+    expect(user3Blocked.status).toBe(403);
+    const blockedData = (await user3Blocked.json()) as any;
+    expect(blockedData.message).toContain('Firm user limit (2) reached');
+
+    // 3. Deactivate user 2 -> active users becomes 1
+    const deactRes = await app.request(
+      `/api/v1/users/${user2.id}/deactivate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+      },
+      env
+    );
+    expect(deactRes.status).toBe(200);
+
+    // 4. Inactive users don't count toward limit -> creating user 3 now succeeds!
+    const user3Res = await app.request(
+      '/api/v1/users',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+        body: JSON.stringify({ name: 'Staff User Three', email: 'user3@limits-chamber.com', role: 'Staff' }),
+      },
+      env
+    );
+    expect(user3Res.status).toBe(201);
+    const user3 = (await user3Res.json()) as any;
+
+    // 5. Limit reached on reactivate -> 403 (active count is 2: owner + user3)
+    const reactivateBlocked = await app.request(
+      `/api/v1/users/${user2.id}/reactivate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+      },
+      env
+    );
+    expect(reactivateBlocked.status).toBe(403);
+    const reactivateBlockedData = (await reactivateBlocked.json()) as any;
+    expect(reactivateBlockedData.message).toContain('Firm user limit (2) reached');
+
+    // Deactivate user 3 -> reactivate user 2 succeeds
+    const deact3Res = await app.request(
+      `/api/v1/users/${user3.id}/deactivate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+      },
+      env
+    );
+    expect(deact3Res.status).toBe(200);
+
+    const reactivateSuccess = await app.request(
+      `/api/v1/users/${user2.id}/reactivate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+      },
+      env
+    );
+    expect(reactivateSuccess.status).toBe(200);
+
+    // 6. Device limits & Admin approval check
+    await db.delete(schema.devices).where(eq(schema.devices.firmId, firmLimitId));
+
+    // Insert 2 approved devices for firmLimitId (reaches maxDevices = 2)
+    const dev1Id = 'device-limit-1';
+    const dev2Id = 'device-limit-2';
+    const dev3Id = 'device-limit-3';
+
+    await db.insert(schema.devices).values([
+      {
+        id: dev1Id,
+        firmId: firmLimitId,
+        userId: limitOwnerId,
+        deviceKeyHash: 'hash-dev-1',
+        name: 'Device 1',
+        userAgent: 'Chrome',
+        status: 'approved',
+        firstSeenAt: nowIso,
+        lastSeenAt: nowIso,
+        approvedByAdminId: 'admin-001',
+      },
+      {
+        id: dev2Id,
+        firmId: firmLimitId,
+        userId: user2.id,
+        deviceKeyHash: 'hash-dev-2',
+        name: 'Device 2',
+        userAgent: 'Firefox',
+        status: 'approved',
+        firstSeenAt: nowIso,
+        lastSeenAt: nowIso,
+        approvedByAdminId: 'admin-001',
+      },
+      {
+        id: dev3Id,
+        firmId: firmLimitId,
+        userId: user2.id,
+        deviceKeyHash: 'hash-dev-3',
+        name: 'Device 3',
+        userAgent: 'Safari',
+        status: 'pending',
+        firstSeenAt: nowIso,
+        lastSeenAt: nowIso,
+        approvedByAdminId: null,
+      },
+    ]);
+
+    // Admin tries to approve dev-3 when approved devices count == 2 (limit reached) -> 403
+    const approveBlocked = await app.request(
+      `/api/admin/devices/${dev3Id}/approve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      },
+      env
+    );
+    expect(approveBlocked.status).toBe(403);
+    const approveBlockedJson = (await approveBlocked.json()) as any;
+    expect(approveBlockedJson.message).toBe('Device limit reached. Increase maxDevices before approving.');
+
+    // Revoke dev-1 -> approval of dev-3 now succeeds
+    const revokeDev1 = await app.request(
+      `/api/admin/devices/${dev1Id}/revoke`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      },
+      env
+    );
+    expect(revokeDev1.status).toBe(200);
+
+    const approveSuccess = await app.request(
+      `/api/admin/devices/${dev3Id}/approve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      },
+      env
+    );
+    expect(approveSuccess.status).toBe(200);
+
+    // 7. Parallel create requests at limit-1: exactly one succeeds, one gets 403
+    // Set maxUsers to 3. Currently active: limitOwner and user2 (2 active users). So exactly 1 spot remains!
+    await db.update(schema.firms).set({ maxUsers: 3 }).where(eq(schema.firms.id, firmLimitId));
+
+    const [parallel1, parallel2] = await Promise.all([
+      app.request(
+        '/api/v1/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+          body: JSON.stringify({ name: 'Parallel User A', email: 'parallel-a@limits-chamber.com', role: 'Staff' }),
+        },
+        env
+      ),
+      app.request(
+        '/api/v1/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: limitOwnerCookie },
+          body: JSON.stringify({ name: 'Parallel User B', email: 'parallel-b@limits-chamber.com', role: 'Staff' }),
+        },
+        env
+      ),
+    ]);
+
+    const statuses = [parallel1.status, parallel2.status].sort();
+    expect(statuses).toEqual([201, 403]);
+
+    // Database check: exactly 3 active users exist for firmLimitId (never 4)
+    const activeUsersInDb = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(eq(schema.users.firmId, firmLimitId), eq(schema.users.active, true), isNull(schema.users.deletedAt)));
+    expect(activeUsersInDb.length).toBe(3);
+
+    // 8. Test POST /api/admin/plans/:id/archive
+    const archivePlanRes = await app.request(
+      '/api/admin/plans/chamber/archive',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      },
+      env
+    );
+    expect(archivePlanRes.status).toBe(200);
+    const archiveJson = (await archivePlanRes.json()) as any;
+    expect(archiveJson.plan.status).toBe('archived');
   });
 });

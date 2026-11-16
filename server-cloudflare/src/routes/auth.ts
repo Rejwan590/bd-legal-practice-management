@@ -27,6 +27,7 @@ const loginSchema = z.object({
 
 async function processDeviceLogin(params: {
   db: any;
+  d1: D1Database;
   firm: schema.Firm;
   userId: string;
   rawDeviceKey?: string;
@@ -41,7 +42,7 @@ async function processDeviceLogin(params: {
   code?: string;
   message?: string;
 }> {
-  const { db, firm, userId, userAgent, customDeviceName } = params;
+  const { db, d1, firm, userId, userAgent, customDeviceName } = params;
   let rawDeviceKey = params.rawDeviceKey?.trim();
   if (!rawDeviceKey || rawDeviceKey.length < 32) {
     rawDeviceKey = generateRandomHex(32);
@@ -111,7 +112,7 @@ async function processDeviceLogin(params: {
   }
 
   const firmDevices = await db
-    .select()
+    .select({ id: schema.devices.id })
     .from(schema.devices)
     .where(and(eq(schema.devices.firmId, firm.id), eq(schema.devices.status, 'approved')));
 
@@ -119,22 +120,37 @@ async function processDeviceLogin(params: {
   const maxDevices = firm.maxDevices ?? 5;
   const devicePolicy = firm.devicePolicy ?? 'auto-approve';
   const name = customDeviceName?.trim() || summarizeUserAgent(userAgent);
-  const autoApproved = approvedCount < maxDevices && devicePolicy === 'auto-approve';
+  const deviceId = crypto.randomUUID();
 
-  const newDevice: schema.Device = {
-    id: crypto.randomUUID(),
-    firmId: firm.id,
+  // Atomic insert conditionally setting status to 'approved' if auto-approve policy holds and approved devices < maxDevices
+  await d1.prepare(`
+    INSERT INTO devices (
+      id, firm_id, user_id, device_key_hash, name, user_agent, status,
+      first_seen_at, last_seen_at, approved_by_admin_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 
+      CASE WHEN ? = 'auto-approve' AND (
+        SELECT COUNT(*) FROM devices WHERE firm_id = ? AND status = 'approved'
+      ) < (SELECT max_devices FROM firms WHERE id = ?) THEN 'approved' ELSE 'pending' END,
+      ?, ?, NULL
+    )
+  `).bind(
+    deviceId,
+    firm.id,
     userId,
     deviceKeyHash,
     name,
-    userAgent: userAgent || 'Unknown Browser',
-    status: autoApproved ? 'approved' : 'pending',
-    firstSeenAt: now,
-    lastSeenAt: now,
-    approvedByAdminId: null,
-  };
+    userAgent || 'Unknown Browser',
+    devicePolicy,
+    firm.id,
+    firm.id,
+    now,
+    now
+  ).run();
 
-  await db.insert(schema.devices).values(newDevice);
+  const insertedRows = await db.select().from(schema.devices).where(eq(schema.devices.id, deviceId)).limit(1);
+  const newDevice = insertedRows[0]!;
+  const autoApproved = newDevice.status === 'approved';
 
   if (!autoApproved) {
     const quotaExceeded = approvedCount >= maxDevices;
@@ -221,6 +237,7 @@ authRouter.post('/login', async (c) => {
 
   const deviceResult = await processDeviceLogin({
     db,
+    d1: c.env.DB,
     firm,
     userId: user.id,
     rawDeviceKey: getCookie(c, 'device_key'),

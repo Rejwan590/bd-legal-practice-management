@@ -137,15 +137,6 @@ usersRouter.post('/', enforceSubscriptionReadOnly, async (c) => {
   }
 
   const db = getDb(c.env.DB);
-  const currentUsers = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(and(eq(schema.users.firmId, firm.id), isNull(schema.users.deletedAt)));
-
-  if (currentUsers.length >= firm.maxUsers) {
-    return c.json({ error: 'Forbidden', message: `Firm user limit (${firm.maxUsers}) reached` }, 403);
-  }
-
   const cleanEmail = data.email.toLowerCase().trim();
   const existing = await db
     .select({ id: schema.users.id })
@@ -155,6 +146,15 @@ usersRouter.post('/', enforceSubscriptionReadOnly, async (c) => {
 
   if (existing[0]) {
     return c.json({ error: 'Conflict', message: 'Email already in use' }, 409);
+  }
+
+  const currentUsers = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.firmId, firm.id), eq(schema.users.active, true), isNull(schema.users.deletedAt)));
+
+  if (currentUsers.length >= firm.maxUsers) {
+    return c.json({ error: 'Forbidden', message: `Firm user limit (${firm.maxUsers}) reached` }, 403);
   }
 
   const presetDef = data.preset ? ROLE_PRESETS[data.preset] : undefined;
@@ -168,6 +168,43 @@ usersRouter.post('/', enforceSubscriptionReadOnly, async (c) => {
   const passwordHash = await hashPassword(rawPassword);
   const id = crypto.randomUUID();
   const nowIso = new Date().toISOString();
+
+  // Atomic conditional INSERT enforcing firm.maxUsers against race conditions
+  const insertResult = await c.env.DB.prepare(`
+    INSERT INTO users (
+      id, firm_id, name, email, password_hash, role, job_type, job_title_label,
+      reports_to_user_id, permissions, language, active, must_change_password,
+      failed_login_attempts, locked_until, created_at, updated_at, deleted_at,
+      created_by, updated_by
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, NULL, ?, ?, NULL, ?, NULL
+    WHERE (
+      SELECT COUNT(*) FROM users
+      WHERE firm_id = ? AND active = 1 AND deleted_at IS NULL
+    ) < (SELECT max_users FROM firms WHERE id = ?)
+  `).bind(
+    id,
+    firm.id,
+    data.name.trim(),
+    cleanEmail,
+    passwordHash,
+    data.role,
+    resolvedJobType,
+    data.jobTitleLabel ?? null,
+    data.reportsToUserId ?? null,
+    JSON.stringify(resolvedPermissions),
+    data.language,
+    !data.temporaryPassword ? 1 : 0,
+    nowIso,
+    nowIso,
+    actor.id,
+    firm.id,
+    firm.id
+  ).run();
+
+  if (!insertResult.meta?.changes || insertResult.meta.changes === 0) {
+    return c.json({ error: 'Forbidden', message: `Firm user limit (${firm.maxUsers}) reached` }, 403);
+  }
 
   const newUser: typeof schema.users.$inferInsert = {
     id,
@@ -192,21 +229,18 @@ usersRouter.post('/', enforceSubscriptionReadOnly, async (c) => {
     updatedBy: null,
   };
 
-  await db.batch([
-    db.insert(schema.users).values(newUser),
-    db.insert(schema.auditLog).values(
-      buildAuditEntry({
-        firmId: firm.id,
-        userId: actor.id,
-        userName: actor.name,
-        entity: 'User',
-        entityId: id,
-        action: 'CREATE',
-        newValue: { email: cleanEmail, role: data.role, jobType: resolvedJobType },
-        now: nowIso,
-      })
-    ),
-  ] as any);
+  await db.insert(schema.auditLog).values(
+    buildAuditEntry({
+      firmId: firm.id,
+      userId: actor.id,
+      userName: actor.name,
+      entity: 'User',
+      entityId: id,
+      action: 'CREATE',
+      newValue: { email: cleanEmail, role: data.role, jobType: resolvedJobType },
+      now: nowIso,
+    })
+  );
 
   return c.json({ ...sanitizeUser(newUser as schema.User), temporaryPassword: rawPassword }, 201);
 });
@@ -456,26 +490,46 @@ usersRouter.post('/:id/reactivate', enforceSubscriptionReadOnly, async (c) => {
     return c.json({ error: 'Not found', message: 'User not found' }, 404);
   }
 
+  const firmRows = await db
+    .select({ maxUsers: schema.firms.maxUsers })
+    .from(schema.firms)
+    .where(eq(schema.firms.id, firmId))
+    .limit(1);
+  const firm = firmRows[0];
+  const maxUsers = firm?.maxUsers ?? 5;
+
   const nowIso = new Date().toISOString();
-  await db.batch([
-    db
-      .update(schema.users)
-      .set({ active: true, updatedAt: nowIso, updatedBy: actor.id })
-      .where(and(eq(schema.users.id, targetId), eq(schema.users.firmId, firmId))),
-    db.insert(schema.auditLog).values(
-      buildAuditEntry({
-        firmId,
-        userId: actor.id,
-        userName: actor.name,
-        entity: 'User',
-        entityId: targetId,
-        action: 'UPDATE',
-        oldValue: { active: target.active },
-        newValue: { active: true },
-        now: nowIso,
-      })
-    ),
-  ] as any);
+
+  // Atomic conditional UPDATE enforcing firm maxUsers against race conditions
+  const updateResult = await c.env.DB.prepare(`
+    UPDATE users
+    SET active = 1, updated_at = ?, updated_by = ?
+    WHERE id = ? AND firm_id = ? AND deleted_at IS NULL
+      AND (
+        active = 1 OR (
+          SELECT COUNT(*) FROM users
+          WHERE firm_id = ? AND active = 1 AND deleted_at IS NULL
+        ) < (SELECT max_users FROM firms WHERE id = ?)
+      )
+  `).bind(nowIso, actor.id, targetId, firmId, firmId, firmId).run();
+
+  if (!updateResult.meta?.changes || updateResult.meta.changes === 0) {
+    return c.json({ error: 'Forbidden', message: `Firm user limit (${maxUsers}) reached` }, 403);
+  }
+
+  await db.insert(schema.auditLog).values(
+    buildAuditEntry({
+      firmId,
+      userId: actor.id,
+      userName: actor.name,
+      entity: 'User',
+      entityId: targetId,
+      action: 'UPDATE',
+      oldValue: { active: target.active },
+      newValue: { active: true },
+      now: nowIso,
+    })
+  );
 
   return c.json(sanitizeUser({ ...target, active: true, updatedAt: nowIso }));
 });

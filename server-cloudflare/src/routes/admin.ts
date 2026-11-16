@@ -1240,6 +1240,40 @@ async function updateAdminDeviceStatus(
     lastSeenAt: nowIso,
   };
 
+  if (newStatus === 'approved') {
+    // Atomic conditional UPDATE enforcing firm maxDevices against race conditions
+    const updateResult = await c.env.DB.prepare(`
+      UPDATE devices
+      SET status = 'approved', approved_by_admin_id = ?, last_seen_at = ?
+      WHERE id = ? AND (
+        status = 'approved' OR (
+          SELECT COUNT(*) FROM devices
+          WHERE firm_id = ? AND status = 'approved'
+        ) < (
+          SELECT max_devices FROM firms
+          WHERE id = ?
+        )
+      )
+    `).bind(admin.id, nowIso, deviceId, device.firmId, device.firmId).run();
+
+    if (!updateResult.meta?.changes || updateResult.meta.changes === 0) {
+      return c.json({ error: 'Forbidden', message: 'Device limit reached. Increase maxDevices before approving.' }, 403);
+    }
+
+    await db.insert(schema.adminAudit).values(
+      buildAdminAuditEntry({
+        adminId: admin.id,
+        action: auditAction,
+        targetFirmId: device.firmId,
+        old: { deviceId: device.id, status: device.status },
+        new: { deviceId: device.id, status: newStatus },
+        at: nowIso,
+      })
+    );
+
+    return c.json({ message, device: { ...device, ...updates } });
+  }
+
   await db.batch([
     db.update(schema.devices).set(updates).where(eq(schema.devices.id, deviceId)),
     db.insert(schema.adminAudit).values(
@@ -1398,6 +1432,40 @@ adminRouter.patch('/plans/:id', adminAuthMiddleware, async (c) => {
   ] as any);
 
   return c.json({ message: 'Plan updated successfully', plan: { ...plan, ...updates } });
+});
+
+// POST /api/admin/plans/:id/archive (alias for archiving a plan)
+adminRouter.post('/plans/:id/archive', adminAuthMiddleware, async (c) => {
+  const admin = c.get('admin') as schema.PlatformAdmin;
+  const planId = c.req.param('id') as string;
+  const db = getDb(c.env.DB);
+  const existingRows = await db.select().from(schema.plans).where(eq(schema.plans.id, planId)).limit(1);
+  const plan = existingRows[0];
+  if (!plan) {
+    return c.json({ error: 'NotFound', message: `Plan ${planId} not found` }, 404);
+  }
+
+  const nowIso = new Date().toISOString();
+  const updates = {
+    status: 'archived' as const,
+    updatedAt: nowIso,
+    updatedBy: admin.id,
+  };
+
+  await db.batch([
+    db.update(schema.plans).set(updates).where(eq(schema.plans.id, planId)),
+    db.insert(schema.adminAudit).values(
+      buildAdminAuditEntry({
+        adminId: admin.id,
+        action: 'PLAN_ARCHIVE',
+        old: plan,
+        new: updates,
+        at: nowIso,
+      })
+    ),
+  ] as any);
+
+  return c.json({ message: 'Plan archived successfully', plan: { ...plan, ...updates } });
 });
 
 // ==========================================
