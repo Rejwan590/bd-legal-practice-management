@@ -3,6 +3,15 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Cloudflare Branch & CI/CD Connection (`cloudflare` default branch)**:
+  - **Live Cloudflare Deployment**:
+    - Deployed Cloudflare Worker API `bdlegal-api` (`https://bdlegal-api.lawyers-e-chamber.workers.dev`, Version ID: `c9a81311-df37-4744-aafc-06c912b7afd0`). Verified live health check (`status: ok`, `runtime: cloudflare-workers`, `environment: production`).
+    - Assembled and deployed Cloudflare Pages `bdlegal-app` (`https://bdlegal-app.pages.dev` / preview `https://aebd965d.bdlegal-app.pages.dev`) with both Chamber App (`/`) and Super Admin (`/admin/`).
+  - **Automated GitHub-to-Cloudflare CI/CD**:
+    - Created `.github/workflows/cloudflare.yml` triggering on push to `cloudflare` (and `workflow_dispatch`): runs linters, Vitest worker tests, builds unified pages bundle (`npm run build:pages`), and automatically deploys to Cloudflare Pages (`bdlegal-app`) and Cloudflare Workers (`bdlegal-api`).
+    - Configured GitHub Actions repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+    - Updated `.github/workflows/ci.yml` so that full PostgreSQL 16 CI test suite runs on `cloudflare` branch pushes and PRs.
+    - Updated repository default branch to `cloudflare`.
 - [x] **Full-Chamber Backup Extension (Billing Ledger, Chamber Expenses/Advances & Case Shares on `cloudflare` branch)**:
   - **Shared Types & Packaging (`src/`)**:
     - Added `NumberSequenceRecord` and extended `ChamberBackupCounts` and `ChamberBackupData` in `src/data/types.ts` with optional `caseShares`, `feeAgreements`, `feeAgreementChanges`, `numberSequences`, `feePayments`, `expenseCategories`, `expenses`, `chamberExpenseCategories`, `chamberAdvances`, `chamberExpenses`, and `chamberAdvanceSettlements` (preserving backward compatibility with older backups).
