@@ -119,7 +119,8 @@
     "colActions": "পদক্ষেপ",
     "colAddress": "ঠিকানা",
     "colClient": "মক্কেল",
-    "colContact": "ফোন / ইমেইল"
+    "colContact": "ফোন / ইমেইল",
+    "client": "মক্কেল"
   },
   "cases": {
     "title": "চেম্বার মামলা রেজিস্টার",
@@ -656,7 +657,10 @@
     "resetAll": "ডিফল্টে রিসেট করুন",
     "viewAll": "সব দেখুন",
     "open": "খুলুন",
-    "void": "বাতিল"
+    "void": "বাতিল",
+    "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
+    "close": "বন্ধ করুন",
+    "viewDetails": "বিস্তারিত দেখুন"
   },
   "auth": {
     "switchUser": "ব্যবহারকারী পরিবর্তন",

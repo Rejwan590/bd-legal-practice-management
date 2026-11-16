@@ -10,6 +10,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "start": "node server/dist/index.js",
     "build": "vite build",
+    "build:e2e": "vite build --mode e2e --outDir dist-e2e",
     "build:admin": "npm run build --prefix admin-app",
     "build:pages": "node scripts/buildPages.mjs",
     "preview": "vite preview",
@@ -22,7 +23,7 @@
     "test:photoPersistence": "tsx tests/clientPhotoUploadPersistence.test.ts",
     "test:auditTrail": "tsx tests/auditTrailFlow.test.ts",
     "test:dashboard": "tsx tests/dashboard.test.ts",
-    "test:responsive": "playwright test",
+    "test:responsive": "npm run build:e2e && playwright test",
     "seed:synthetic": "tsx scripts/populateSyntheticData.ts",
     "seed:synthetic:clean": "tsx scripts/populateSyntheticData.ts --clean",
     "postinstall": "node --input-type=module -e \"import {execSync} from 'node:child_process';if(process.env.VERCEL||process.env.VERCEL_ENV||process.env.NOW_BUILDER){try{execSync('npm install --prefix server',{stdio:'inherit'});}catch(e){console.warn(e.message);}}\""

@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Calendar Month Grid - Expand "+N more" Hidden Matters & Date Key Bug', () => {
   for (const width of [768, 1024, 1280]) {
     test(`Month grid "+N more" expand/collapse and interactions at ${width}px`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date('2026-11-06T10:00:00.000Z'));
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/calendar');
       await page.waitForLoadState('networkidle');

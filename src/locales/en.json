@@ -119,7 +119,8 @@
     "colActions": "Actions",
     "colAddress": "Address",
     "colClient": "Client",
-    "colContact": "Phone / Email"
+    "colContact": "Phone / Email",
+    "client": "Client"
   },
   "cases": {
     "title": "Chamber Cases Register",
@@ -656,7 +657,10 @@
     "resetAll": "Reset to default",
     "viewAll": "View All",
     "open": "Open",
-    "void": "Void"
+    "void": "Void",
+    "saveChanges": "Save Changes",
+    "close": "Close",
+    "viewDetails": "View Details"
   },
   "auth": {
     "switchUser": "Switch User",
