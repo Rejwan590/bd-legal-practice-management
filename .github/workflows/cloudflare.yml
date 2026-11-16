@@ -33,6 +33,9 @@ jobs:
       - name: Run admin-app linter
         run: npm run lint --prefix admin-app
 
+      - name: Verify pricing parity
+        run: npm run verify:pricing
+
       - name: Install server-cloudflare dependencies
         run: npm ci --prefix server-cloudflare
 

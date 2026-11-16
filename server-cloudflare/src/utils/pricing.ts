@@ -25,29 +25,42 @@ export interface FirmPricingInput {
 }
 
 export interface PricingBreakdown {
+  // Plan Defaults
   planBasePriceBdt: number;
   planExtraUserPriceBdt: number;
   planExtraDevicePriceBdt: number;
   includedUsers: number;
   includedDevices: number;
+
+  // Custom Overrides (null if using plan default)
   customBasePriceBdt: number | null;
   customAnnualPriceBdt: number | null;
   customExtraUserPriceBdt: number | null;
   customExtraDevicePriceBdt: number | null;
+
+  // Effective Values
   effectiveBasePriceBdt: number;
   effectiveExtraUserPriceBdt: number;
   effectiveExtraDevicePriceBdt: number;
+
+  // Firm Limits and Extra Counts
   maxUsers: number;
   maxDevices: number;
   extraUsersCount: number;
   extraDevicesCount: number;
+
+  // Costs
   extraUsersCostBdt: number;
   extraDevicesCostBdt: number;
+
+  // Totals & Terms
   monthlyTotal: number;
   annualTotal: number;
   termTotal: number;
   billingCycle: BillingCycle;
   unit: '/ month' | '/ year';
+
+  // Backward compatibility fields
   basePriceBdt: number;
   extraUserPriceBdt: number;
   extraDevicePriceBdt: number;
@@ -102,6 +115,7 @@ export function calculatePricing(
   const extraDevicesCostBdt = extraDevicesCount * effectiveExtraDevicePriceBdt;
 
   const monthlyTotal = effectiveBasePriceBdt + extraUsersCostBdt + extraDevicesCostBdt;
+
   const annualTotal = customAnnual !== null && customAnnual !== undefined
     ? customAnnual
     : monthlyTotal * 10;
@@ -116,24 +130,31 @@ export function calculatePricing(
     planExtraDevicePriceBdt,
     includedUsers,
     includedDevices,
-    customBasePriceBdt: customBase ?? null,
-    customAnnualPriceBdt: customAnnual ?? null,
-    customExtraUserPriceBdt: customExtraUser ?? null,
-    customExtraDevicePriceBdt: customExtraDevice ?? null,
+
+    customBasePriceBdt: customBase !== null && customBase !== undefined ? customBase : null,
+    customAnnualPriceBdt: customAnnual !== null && customAnnual !== undefined ? customAnnual : null,
+    customExtraUserPriceBdt: customExtraUser !== null && customExtraUser !== undefined ? customExtraUser : null,
+    customExtraDevicePriceBdt: customExtraDevice !== null && customExtraDevice !== undefined ? customExtraDevice : null,
+
     effectiveBasePriceBdt,
     effectiveExtraUserPriceBdt,
     effectiveExtraDevicePriceBdt,
+
     maxUsers: firmMaxUsers,
     maxDevices: firmMaxDevices,
     extraUsersCount,
     extraDevicesCount,
+
     extraUsersCostBdt,
     extraDevicesCostBdt,
+
     monthlyTotal,
     annualTotal,
     termTotal,
     billingCycle,
     unit,
+
+    // Backward compatibility
     basePriceBdt: effectiveBasePriceBdt,
     extraUserPriceBdt: effectiveExtraUserPriceBdt,
     extraDevicePriceBdt: effectiveExtraDevicePriceBdt,
