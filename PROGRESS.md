@@ -473,7 +473,7 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - Restructured FilesScreen.tsx desktop table into 4 columns: Physical File, Case & Client, Custody & Holder, Actions.
     - Fully preserved all 4 actions: primary custody action on top; secondary icon actions row (Edit, History, Delete) underneath.
     - Added compact={true} prop support to ResponsiveTable.tsx providing 8-10px vertical cell padding.
-    - Authored comprehensive artifact report in PHYSICAL_FILE_TRACKING_COMPACT_LAYOUT_REPORT.md.
+    - Authored comprehensive artifact report in docs/archive/reports/PHYSICAL_FILE_TRACKING_COMPACT_LAYOUT_REPORT.md.
   - **5. Verification Results**:
     - npx tsx tests/i18nParity.test.ts: PASS (100% key parity).
     - npm run lint: PASS (0 errors).
@@ -516,10 +516,10 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - Expanded Playwright responsive test matrix in `e2e/responsive.spec.ts` to test 8 standard viewports: **320px**, **360px**, **375px**, **768px**, **1024px**, **1280px**, **1440px**, and **1920px**.
     - Executed 163 tests with 0 horizontal scroll detected across all 20 modules and modal dialogs.
   - **5. Required Documentation Artifacts Produced**:
-    - `RESPONSIVE_LAYOUT_AUDIT.md`
-    - `RESPONSIVE_LAYOUT_FIX_LOG.md`
-    - `RESPONSIVE_LAYOUT_TEST_REPORT.md`
-    - `RESPONSIVE_LAYOUT_RELEASE_REPORT.md`
+    - `docs/archive/reports/RESPONSIVE_LAYOUT_AUDIT.md`
+    - `docs/archive/reports/RESPONSIVE_LAYOUT_FIX_LOG.md`
+    - `docs/archive/reports/RESPONSIVE_LAYOUT_TEST_REPORT.md`
+    - `docs/archive/reports/RESPONSIVE_LAYOUT_RELEASE_REPORT.md`
   - **6. Verification Results**:
     - `npm run lint`: PASS (0 errors across root and admin-app).
     - `npm run build`: PASS (built in 3.47s).
@@ -581,10 +581,10 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - `npm run build --prefix admin-app`: built admin app in 2.26s.
     - `npm run test:health`: 87/87 checks passed.
   - **5. Required Deliverables Produced**:
-    - `CORS_AUTH_CONNECTIVITY_AUDIT.md`
-    - `CORS_AUTH_FIX_LOG.md`
-    - `CORS_AUTH_TEST_REPORT.md`
-    - `CORS_AUTH_RELEASE_REPORT.md`
+    - `docs/archive/reports/CORS_AUTH_CONNECTIVITY_AUDIT.md`
+    - `docs/archive/reports/CORS_AUTH_FIX_LOG.md`
+    - `docs/archive/reports/CORS_AUTH_TEST_REPORT.md`
+    - `docs/archive/reports/CORS_AUTH_RELEASE_REPORT.md`
 - [x] **Full Repository Audit and Complete UI/UX + Functional Repair (Completed & Verified)**:
   - **1. Zero Sideways Scrolling on Mobile and Small Screens**:
     - `BillingScreen.tsx`: Implemented responsive dual-mode layout — compact cards on mobile (`block md:hidden`) and full table on desktop (`hidden md:block`). Eliminated table overflow and `whitespace-nowrap` horizontal page blowouts.
@@ -618,10 +618,10 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - `npm run test:health`: 87/87 checks passed (0 failed).
     - `npx tsx tests/i18nParity.test.ts`: 3/3 tests passed.
   - **7. Deliverables**:
-    - `UI_UX_AUDIT.md`: Complete component & page inventory across all 14 modules.
-    - `UI_UX_FIX_LOG.md`: Detailed root causes, files changed, and before/after comparisons.
-    - `UI_UX_TEST_REPORT.md`: Comprehensive command outputs and test execution logs.
-    - `UI_UX_RELEASE_REPORT.md`: Release notes, deployment verification details, and risk analysis.
+    - `docs/archive/reports/UI_UX_AUDIT.md`: Complete component & page inventory across all 14 modules.
+    - `docs/archive/reports/UI_UX_FIX_LOG.md`: Detailed root causes, files changed, and before/after comparisons.
+    - `docs/archive/reports/UI_UX_TEST_REPORT.md`: Comprehensive command outputs and test execution logs.
+    - `docs/archive/reports/UI_UX_RELEASE_REPORT.md`: Release notes, deployment verification details, and risk analysis.
 - [x] **Comprehensive System Audit Trail Audit, Verification, and Fix (Completed & Verified)**:
   - **1. Physical File Custody Tracking Resolved (Problem 1 Resolved)**:
     - Traced root cause of missing physical file check-in and check-out audit records: `file.ts` wrote non-standard custody actions with nested diff payloads missing top-level `caseId`, `restAudit.ts` queried only server routes without merging client-side custody movements, and `AuditLogScreen.tsx` hardcoded action filters omitting file custody events.
@@ -646,10 +646,10 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
       - `npm test --prefix server`: 13/13 suites PASSED (including 29/29 in `auditTrailComprehensive.test.ts`).
       - `npm run build`: built production bundle cleanly in 1.89s.
   - **4. Deliverables Produced**:
-    - `AUDIT_TRAIL_AUDIT.md`: Complete operation-by-operation inventory across all 12 modules.
-    - `AUDIT_TRAIL_FIX_LOG.md`: Detailed defect analysis, root causes, and code changes.
-    - `AUDIT_TRAIL_TEST_REPORT.md`: Comprehensive test execution and verification logs.
-    - `AUDIT_TRAIL_RELEASE_REPORT.md`: Release notes, deployment instructions, and risk analysis.
+    - `docs/archive/reports/AUDIT_TRAIL_AUDIT.md`: Complete operation-by-operation inventory across all 12 modules.
+    - `docs/archive/reports/AUDIT_TRAIL_FIX_LOG.md`: Detailed defect analysis, root causes, and code changes.
+    - `docs/archive/reports/AUDIT_TRAIL_TEST_REPORT.md`: Comprehensive test execution and verification logs.
+    - `docs/archive/reports/AUDIT_TRAIL_RELEASE_REPORT.md`: Release notes, deployment instructions, and risk analysis.
 - [x] **Fix Critical Bug: Client Photo Upload Reverts or Disappears (Completed & Verified)**:
   - **1. Root Cause Analysis**:
     - **Protocol & Serialization Mismatch**: In REST mode, `GET /api/v1/clients/:id/photo` served the raw binary image buffer (`Buffer.from(photo.bytes, 'base64')`) with `Content-Type: image/jpeg`. `RestClientRepository.getPhoto` called `restFetch<ClientPhotoRecord>(...)`, which attempted `JSON.parse` on the raw binary string, caught the SyntaxError, and returned the garbled text representation without `.dataUrl` or `.bytes` properties.
@@ -788,7 +788,7 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
     - `npm run build; npm run build:admin`: 0 errors.
 
 - [x] **Full Application Functional Audit & Production Array Crash Fix (Completed & Verified)**:
-  - **Audit Matrix Created**: Created durable report `FUNCTIONAL_AUDIT.md` covering all 16 modules and 142 functions, endpoints, and workflows (134 PASS, 3 PARTIAL, 5 NOT IMPLEMENTED conforming to AGENTS.md, 0 FAIL).
+  - **Audit Matrix Created**: Created durable report `docs/archive/reports/FUNCTIONAL_AUDIT.md` covering all 16 modules and 142 functions, endpoints, and workflows (134 PASS, 3 PARTIAL, 5 NOT IMPLEMENTED conforming to AGENTS.md, 0 FAIL).
   - **Fixed Production `TypeError: e.map is not a function`**:
     - Identified root cause in `src/data/repositories/rest/restAppointment.ts`: `GET /api/v1/appointments` returns `{ appointments: [...], total }`, but repository returned the raw object as an array. When passed to `ResponsiveTable` or mapped in `ClientProfileView`, `data.map` threw unhandled TypeError.
     - Updated `restAppointment.ts` to safely unpack `Array.isArray(res) ? res : (Array.isArray(res?.appointments) ? res.appointments : [])`.
