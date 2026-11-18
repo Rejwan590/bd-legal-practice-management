@@ -280,30 +280,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
 
       {/* Operational Metric Scorecards (6 Key Chamber Metrics) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        {/* Metric 1: Active Cases */}
-        <div
-          onClick={() => onNavigate('cases')}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition cursor-pointer group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-105 transition">
-              <Briefcase className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-wider">
-              Cases
-            </span>
-          </div>
-          <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900 block leading-tight">
-              {metrics?.activeCasesCount ?? 0}
-            </span>
-            <span className="text-xs font-medium text-slate-500 line-clamp-1 mt-0.5">
-              {t('dashboard.metrics.activeCases')}
-            </span>
-          </div>
-        </div>
-
-        {/* Metric 2: Clients */}
+        {/* Metric 1: Clients */}
         <div
           onClick={() => onNavigate('clients')}
           className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-emerald-300 transition cursor-pointer group"
@@ -322,6 +299,29 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
             </span>
             <span className="text-xs font-medium text-slate-500 line-clamp-1 mt-0.5">
               {t('dashboard.metrics.totalClients')}
+            </span>
+          </div>
+        </div>
+
+        {/* Metric 2: Active Cases */}
+        <div
+          onClick={() => onNavigate('cases')}
+          className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-105 transition">
+              <Briefcase className="w-4 h-4" />
+            </div>
+            <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-wider">
+              Cases
+            </span>
+          </div>
+          <div className="mt-3">
+            <span className="text-2xl font-extrabold text-slate-900 block leading-tight">
+              {metrics?.activeCasesCount ?? 0}
+            </span>
+            <span className="text-xs font-medium text-slate-500 line-clamp-1 mt-0.5">
+              {t('dashboard.metrics.activeCases')}
             </span>
           </div>
         </div>

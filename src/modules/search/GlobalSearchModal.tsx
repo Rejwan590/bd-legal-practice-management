@@ -151,8 +151,8 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
   const filterOptions: { id: SearchResultEntity | 'all'; label: string; icon: React.ElementType }[] = [
     { id: 'all', label: t('search.filterAll'), icon: Filter },
-    { id: 'case', label: t('search.filterCases'), icon: Briefcase },
     { id: 'client', label: t('search.filterClients'), icon: Users },
+    { id: 'case', label: t('search.filterCases'), icon: Briefcase },
     { id: 'hearing', label: t('search.filterHearings'), icon: Gavel },
     { id: 'task', label: t('search.filterTasks'), icon: CheckSquare },
     { id: 'file', label: t('search.filterFiles'), icon: FolderArchive },

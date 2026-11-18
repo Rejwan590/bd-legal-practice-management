@@ -65,6 +65,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     selectedCalendarDate,
     openCaseForm,
     openClientForm,
+    openAppointmentForm,
     openHearingForm,
     openTaskForm,
     openFileForm,
@@ -78,17 +79,26 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const quickAddRef = useRef<HTMLDivElement>(null);
 
-  // Close quickAdd menu on outside click
+  // Close quickAdd menu on outside click or Escape key
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (quickAddRef.current && !quickAddRef.current.contains(e.target as Node)) {
         setQuickAddOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setQuickAddOpen(false);
+      }
+    };
     if (quickAddOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [quickAddOpen]);
 
   // Tablet collapsible sidebar: defaults to collapsed on tablet screens (768-1023px)
@@ -135,13 +145,13 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       defaultTitle: 'Practice & Matters',
       items: [
         { id: 'dashboard' as ActiveTab, label: t('nav.dashboard'), icon: LayoutDashboard },
+        { id: 'clients' as ActiveTab, label: t('nav.clients'), icon: Users },
         { id: 'cases' as ActiveTab, label: t('nav.cases'), icon: Briefcase },
         { id: 'hearings' as ActiveTab, label: t('nav.hearings'), icon: Gavel },
         { id: 'calendar' as ActiveTab, label: t('nav.calendar'), icon: Calendar },
         { id: 'appointments' as ActiveTab, label: t('nav.appointments', 'Appointments'), icon: Clock, hide: !can('appointments.view') },
         { id: 'tasks' as ActiveTab, label: t('nav.tasks'), icon: CheckSquare },
         { id: 'files' as ActiveTab, label: t('nav.files'), icon: FolderArchive },
-        { id: 'clients' as ActiveTab, label: t('nav.clients'), icon: Users },
       ],
     },
     {
@@ -165,252 +175,195 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
   const navItems = navSections.flatMap((s) => s.items);
 
-  // Mobile bottom navigation: Dashboard, Cases, Calendar, Tasks, More
+  // Mobile bottom navigation: Dashboard, Clients, Cases, Calendar, More
   const bottomNavItems: { id: ActiveTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { id: 'clients', label: t('nav.clients'), icon: Users },
     { id: 'cases', label: t('nav.cases'), icon: Briefcase },
     { id: 'calendar', label: t('nav.calendar'), icon: Calendar },
-    { id: 'tasks', label: t('nav.tasks'), icon: CheckSquare },
   ];
 
-  const isMoreTabActive = !['dashboard', 'cases', 'calendar', 'tasks'].includes(currentTab);
+  const isMoreTabActive = !['dashboard', 'clients', 'cases', 'calendar'].includes(currentTab);
 
-  // Build context-aware "+" actions
+  // Build 6 quick add actions in exact order
   type QuickActionItem = {
     key: string;
     label: string;
+    desc: string;
     icon: React.ElementType;
     onClick: () => void;
   };
 
-  const getContextQuickActions = (): QuickActionItem[] => {
+  const getQuickActions = (): QuickActionItem[] => {
     if (isReadOnly) return [];
 
-    // 1. Inside a Case Dossier: Add Hearing / Add Task / Add File with caseId & clientId prefilled and locked
-    if (route.screen === 'cases' && route.caseId && activeCaseContext) {
-      const targetCaseId = activeCaseContext.caseId || activeCaseContext.id || route.caseId;
-      const items: QuickActionItem[] = [];
-      if (can('hearings.update')) {
-        items.push({
-          key: 'case-hearing',
-          label: `${t('hearings.scheduleHearing')} (${activeCaseContext.caseNumber})`,
-          icon: Gavel,
-          onClick: () =>
-            openHearingForm({
-              defaultCaseId: targetCaseId,
-              lockCaseId: true,
-            }),
-        });
-      }
-      if (can('tasks.assign')) {
-        items.push({
-          key: 'case-task',
-          label: `${t('tasks.addTask')} (${activeCaseContext.caseNumber})`,
-          icon: CheckSquare,
-          onClick: () =>
-            openTaskForm({
-              defaultCaseId: targetCaseId,
-              defaultClientId: activeCaseContext.clientId,
-              lockCaseAndClient: true,
-            }),
-        });
-      }
-      if (can('files.manage')) {
-        items.push({
-          key: 'case-file',
-          label: `${t('files.addFile')} (${activeCaseContext.caseNumber})`,
-          icon: FolderArchive,
-          onClick: () =>
-            openFileForm({
-              defaultCaseId: targetCaseId,
-              defaultClientId: activeCaseContext.clientId,
-              lockCaseAndClient: true,
-            }),
-        });
-      }
-      return items;
-    }
+    const actions: QuickActionItem[] = [];
 
-    // 2. Inside a Client Profile: Add Case / Add Task / Add File with clientId prefilled and locked
-    if (route.screen === 'clients' && route.clientId && activeClientContext) {
-      const targetClientId =
-        activeClientContext.clientId || activeClientContext.id || route.clientId;
-      const targetClientName =
-        activeClientContext.clientName || activeClientContext.name || '';
-      const items: QuickActionItem[] = [];
-      if (can('cases.create')) {
-        items.push({
-          key: 'client-case',
-          label: `${t('cases.addCase')} (${targetClientName})`,
-          icon: Briefcase,
-          onClick: () =>
+    const targetCaseId = activeCaseContext?.caseId || activeCaseContext?.id || (route.screen === 'cases' ? route.caseId : undefined);
+    const targetClientId = activeClientContext?.clientId || activeClientContext?.id || (route.screen === 'clients' ? route.clientId : undefined);
+    const targetClientName = activeClientContext?.clientName || activeClientContext?.name || '';
+    const targetCaseNumber = activeCaseContext?.caseNumber || '';
+
+    // 1. Register Case — Create a new legal matter
+    if (can('cases.create')) {
+      actions.push({
+        key: 'quick-case',
+        label: t('quickAdd.caseTitle', 'Register Case'),
+        desc: targetClientName
+          ? `${t('quickAdd.caseDesc', 'Create a new legal matter')} (${targetClientName})`
+          : t('quickAdd.caseDesc', 'Create a new legal matter'),
+        icon: Briefcase,
+        onClick: () => {
+          if (targetClientId) {
             openCaseForm({
               defaultClientId: targetClientId,
               lockClientId: true,
-            }),
-        });
-      }
-      if (can('tasks.assign')) {
-        items.push({
-          key: 'client-task',
-          label: `${t('tasks.addTask')} (${targetClientName})`,
-          icon: CheckSquare,
-          onClick: () =>
-            openTaskForm({
-              defaultClientId: targetClientId,
-              lockClientOnly: true,
-            }),
-        });
-      }
-      if (can('files.manage')) {
-        items.push({
-          key: 'client-file',
-          label: `${t('files.addFile')} (${targetClientName})`,
-          icon: FolderArchive,
-          onClick: () =>
-            openFileForm({
-              defaultClientId: targetClientId,
-              lockClientOnly: true,
-            }),
-        });
-      }
-      return items;
-    }
-
-    // 3. On Calendar: Add Hearing / Add Task for selected date
-    if (route.screen === 'calendar') {
-      const items: QuickActionItem[] = [];
-      if (can('hearings.update')) {
-        items.push({
-          key: 'cal-hearing',
-          label: `${t('hearings.scheduleHearing')} (${selectedCalendarDate})`,
-          icon: Gavel,
-          onClick: () =>
-            openHearingForm({
-              defaultDate: selectedCalendarDate,
-            }),
-        });
-      }
-      if (can('tasks.assign')) {
-        items.push({
-          key: 'cal-task',
-          label: `${t('tasks.addTask')} (${selectedCalendarDate})`,
-          icon: CheckSquare,
-          onClick: () =>
-            openTaskForm({
-              defaultDueDate: selectedCalendarDate,
-            }),
-        });
-      }
-      return items;
-    }
-
-    // 4. Screen-specific main add action elsewhere
-    if (route.screen === 'cases' && can('cases.create')) {
-      return [
-        {
-          key: 'add-case',
-          label: t('cases.addCase'),
-          icon: Briefcase,
-          onClick: () => openCaseForm(),
+            });
+          } else {
+            openCaseForm();
+          }
         },
-      ];
-    }
-    if (route.screen === 'clients' && can('clients.edit')) {
-      return [
-        {
-          key: 'add-client',
-          label: t('clients.addClient'),
-          icon: Users,
-          onClick: () => openClientForm(),
-        },
-      ];
-    }
-    if (route.screen === 'hearings' && can('hearings.update')) {
-      return [
-        {
-          key: 'add-hearing',
-          label: t('hearings.scheduleHearing'),
-          icon: Gavel,
-          onClick: () => openHearingForm(),
-        },
-      ];
-    }
-    if (route.screen === 'tasks' && can('tasks.assign')) {
-      return [
-        {
-          key: 'add-task',
-          label: t('tasks.addTask'),
-          icon: CheckSquare,
-          onClick: () => openTaskForm(),
-        },
-      ];
-    }
-    if (route.screen === 'files' && can('files.manage')) {
-      return [
-        {
-          key: 'add-file',
-          label: t('files.addFile'),
-          icon: FolderArchive,
-          onClick: () => openFileForm(),
-        },
-      ];
-    }
-
-    // Dashboard / other screens: offer permitted quick-add actions
-    const fallbackItems: QuickActionItem[] = [];
-    if (can('cases.create')) {
-      fallbackItems.push({
-        key: 'dash-case',
-        label: t('cases.addCase'),
-        icon: Briefcase,
-        onClick: () => openCaseForm(),
       });
     }
+
+    // 2. Register Client — Add a chamber client
     if (can('clients.edit')) {
-      fallbackItems.push({
-        key: 'dash-client',
-        label: t('clients.addClient'),
+      actions.push({
+        key: 'quick-client',
+        label: t('quickAdd.clientTitle', 'Register Client'),
+        desc: t('quickAdd.clientDesc', 'Add a chamber client'),
         icon: Users,
         onClick: () => openClientForm(),
       });
     }
+
+    // 3. New Appointment — Consultation or meeting
+    if (can('appointments.manage')) {
+      actions.push({
+        key: 'quick-appointment',
+        label: t('quickAdd.appointmentTitle', 'New Appointment'),
+        desc: t('quickAdd.appointmentDesc', 'Consultation or meeting'),
+        icon: Clock,
+        onClick: () => {
+          if (targetCaseId) {
+            openAppointmentForm({
+              defaultCaseId: targetCaseId,
+              defaultClientId: activeCaseContext?.clientId,
+            });
+          } else if (targetClientId) {
+            openAppointmentForm({
+              defaultClientId: targetClientId,
+              lockClientId: true,
+            });
+          } else {
+            openAppointmentForm();
+          }
+        },
+      });
+    }
+
+    // 4. Schedule Hearing — Add a court hearing
     if (can('hearings.update')) {
-      fallbackItems.push({
-        key: 'dash-hearing',
-        label: t('hearings.scheduleHearing'),
+      actions.push({
+        key: 'quick-hearing',
+        label: t('quickAdd.hearingTitle', 'Schedule Hearing'),
+        desc: targetCaseNumber
+          ? `${t('quickAdd.hearingDesc', 'Add a court hearing')} (${targetCaseNumber})`
+          : route.screen === 'calendar' && selectedCalendarDate
+          ? `${t('quickAdd.hearingDesc', 'Add a court hearing')} (${selectedCalendarDate})`
+          : t('quickAdd.hearingDesc', 'Add a court hearing'),
         icon: Gavel,
-        onClick: () => openHearingForm(),
+        onClick: () => {
+          if (targetCaseId) {
+            openHearingForm({
+              defaultCaseId: targetCaseId,
+              lockCaseId: true,
+            });
+          } else if (route.screen === 'calendar' && selectedCalendarDate) {
+            openHearingForm({
+              defaultDate: selectedCalendarDate,
+            });
+          } else {
+            openHearingForm();
+          }
+        },
       });
     }
+
+    // 5. New Task — Create an action item
     if (can('tasks.assign')) {
-      fallbackItems.push({
-        key: 'dash-task',
-        label: t('tasks.addTask'),
+      actions.push({
+        key: 'quick-task',
+        label: t('quickAdd.taskTitle', 'New Task'),
+        desc: targetCaseNumber
+          ? `${t('quickAdd.taskDesc', 'Create an action item')} (${targetCaseNumber})`
+          : targetClientName
+          ? `${t('quickAdd.taskDesc', 'Create an action item')} (${targetClientName})`
+          : route.screen === 'calendar' && selectedCalendarDate
+          ? `${t('quickAdd.taskDesc', 'Create an action item')} (${selectedCalendarDate})`
+          : t('quickAdd.taskDesc', 'Create an action item'),
         icon: CheckSquare,
-        onClick: () => openTaskForm(),
+        onClick: () => {
+          if (targetCaseId) {
+            openTaskForm({
+              defaultCaseId: targetCaseId,
+              defaultClientId: activeCaseContext?.clientId,
+              lockCaseAndClient: true,
+            });
+          } else if (targetClientId) {
+            openTaskForm({
+              defaultClientId: targetClientId,
+              lockClientOnly: true,
+            });
+          } else if (route.screen === 'calendar' && selectedCalendarDate) {
+            openTaskForm({
+              defaultDueDate: selectedCalendarDate,
+            });
+          } else {
+            openTaskForm();
+          }
+        },
       });
     }
+
+    // 6. Register Physical File — Track a physical case file
     if (can('files.manage')) {
-      fallbackItems.push({
-        key: 'dash-file',
-        label: t('files.addFile'),
+      actions.push({
+        key: 'quick-file',
+        label: t('quickAdd.fileTitle', 'Register Physical File'),
+        desc: targetCaseNumber
+          ? `${t('quickAdd.fileDesc', 'Track a physical case file')} (${targetCaseNumber})`
+          : targetClientName
+          ? `${t('quickAdd.fileDesc', 'Track a physical case file')} (${targetClientName})`
+          : t('quickAdd.fileDesc', 'Track a physical case file'),
         icon: FolderArchive,
-        onClick: () => openFileForm(),
+        onClick: () => {
+          if (targetCaseId) {
+            openFileForm({
+              defaultCaseId: targetCaseId,
+              defaultClientId: activeCaseContext?.clientId,
+              lockCaseAndClient: true,
+            });
+          } else if (targetClientId) {
+            openFileForm({
+              defaultClientId: targetClientId,
+              lockClientOnly: true,
+            });
+          } else {
+            openFileForm();
+          }
+        },
       });
     }
-    return fallbackItems;
+
+    return actions;
   };
 
-  const quickActions = getContextQuickActions();
+  const quickActions = getQuickActions();
 
   const handleContextPlusClick = () => {
     if (isReadOnly || quickActions.length === 0) return;
-    if (quickActions.length === 1) {
-      quickActions[0].onClick();
-    } else {
-      setQuickAddOpen((prev) => !prev);
-    }
+    setQuickAddOpen((prev) => !prev);
   };
 
   return (
@@ -466,7 +419,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Context-Aware "+" Action Button */}
+            {/* Quick Add Action Button */}
             {isReadOnly ? (
               <button
                 type="button"
@@ -484,54 +437,57 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   type="button"
                   onClick={handleContextPlusClick}
                   className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 h-11 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition shrink-0 min-w-[44px]"
-                  title={
-                    quickActions.length === 1
-                      ? quickActions[0].label
-                      : t('hub.quickAdd', 'Quick Add')
-                  }
-                  aria-label={t('hub.quickAdd', 'Quick Add')}
+                  title={t('quickAdd.title', 'Quick Add')}
+                  aria-label={t('quickAdd.title', 'Quick Add')}
+                  aria-expanded={quickAddOpen}
+                  aria-haspopup="true"
                   data-testid="context-plus-button"
                 >
                   <Plus className="w-4 h-4 stroke-[2.5]" />
                   <span className="hidden lg:inline">
-                    {quickActions.length === 1
-                      ? quickActions[0].label
-                      : t('hub.quickAdd', 'Quick Add')}
+                    {t('quickAdd.title', 'Quick Add')}
                   </span>
-                  {quickActions.length > 1 && <ChevronDown className="w-3.5 h-3.5 hidden sm:inline" />}
+                  <ChevronDown className={`w-3.5 h-3.5 hidden sm:inline transition-transform duration-200 ${quickAddOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {quickAddOpen && quickActions.length > 1 && (
+                {/* Desktop dropdown under button */}
+                {quickAddOpen && (
                   <div
-                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                    className="hidden md:block absolute right-0 mt-2 w-72 lg:w-80 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
                     data-testid="context-plus-menu"
                   >
-                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                      {route.screen === 'cases' && route.caseId && activeCaseContext
-                        ? `${t('cases.caseNumber')}: ${activeCaseContext.caseNumber}`
-                        : route.screen === 'clients' && route.clientId && activeClientContext
-                        ? activeClientContext.clientName || activeClientContext.name
-                        : route.screen === 'calendar'
-                        ? selectedCalendarDate
-                        : t('hub.quickAdd', 'Quick Add')}
+                    <div className="px-3.5 py-2 border-b border-slate-100">
+                      <div className="text-xs font-bold text-slate-900">{t('quickAdd.title', 'Quick Add')}</div>
+                      <div className="text-[11px] text-slate-500">{t('quickAdd.subtitle', 'Select an action to create')}</div>
                     </div>
-                    {quickActions.map((act) => {
-                      const ActIcon = act.icon;
-                      return (
-                        <button
-                          key={act.key}
-                          type="button"
-                          onClick={() => {
-                            setQuickAddOpen(false);
-                            act.onClick();
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition text-left"
-                        >
-                          <ActIcon className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <span className="truncate">{act.label}</span>
-                        </button>
-                      );
-                    })}
+                    <div className="py-1">
+                      {quickActions.map((act) => {
+                        const ActIcon = act.icon;
+                        return (
+                          <button
+                            key={act.key}
+                            type="button"
+                            onClick={() => {
+                              setQuickAddOpen(false);
+                              act.onClick();
+                            }}
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 min-h-[44px] text-left hover:bg-indigo-50/80 transition group"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
+                              <ActIcon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-slate-800 group-hover:text-indigo-700 truncate">
+                                {act.label}
+                              </div>
+                              {act.desc && (
+                                <div className="text-[11px] text-slate-500 truncate">{act.desc}</div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -844,31 +800,46 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   </button>
                 </div>
 
-                {/* Nav items list */}
-                <nav className="mt-3 space-y-1 overflow-y-auto flex-1 overscroll-contain pr-1">
-                  {navItems.map((item) => {
-                    if (item.hide) return null;
-                    const isActive = currentTab === item.id;
-                    const Icon = item.icon;
+                {/* Nav items grouped by section */}
+                <nav className="mt-3 space-y-3 overflow-y-auto flex-1 overscroll-contain pr-1">
+                  {navSections.map((sec, sIdx) => {
+                    const visibleItems = sec.items.filter((i) => !i.hide);
+                    if (visibleItems.length === 0) return null;
 
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          handleSelectNav(item.id);
-                          setMobileMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm font-medium transition min-h-[44px] ${
-                          isActive
-                            ? 'bg-slate-900 text-white font-semibold'
-                            : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 truncate">
-                          <Icon className="w-5 h-5 shrink-0" />
-                          <span className="truncate">{item.label}</span>
+                      <div key={sec.titleKey || sIdx} className="space-y-1">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 pt-1 pb-0.5 truncate">
+                          {t(sec.titleKey, sec.defaultTitle)}
                         </div>
-                      </button>
+                        {visibleItems.map((item) => {
+                          const isActive = currentTab === item.id;
+                          const Icon = item.icon;
+
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                handleSelectNav(item.id);
+                                setMobileMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition min-h-[44px] ${
+                                isActive
+                                  ? item.highlight
+                                    ? 'bg-emerald-600 text-white font-semibold shadow-xs'
+                                    : 'bg-slate-900 text-white font-semibold shadow-xs'
+                                  : item.highlight
+                                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                  : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0 truncate">
+                                <Icon className="w-5 h-5 shrink-0" />
+                                <span className="truncate">{item.label}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </nav>
@@ -959,6 +930,76 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             onNavigate={(tab, id) => handleSelectNav(tab as ActiveTab, id)}
           />
         </React.Suspense>
+      )}
+
+      {/* Mobile Bottom Sheet for Quick Add (<md) */}
+      {quickAddOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+            onClick={() => setQuickAddOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Bottom Sheet Dialog */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('quickAdd.title', 'Quick Add')}
+            className="relative w-full max-h-[85dvh] bg-white rounded-t-3xl shadow-2xl p-4 pb-safe flex flex-col z-10 animate-in slide-in-from-bottom duration-200"
+            data-testid="context-plus-menu"
+          >
+            {/* Drag Handle */}
+            <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto mb-3 shrink-0" />
+
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">{t('quickAdd.title', 'Quick Add')}</h3>
+                <p className="text-xs text-slate-500">{t('quickAdd.subtitle', 'Select an action to create')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickAddOpen(false)}
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 active:bg-slate-200 shrink-0"
+                aria-label={t('common.close', 'Close')}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Action List */}
+            <div className="mt-2 space-y-1.5 overflow-y-auto max-h-[calc(85dvh-120px)] overscroll-contain pr-0.5">
+              {quickActions.map((act) => {
+                const ActIcon = act.icon;
+                return (
+                  <button
+                    key={act.key}
+                    type="button"
+                    onClick={() => {
+                      setQuickAddOpen(false);
+                      act.onClick();
+                    }}
+                    className="w-full flex items-center gap-3.5 px-3.5 py-3 min-h-[52px] rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-indigo-50 hover:border-indigo-200 active:bg-indigo-100 transition text-left group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
+                      <ActIcon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-slate-900 group-hover:text-indigo-700 truncate">
+                        {act.label}
+                      </div>
+                      {act.desc && (
+                        <div className="text-xs text-slate-500 truncate">{act.desc}</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

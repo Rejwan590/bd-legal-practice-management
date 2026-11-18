@@ -1048,9 +1048,26 @@
     "moreNav": "More",
     "quickAdd": "Quick Add"
   },
+  "quickAdd": {
+    "title": "Quick Add",
+    "subtitle": "Create records & schedule events",
+    "caseTitle": "Register Case",
+    "caseDesc": "Create a new legal matter",
+    "clientTitle": "Register Client",
+    "clientDesc": "Add a chamber client",
+    "appointmentTitle": "New Appointment",
+    "appointmentDesc": "Consultation or meeting",
+    "hearingTitle": "Schedule Hearing",
+    "hearingDesc": "Add a court hearing",
+    "taskTitle": "New Task",
+    "taskDesc": "Create an action item",
+    "fileTitle": "Register Physical File",
+    "fileDesc": "Track a physical case file"
+  },
   "appointments": {
     "title": "Appointments & Consultations",
     "subtitle": "Schedule and track consultations, client meetings, and chamber visits",
+    "newAppointment": "New Appointment",
     "scheduleAppointment": "Schedule Appointment",
     "scheduleTitle": "Schedule Appointment",
     "editTitle": "Edit Appointment",

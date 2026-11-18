@@ -3,6 +3,31 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Navigation Consistency & Quick Add Menu Overhaul (`cloudflare` branch)**:
+  - **Main Navigation Order (Clients Above Cases)**:
+    - Moved **Clients above Cases** across all layouts: Desktop sidebar (`AppShell.tsx`), Mobile bottom navigation bar (`bottomNavItems`), Mobile slide-out drawer (`navSections`), Global Search Modal filter chips (`GlobalSearchModal.tsx`), and Dashboard scorecard metrics (`DashboardScreen.tsx`).
+    - Standardized navigation order: Dashboard, Clients, Cases, Hearings, Calendar, Appointments, Tasks, Files, Billing, Backup, Audit Log, Settings, Health.
+  - **Quick Add (+) Menu Overhaul (6 Actions in Exact Order)**:
+    - Quick Add (+) menu contains 6 actions in exact order:
+      1. **Register Case** — Create a new legal matter (`can('cases.create')`)
+      2. **Register Client** — Add a chamber client (`can('clients.edit')`)
+      3. **New Appointment** — Consultation or meeting (`can('appointments.manage')`, wired directly to existing `openAppointmentForm`)
+      4. **Schedule Hearing** — Add a court hearing (`can('hearings.update')`)
+      5. **New Task** — Create an action item (`can('tasks.assign')`)
+      6. **Register Physical File** — Track a physical case file (`can('files.manage')`)
+    - Preserved contextual parameter prefilling: inside a Case Dossier locks `caseId`/`clientId`; inside a Client Profile locks `clientId`; on Calendar prefills selected date; everywhere else opens standard form.
+    - Consistent trigger behavior: always opens the menu instead of bypassing to direct action on single-action screens.
+  - **Mobile Responsive Drawer & Bottom Sheet**:
+    - Desktop: dropdown anchored beneath the Quick Add button (`min-h-[44px]`).
+    - Mobile: slide-up bottom sheet with backdrop, grab handle, title, close button, touch targets $\ge 52\text{px}$, and `pb-safe`. Closes on backdrop tap, action selection, or Escape key.
+    - Mobile slide-out drawer: grouped by section headers matching the desktop sidebar.
+  - **Verification & Parity**:
+    - Bilingual translations in `src/locales/en.json` and `src/locales/bn.json` with 100% key parity (`tests/i18nParity.test.ts`: 3 passed, 0 failed).
+    - `npm run lint`: passed cleanly with 0 type errors.
+    - `npm test --prefix server-cloudflare`: 28 passed (28).
+    - `npm run build` and `npm run build --prefix admin-app`: built cleanly.
+    - `npm run test:responsive`: 166 passed (0 failed across all 8 viewports: 320, 360, 375, 768, 1024, 1280, 1440, 1920px).
+
 - [x] **User and Device Limits Hardening + Pricing Parity Verification (`cloudflare` branch)**:
   - **Atomic Limit Defect Fixes (`server-cloudflare`)**:
     - **User Create**: Updated `server-cloudflare/src/routes/users.ts` to count only active, non-deleted users (`active = 1 AND deleted_at IS NULL`) towards `maxUsers`. Implemented atomic conditional SQL insertion (`INSERT INTO users ... SELECT ... WHERE (SELECT COUNT(*) FROM users WHERE firm_id = ? AND active = 1 AND deleted_at IS NULL) < (SELECT max_users FROM firms WHERE id = ?)`) so race conditions are impossible under SQLite write serialization without interactive transactions. Returns HTTP 403 `"Firm user limit (N) reached"` when 0 rows are written.
