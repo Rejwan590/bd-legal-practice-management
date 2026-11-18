@@ -86,11 +86,13 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         setQuickAddOpen(false);
       }
     };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setQuickAddOpen(false);
       }
     };
+
     if (quickAddOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
@@ -450,45 +452,64 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   <ChevronDown className={`w-3.5 h-3.5 hidden sm:inline transition-transform duration-200 ${quickAddOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Desktop dropdown under button */}
+                {/* Dropdown Menu expanding downward under button (up to down) */}
                 {quickAddOpen && (
-                  <div
-                    className="hidden md:block absolute right-0 mt-2 w-72 lg:w-80 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
-                    data-testid="context-plus-menu"
-                  >
-                    <div className="px-3.5 py-2 border-b border-slate-100">
-                      <div className="text-xs font-bold text-slate-900">{t('quickAdd.title', 'Quick Add')}</div>
-                      <div className="text-[11px] text-slate-500">{t('quickAdd.subtitle', 'Select an action to create')}</div>
-                    </div>
-                    <div className="py-1">
-                      {quickActions.map((act) => {
-                        const ActIcon = act.icon;
-                        return (
-                          <button
-                            key={act.key}
-                            type="button"
-                            onClick={() => {
-                              setQuickAddOpen(false);
-                              act.onClick();
-                            }}
-                            className="w-full flex items-center gap-3 px-3.5 py-2.5 min-h-[44px] text-left hover:bg-indigo-50/80 transition group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
-                              <ActIcon className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold text-slate-800 group-hover:text-indigo-700 truncate">
-                                {act.label}
+                  <>
+                    {/* Mobile backdrop for dismiss */}
+                    <div
+                      className="sm:hidden fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-2xs"
+                      onClick={() => setQuickAddOpen(false)}
+                      aria-hidden="true"
+                    />
+
+                    <div
+                      className="fixed sm:absolute top-14 sm:top-auto right-3 sm:right-0 mt-0 sm:mt-2 w-[calc(100vw-1.5rem)] max-w-xs sm:w-80 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 max-h-[calc(100dvh-4.5rem)] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 origin-top-right"
+                      data-testid="context-plus-menu"
+                    >
+                      <div className="px-3.5 py-2 border-b border-slate-100 shrink-0 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">{t('quickAdd.title', 'Quick Add')}</div>
+                          <div className="text-[11px] text-slate-500">{t('quickAdd.subtitle', 'Select an action to create')}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setQuickAddOpen(false)}
+                          className="sm:hidden w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                          aria-label={t('common.close', 'Close')}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="py-1 overflow-y-auto overscroll-contain flex-1">
+                        {quickActions.map((act) => {
+                          const ActIcon = act.icon;
+                          return (
+                            <button
+                              key={act.key}
+                              type="button"
+                              onClick={() => {
+                                setQuickAddOpen(false);
+                                act.onClick();
+                              }}
+                              className="w-full flex items-center gap-3 px-3.5 py-2.5 min-h-[48px] text-left hover:bg-indigo-50/80 active:bg-indigo-100 transition group cursor-pointer"
+                            >
+                              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
+                                <ActIcon className="w-4 h-4" />
                               </div>
-                              {act.desc && (
-                                <div className="text-[11px] text-slate-500 truncate">{act.desc}</div>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-indigo-700 truncate">
+                                  {act.label}
+                                </div>
+                                {act.desc && (
+                                  <div className="text-[11px] text-slate-500 truncate">{act.desc}</div>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             ) : null}
@@ -930,76 +951,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             onNavigate={(tab, id) => handleSelectNav(tab as ActiveTab, id)}
           />
         </React.Suspense>
-      )}
-
-      {/* Mobile Bottom Sheet for Quick Add (<md) */}
-      {quickAddOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in"
-            onClick={() => setQuickAddOpen(false)}
-            aria-hidden="true"
-          />
-
-          {/* Bottom Sheet Dialog */}
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('quickAdd.title', 'Quick Add')}
-            className="relative w-full max-h-[85dvh] bg-white rounded-t-3xl shadow-2xl p-4 pb-safe flex flex-col z-10 animate-in slide-in-from-bottom duration-200"
-            data-testid="context-plus-menu"
-          >
-            {/* Drag Handle */}
-            <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto mb-3 shrink-0" />
-
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">{t('quickAdd.title', 'Quick Add')}</h3>
-                <p className="text-xs text-slate-500">{t('quickAdd.subtitle', 'Select an action to create')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setQuickAddOpen(false)}
-                className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 active:bg-slate-200 shrink-0"
-                aria-label={t('common.close', 'Close')}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Action List */}
-            <div className="mt-2 space-y-1.5 overflow-y-auto max-h-[calc(85dvh-120px)] overscroll-contain pr-0.5">
-              {quickActions.map((act) => {
-                const ActIcon = act.icon;
-                return (
-                  <button
-                    key={act.key}
-                    type="button"
-                    onClick={() => {
-                      setQuickAddOpen(false);
-                      act.onClick();
-                    }}
-                    className="w-full flex items-center gap-3.5 px-3.5 py-3 min-h-[52px] rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-indigo-50 hover:border-indigo-200 active:bg-indigo-100 transition text-left group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
-                      <ActIcon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-900 group-hover:text-indigo-700 truncate">
-                        {act.label}
-                      </div>
-                      {act.desc && (
-                        <div className="text-xs text-slate-500 truncate">{act.desc}</div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

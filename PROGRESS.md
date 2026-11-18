@@ -17,10 +17,12 @@ Rule: read ARCHITECTURE.md and this file before starting. Update this file befor
       6. **Register Physical File** — Track a physical case file (`can('files.manage')`)
     - Preserved contextual parameter prefilling: inside a Case Dossier locks `caseId`/`clientId`; inside a Client Profile locks `clientId`; on Calendar prefills selected date; everywhere else opens standard form.
     - Consistent trigger behavior: always opens the menu instead of bypassing to direct action on single-action screens.
-  - **Mobile Responsive Drawer & Bottom Sheet**:
-    - Desktop: dropdown anchored beneath the Quick Add button (`min-h-[44px]`).
-    - Mobile: slide-up bottom sheet with backdrop, grab handle, title, close button, touch targets $\ge 52\text{px}$, and `pb-safe`. Closes on backdrop tap, action selection, or Escape key.
-    - Mobile slide-out drawer: grouped by section headers matching the desktop sidebar.
+  - **Top-Down Quick Add Menu (Mobile & Desktop)**:
+    - Anchored directly under the header Quick Add (+) button, expanding downward (`origin-top-right`) on both mobile and desktop screens.
+    - Mobile layout: positioned directly below the top header bar (`fixed sm:absolute top-14 sm:top-auto right-3 sm:right-0 mt-0 sm:mt-2 w-[calc(100vw-1.5rem)] max-w-xs sm:w-80`) with soft dismiss backdrop, header close button, and internal scrolling for short screen heights (`max-h-[calc(100dvh-4.5rem)]`).
+    - Dismisses via backdrop tap, header Close (X) button, action click, or `Escape` key.
+    - Desktop layout: clean dropdown anchored beneath the button.
+    - Added dedicated Playwright test suite (`e2e/quickAddMenu.spec.ts`) verifying downward expansion, viewport bounds, and all 6 actions across 320, 360, 375, 390, 414px, and desktop.
   - **Verification & Parity**:
     - Bilingual translations in `src/locales/en.json` and `src/locales/bn.json` with 100% key parity (`tests/i18nParity.test.ts`: 3 passed, 0 failed).
     - `npm run lint`: passed cleanly with 0 type errors.
