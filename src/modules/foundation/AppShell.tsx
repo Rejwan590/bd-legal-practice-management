@@ -5,6 +5,7 @@ import { calculateDaysLeftDhaka, toBnDigits } from '../../utils/dateUtils';
 import { useNavigation, ScreenId } from './NavigationContext';
 const UserSwitchModal = React.lazy(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
 const GlobalSearchModal = React.lazy(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
+import { Logo } from '../../components/Logo';
 import {
   LayoutDashboard,
   Users,
@@ -20,7 +21,6 @@ import {
   ChevronDown,
   Menu,
   X,
-  Building,
   Search,
   Database,
   Lock,
@@ -402,9 +402,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               onClick={() => navigateToScreen('dashboard')}
               className="flex items-center gap-2 sm:gap-2.5 min-w-0 cursor-pointer"
             >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-serif font-bold text-base sm:text-lg shadow-xs shrink-0">
-                <Building className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
+              <Logo size="sm" showText={false} />
               <div className="min-w-0">
                 <h1
                   className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-tight truncate max-w-[110px] sm:max-w-[200px] md:max-w-xs"
@@ -805,11 +803,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 {/* Drawer Header */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-serif font-bold text-sm shrink-0">
-                      <Building className="w-4 h-4" />
-                    </div>
+                    <Logo size="sm" showText={false} />
                     <div className="font-bold text-sm text-slate-900 truncate">
-                      {currentFirm?.name || 'BD LawSuite'}
+                      {currentFirm?.name || t('app.title')}
                     </div>
                   </div>
                   <button
