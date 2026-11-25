@@ -8,6 +8,21 @@
     "sectionFinance": "Finance & Accounts",
     "sectionAdmin": "Chamber Administration"
   },
+  "pwa": {
+    "installApp": "Install App on Phone",
+    "installDesc": "1-tap access from your phone home screen",
+    "installDesktop": "Install Desktop App",
+    "installDesktopDesc": "Fast launch from your PC Taskbar or Start menu",
+    "installGeneric": "Install App",
+    "installGenericDesc": "Instant 1-click access from your device",
+    "iosTitle": "Install on iPhone / iPad",
+    "iosInstructions": "Tap the Share button at the bottom of Safari, then select 'Add to Home Screen'.",
+    "iosStep1": "Tap the Share button in the Safari toolbar",
+    "iosStep2": "Scroll down and select 'Add to Home Screen'",
+    "iosStep3": "Tap 'Add' in the top-right corner to finish",
+    "close": "Close",
+    "installed": "App is already installed"
+  },
   "landing": {
     "badge": "Smart Practice Platform for Bangladesh Advocates",
     "heroTitle": "Modern Practice Management for Advocates & Law Chambers",

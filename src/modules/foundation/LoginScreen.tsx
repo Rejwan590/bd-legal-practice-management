@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
 import { DevicePendingScreen } from './DevicePendingScreen';
 import { Logo } from '../../components/Logo';
+import { InstallAppPrompt } from '../../components/InstallAppPrompt';
 import {
   Lock,
   Mail,
@@ -173,6 +174,11 @@ export const LoginScreen: React.FC = () => {
               )}
             </button>
           </form>
+
+          {/* Mobile Install App Button */}
+          <div className="mt-4 pt-3 border-t border-slate-800">
+            <InstallAppPrompt />
+          </div>
         </div>
       </main>
 

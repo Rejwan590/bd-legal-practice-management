@@ -14,3 +14,14 @@ try {
 
 createRoot(document.getElementById('root')!).render(<App />);
 
+// Register Chamber PWA Service Worker (only for Chamber app, never in /admin)
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !window.location.pathname.startsWith('/admin')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch((err) => {
+        console.warn('PWA service worker registration failed:', err);
+      });
+  });
+}
+

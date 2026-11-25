@@ -3,6 +3,31 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Progressive Web App (PWA) Setup Isolated to Chamber Web App (`cloudflare` branch)**:
+  - **PWA Scope & Manifest**:
+    - Created `public/manifest.webmanifest` strictly scoped to `/` (`start_url: "/"`, `display: "standalone"`, `theme_color: "#0F172A"`).
+    - Linked manifest only in `index.html` (Chamber App). Zero manifest links or PWA headers in `admin-app/index.html` (Super Admin).
+    - Generated full set of official brand PWA icons: `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, and `apple-touch-icon.png`.
+  - **Service Worker (`public/sw.js`) & Strict Isolation**:
+    - Guarded with `if (url.pathname.startsWith('/admin')) return;` — passes Super Admin traffic straight to network without interception or caching.
+    - Guarded with `if (url.pathname.startsWith('/api') || request.method !== 'GET') return;` — prevents caching backend REST API calls, ensuring fresh tenant queries and zero session interference.
+    - Network-first navigation strategy with cache fallback for static shell assets.
+    - Registered in `src/main.tsx` only when `!window.location.pathname.startsWith('/admin')`.
+  - **Cross-Platform PC & Mobile Install Prompts**:
+    - Created `src/components/InstallAppPrompt.tsx` supporting Android, iOS Safari, and Windows/Mac PC desktop installation.
+    - Detects platform and dynamically presents:
+      - Mobile: "Install App on Phone" with phone icon and iOS step-by-step modal guide.
+      - PC: "Install Desktop App" with laptop icon and native Chrome/Edge install prompt trigger.
+    - Integrated seamlessly into `AppShell.tsx` (mobile slide-out drawer) and `LoginScreen.tsx` (card footer).
+    - 100% bilingual parity across `src/locales/en.json` and `src/locales/bn.json`.
+  - **Brand Assets Package (`public/brand/`)**:
+    - Generated complete brand package: `lawyers-echamber-mark.svg`, `lawyers-echamber-logo-full.svg`, `lawyers-echamber-mark-transparent.svg`, `lawyers-echamber-icon-1024.png`, `lawyers-echamber-mark-transparent.png`, `lawyers-echamber-logo-full.png`, and `lawyers-echamber-concept-art.jpg`.
+  - **Verification**:
+    - Local Playwright mobile and desktop emulation tests in `scratch/test-pwa.mjs`: all passed.
+    - `npm run lint`: 0 type errors.
+    - `npm run build:pages`: unified Cloudflare Pages production build succeeded.
+    - `npm test --prefix server`: 100% backend tests passed.
+
 - [x] **Navigation Consistency & Quick Add Menu Overhaul (`cloudflare` branch)**:
   - **Main Navigation Order (Clients Above Cases)**:
     - Moved **Clients above Cases** across all layouts: Desktop sidebar (`AppShell.tsx`), Mobile bottom navigation bar (`bottomNavItems`), Mobile slide-out drawer (`navSections`), Global Search Modal filter chips (`GlobalSearchModal.tsx`), and Dashboard scorecard metrics (`DashboardScreen.tsx`).

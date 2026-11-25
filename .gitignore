@@ -16,3 +16,7 @@ live-ui-editor.babel-plugin.js
 !.env.example
 !.env.production
 !.env.e2e
+scratch/
+flyer*
+.agents/
+CLEANUP_MAP.md

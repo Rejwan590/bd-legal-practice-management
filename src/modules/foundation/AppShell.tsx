@@ -6,6 +6,7 @@ import { useNavigation, ScreenId } from './NavigationContext';
 const UserSwitchModal = React.lazy(() => import('./UserSwitchModal').then(m => ({ default: m.UserSwitchModal })));
 const GlobalSearchModal = React.lazy(() => import('../search/GlobalSearchModal').then(m => ({ default: m.GlobalSearchModal })));
 import { Logo } from '../../components/Logo';
+import { InstallAppPrompt } from '../../components/InstallAppPrompt';
 import {
   LayoutDashboard,
   Users,
@@ -861,6 +862,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   })}
                 </nav>
               </div>
+
+              {/* Install App on Phone Banner */}
+              <InstallAppPrompt />
             </div>
           </div>
         )}
