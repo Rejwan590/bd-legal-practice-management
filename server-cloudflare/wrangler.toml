@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-CORS_ORIGIN = "https://bdlegal-app.pages.dev,https://bd-legal-practice-management.vercel.app"
+CORS_ORIGIN = "https://lawyersechamber.app,https://www.lawyersechamber.app,https://app.lawyersechamber.app,https://bdlegal-app.pages.dev,https://bd-legal-practice-management.vercel.app"
 
 [[d1_databases]]
 binding = "DB"

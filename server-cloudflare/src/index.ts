@@ -51,6 +51,9 @@ app.use('*', async (c, next) => {
       if (!origin) return null;
       const allowedOrigins = [
         ...envOrigins,
+        'https://lawyersechamber.app',
+        'https://www.lawyersechamber.app',
+        'https://app.lawyersechamber.app',
         'https://bd-legal-practice-management.vercel.app',
         'https://bdlegal-app.pages.dev',
         'http://localhost:3000',
