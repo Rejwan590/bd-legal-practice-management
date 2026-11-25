@@ -3,6 +3,13 @@
 Rule: read ARCHITECTURE.md and this file before starting. Update this file before stopping. Never put secrets or real client data here.
 
 ## Current status
+- [x] **Client Profile Billing Tab Layout & Count Fix + Health Check REST-Mode Guard (`cloudflare` branch)**:
+  - **Client Profile Billing Tab (`src/modules/clients/ClientProfileView.tsx`)**:
+    - Fixed missing container padding on the Billing tab panel (`p-4 sm:p-6` instead of `pt-2`) so `MattersBillingLedger` no longer collides with the outer card border.
+    - Replaced hardcoded `count: 0` on the Billing tab badge with live `billingCount` (agreements + payments + expenses).
+  - **Health Check REST-Mode Guard (`src/modules/health/tests/foundationTests.ts`)**:
+    - Made `runFoundationTests` REST-mode aware so live chamber UUIDs and session-based isolation are validated safely without executing mutating `updateFirm` calls against the production database.
+
 - [x] **Progressive Web App (PWA) Setup Isolated to Chamber Web App (`cloudflare` branch)**:
   - **PWA Scope & Manifest**:
     - Created `public/manifest.webmanifest` strictly scoped to `/` (`start_url: "/"`, `display: "standalone"`, `theme_color: "#0F172A"`).

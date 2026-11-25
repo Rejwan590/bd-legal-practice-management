@@ -88,6 +88,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [files, setFiles] = useState<PhysicalFileRecord[]>([]);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
+  const [billingCount, setBillingCount] = useState<number>(0);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(() => (clientId ? getCachedClientPhoto(clientId) || null : null));
   const [photoUploading, setPhotoUploading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -109,24 +110,35 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
   const canViewAppointments = can('appointments.view');
   const canManageAppointments = can('appointments.manage');
 
+  const canViewBilling = can('accounts.view') || can('billing.view');
+  const canViewExpenses = canViewBilling || can('expenses.record');
+
   const loadClientHub = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
       const cl = await repos.client.getById({ currentUser }, clientId);
-      const [clientCases, clientTasks, clientFiles, clientAppointments, photoRec] = await Promise.all([
+      const [clientCases, clientTasks, clientFiles, clientAppointments, photoRec, agList, payList, expList] = await Promise.all([
 
         repos.case.getByClientId({ currentUser }, clientId).catch(() => []),
         repos.task.list({ currentUser }, { clientId }).catch(() => []),
         repos.physicalFile.list({ currentUser }, { clientId }).catch(() => []),
         repos.appointment ? repos.appointment.list({ currentUser }, { clientId }).catch(() => []) : Promise.resolve([]),
         cl?.hasPhoto ? repos.client.getPhoto({ currentUser }, clientId).catch(() => null) : Promise.resolve(null),
+        canViewBilling && repos.accounts ? repos.accounts.listAgreements({ currentUser }, { clientId }).catch(() => []) : Promise.resolve([]),
+        canViewBilling && repos.accounts ? repos.accounts.listPayments({ currentUser }, { clientId }).catch(() => []) : Promise.resolve([]),
+        canViewExpenses && repos.accounts ? repos.accounts.listExpenses({ currentUser }, { clientId }).catch(() => []) : Promise.resolve([]),
       ]);
       setClient(cl);
       setCases(Array.isArray(clientCases) ? clientCases : []);
       setTasks(Array.isArray(clientTasks) ? clientTasks : ((clientTasks as any)?.tasks || []));
       setFiles(Array.isArray(clientFiles) ? clientFiles : []);
       setAppointments(Array.isArray(clientAppointments) ? clientAppointments : ((clientAppointments as any)?.appointments || []));
+      const totalBilling =
+        (Array.isArray(agList) ? agList.length : 0) +
+        (Array.isArray(payList) ? payList.length : 0) +
+        (Array.isArray(expList) ? expList.length : 0);
+      setBillingCount(totalBilling);
 
       if (photoRec?.dataUrl) {
         setPhotoDataUrl(photoRec.dataUrl);
@@ -155,7 +167,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [clientId, currentUser, repos, setActiveClientContext]);
+  }, [clientId, currentUser, repos, setActiveClientContext, canViewBilling, canViewExpenses]);
 
   useEffect(() => {
     loadClientHub();
@@ -310,7 +322,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
           {
             id: 'billing' as ClientProfileTab,
             label: t('nav.billing', 'Billing'),
-            count: 0,
+            count: billingCount,
             icon: CreditCard,
           },
         ]
@@ -967,7 +979,7 @@ export const ClientProfileView: React.FC<ClientProfileViewProps> = ({
 
         {/* TAB 4: BILLING */}
         {activeTab === 'billing' && (can('accounts.view') || can('billing.view') || can('expenses.record')) && (
-          <div className="pt-2">
+          <div className="p-4 sm:p-6" data-testid="client-panel-billing">
             <BillingTab clientId={client.id} />
           </div>
         )}
