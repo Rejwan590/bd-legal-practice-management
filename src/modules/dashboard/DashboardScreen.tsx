@@ -13,6 +13,7 @@ import {
   ClientRecord,
 } from '../../data/types';
 import { ResponsiveTable } from '../../components/responsive/ResponsiveTable';
+import { Logo } from '../../components/Logo';
 import { EntityLink } from '../../components/EntityLink';
 import { CaseFormModal } from '../cases/CaseFormModal';
 import { ClientFormModal } from '../clients/ClientFormModal';
@@ -1106,9 +1107,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate: on
           {/* Chamber Practice & Registration Card */}
           <div className="bg-slate-900 text-white rounded-xl p-5 shadow-2xs space-y-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold">
-                <Building className="w-4 h-4" />
-              </div>
+              <Logo size="sm" showText={false} />
               <div>
                 <h4 className="text-xs font-bold text-white tracking-wide">
                   {currentFirm?.name || 'Rahman & Associates Chambers'}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Logo } from '../../components/Logo';
 import {
-  Building,
   Globe,
   Clock,
   Laptop,
@@ -63,19 +63,7 @@ export const DevicePendingScreen: React.FC<DevicePendingScreenProps> = ({
     <div className="min-h-[100dvh] bg-slate-900 text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-8 pt-safe pb-safe selection:bg-indigo-500 selection:text-white">
       {/* Top Header */}
       <header className="max-w-5xl w-full mx-auto flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-serif font-bold text-xl shadow-lg">
-            <Building className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-white tracking-tight leading-tight">
-              {t('app.chamberName', { defaultValue: 'Rahman & Associates Chambers' })}
-            </h1>
-            <p className="text-xs text-slate-400 font-medium hidden sm:block">
-              {t('app.subtitle', { defaultValue: 'Chamber Legal Practice Management System' })}
-            </p>
-          </div>
-        </div>
+        <Logo size="md" showText={true} variant="dark" />
 
         {/* Language Switcher */}
         <button
